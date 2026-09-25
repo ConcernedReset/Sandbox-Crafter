@@ -45,7 +45,10 @@ function heatIndex(T) {
   return Math.min(255, Math.max(0, (u * 255) | 0));
 }
 
-const MODE = { PLAIN: 0, GAS: 1, FIRE: 2, PLASMA: 3, SPARK: 4, LIGHTNING: 5, CLONE: 6, VOID: 7, MOLTEN: 8 };
+const MODE = {
+  PLAIN: 0, GAS: 1, FIRE: 2, PLASMA: 3, SPARK: 4, LIGHTNING: 5, CLONE: 6, VOID: 7, MOLTEN: 8,
+  NEON: 9, FLASH: 10, GLITTER: 11, STAR: 12, STRANGE: 13, PULSE: 14,
+};
 
 export class Renderer {
   constructor(canvas, world) {
@@ -77,14 +80,24 @@ export class Renderer {
   }
 
   buildPalettes() {
-    this.pal = new Uint32Array(NUM * SHADES);
     this.palRGB = new Uint8Array(NUM * SHADES * 3);
     this.mode = new Uint8Array(NUM);
     this.alpha = new Float32Array(NUM);
+    this.glowAmt = new Float32Array(NUM);
+    this.projColor = new Uint32Array(NUM);
+    this.projRGB = new Uint8Array(NUM * 3);
     for (const d of DEFS) {
+      this.alpha[d.id] = d.alpha;
+      this.glowAmt[d.id] = d.glowAmount;
+      if (d.projectile) {
+        // Ghostly particles (neutrinos) are drawn faintly.
+        const a = d.alpha;
+        const [r, g, b] = hex(d.colors[0]).map((c, k) => Math.round(BG[k] + (c - BG[k]) * a));
+        this.projColor[d.id] = pack(r, g, b);
+        this.projRGB.set([r, g, b], d.id * 3);
+      }
       for (let s = 0; s < SHADES; s++) {
         const [r, g, b] = hex(d.colors[s % d.colors.length]);
-        this.pal[d.id * SHADES + s] = pack(r, g, b);
         this.palRGB.set([r, g, b], (d.id * SHADES + s) * 3);
       }
       let m = MODE.PLAIN;
@@ -98,12 +111,14 @@ export class Renderer {
     this.mode[ID.LIGHTNING] = MODE.LIGHTNING;
     this.mode[ID.CLONE] = MODE.CLONE;
     this.mode[ID.VOID] = MODE.VOID;
-    this.alpha.fill(1);
-    this.alpha[ID.STEAM] = 0.5;
-    this.alpha[ID.SMOKE] = 0.75;
-    this.alpha[ID.METHANE] = 0.3;
-    this.alpha[ID.HYDROGEN] = 0.22;
-    this.alpha[ID.CLOUD] = 0.85;
+    this.mode[ID.NEON] = MODE.NEON;
+    this.mode[ID.GEIGER] = MODE.FLASH;
+    this.mode[ID.GLITTER] = MODE.GLITTER;
+    this.mode[ID.STAR] = MODE.STAR;
+    this.mode[ID.WHITE_HOLE] = MODE.STAR;
+    this.mode[ID.STRANGE_MATTER] = MODE.STRANGE;
+    this.mode[ID.VIRUS] = MODE.PULSE;
+    this.mode[ID.ANTIMATTER] = MODE.PULSE;
   }
 
   resize() {
@@ -155,7 +170,7 @@ export class Renderer {
   }
 
   paint() {
-    const { world, pixels, pal, palRGB, mode, alpha, frame, view } = this;
+    const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view } = this;
     const { w, h, type, temp, life, ctype, shade } = world;
     const air = world.air;
     const cols = air.cols;
@@ -215,8 +230,48 @@ export class Renderer {
               const lo = d.low ? d.low.temp : 0;
               const f = Math.min(1, Math.max(0.25, (temp[i] - lo) / (d.temp - lo)));
               const wave = 0.85 + 0.15 * Math.sin((x * 0.35 + y * 0.6 + frame * 0.08 + s) * 0.9);
+              const c = ctype[i];
+              if (c) { // molten copper, gold... tinted by the metal it was
+                const q = (c * SHADES + s) * 3;
+                r = r * 0.6 + palRGB[q] * 0.4; g = g * 0.6 + palRGB[q + 1] * 0.4; b = b * 0.6 + palRGB[q + 2] * 0.4;
+              }
               r *= f * wave; g *= f * f * wave; b *= f * f * wave;
               emit = 0.45 * f;
+              break;
+            }
+            case MODE.NEON: {
+              if (life[i] > 0) { // excited by current: a bright sign glow
+                r = 255; g = 90 + (life[i] & 3) * 6; b = 60;
+                emit = 1.2;
+              } else {
+                const a = alpha[t];
+                r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+              }
+              break;
+            }
+            case MODE.FLASH:
+              if (life[i] > 0) { r = 125; g = 255; b = 138; emit = 1.2; }
+              break;
+            case MODE.GLITTER: {
+              const a = Math.min(1, life[i] / 30);
+              r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+              emit = 0.9 * a;
+              break;
+            }
+            case MODE.STAR: {
+              const flick = 0.9 + (((i * 57 + frame * 13) & 7) / 7) * 0.1;
+              r *= flick; g *= flick; b *= flick;
+              break;
+            }
+            case MODE.STRANGE: {
+              const q = (t * SHADES + ((s + (frame >> 3)) % 3)) * 3;
+              r = palRGB[q]; g = palRGB[q + 1]; b = palRGB[q + 2];
+              break;
+            }
+            case MODE.PULSE: {
+              const pulse = 0.8 + 0.2 * Math.sin(frame * 0.15 + x * 0.3 + y * 0.2);
+              const a = alpha[t];
+              r = bgR + (r * pulse - bgR) * a; g = bgG + (g * pulse - bgG) * a; b = bgB + (b * pulse - bgB) * a;
               break;
             }
             case MODE.FIRE: {
@@ -271,6 +326,7 @@ export class Renderer {
             }
             default: break;
           }
+          emit += glowAmt[t];
           if (emit > 0) {
             const gi = (gRow + ((x / CELL) | 0)) * 3;
             glow[gi] += r * emit;
@@ -291,6 +347,7 @@ export class Renderer {
     }
 
     this.count = count;
+    this.paintProjectiles(heatView);
 
     // Glow: average per air block, boosted.
     const gp = this.glowImage.data;
@@ -301,6 +358,24 @@ export class Renderer {
       gp[k * 4 + 1] = Math.min(255, glow[k * 3 + 1] * gain);
       gp[k * 4 + 2] = Math.min(255, glow[k * 3 + 2] * gain);
       gp[k * 4 + 3] = 255;
+    }
+  }
+
+  // Photons, electrons and friends: bright single pixels with a little glow.
+  paintProjectiles(heatView) {
+    const { world, pixels, projColor, projRGB } = this;
+    const { px, py, ptype, pn, w } = world;
+    const glow = this.glowAcc;
+    const cols = world.air.cols;
+    const white = pack(255, 255, 255);
+    for (let k = 0; k < pn; k++) {
+      const x = px[k] | 0, y = py[k] | 0;
+      const t = ptype[k];
+      pixels[y * w + x] = heatView ? white : projColor[t];
+      const gi = (((y / CELL) | 0) * cols + ((x / CELL) | 0)) * 3;
+      glow[gi] += projRGB[t * 3] * 0.7;
+      glow[gi + 1] += projRGB[t * 3 + 1] * 0.7;
+      glow[gi + 2] += projRGB[t * 3 + 2] * 0.7;
     }
   }
 }

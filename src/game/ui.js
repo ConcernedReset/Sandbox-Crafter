@@ -2,7 +2,7 @@
 // tool bar, the element palette, the recipe book, toasts and the HUD.
 
 import {
-  DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor,
+  DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor, halfLife,
 } from '../sim/elements.js';
 import { TOOLS, HEAT_RATE } from './input.js';
 
@@ -15,6 +15,15 @@ const STATE_NAME = {
   [State.GAS]: 'Gas',
   [State.ENERGY]: 'Energy',
 };
+
+function stateName(d) {
+  return d.projectile ? 'Particle' : STATE_NAME[d.state];
+}
+
+function fmtDuration(seconds) {
+  if (seconds < 90) return `${Math.round(seconds)} s`;
+  return `${Math.round(seconds / 60)} min`;
+}
 
 const TOOL_INFO = {
   erase: {
@@ -69,7 +78,8 @@ function tileStyle(d) {
 
 function mini(d, known = true) {
   if (!known) return `<span class="mini unknown" style="--cat:var(--cat-${d.cat})">?</span>`;
-  return `<span class="mini" style="${tileStyle(d)}">${esc(d.sym)}</span>`;
+  const long = d.sym.length > 2 ? ' long' : '';
+  return `<span class="mini${long}" style="${tileStyle(d)}">${esc(d.sym)}</span>`;
 }
 
 function fmtTemp(t) {
@@ -80,6 +90,7 @@ export class UI {
   constructor(game) {
     this.game = game;
     this.fresh = new Set();
+    this.filter = '';
     this.buildMeter();
     this.buildTools();
     this.bindTabs();
@@ -124,6 +135,11 @@ export class UI {
   bindBrush() {
     const input = $('brush');
     input.addEventListener('input', () => this.game.setBrush(Number(input.value)));
+    const search = $('search');
+    search.addEventListener('input', () => {
+      this.filter = search.value.trim().toLowerCase();
+      this.renderPalette();
+    });
   }
 
   setBrush(r) {
@@ -134,23 +150,30 @@ export class UI {
   renderPalette() {
     const { progress, selection } = this.game;
     const hadFocus = $('palette').contains(document.activeElement);
-    $('palette').innerHTML = CATEGORIES.map((cat) => {
-      const items = COLLECTIBLE.filter((d) => d.cat === cat.key);
-      const known = items.filter((d) => progress.usable(d.id)).length;
+    const q = this.filter;
+    // While searching, only show matching elements the player can use.
+    const matches = (d) => !q || (progress.usable(d.id)
+      && (d.name.toLowerCase().includes(q) || d.sym.toLowerCase() === q));
+    const groups = CATEGORIES.map((cat) => {
+      const all = COLLECTIBLE.filter((d) => d.cat === cat.key);
+      const items = all.filter(matches);
+      if (!items.length) return '';
+      const known = all.filter((d) => progress.usable(d.id)).length;
       const tiles = items.map((d) => {
         if (!progress.usable(d.id)) {
           return `<div class="tile locked" style="--cat:var(--cat-${d.cat})" aria-label="Undiscovered element">
             <span class="tile-num">${d.number}</span><span class="tile-sym">?</span><span class="tile-name">???</span></div>`;
         }
         const pressed = selection.kind === 'element' && selection.id === d.id;
-        const fresh = this.fresh.has(d.id) ? ' fresh' : '';
-        return `<button type="button" class="tile${fresh}" data-id="${d.id}" aria-pressed="${pressed}" style="${tileStyle(d)}" title="${esc(d.name)}: ${esc(d.desc)}">
+        const extra = (this.fresh.has(d.id) ? ' fresh' : '') + (d.sym.length > 2 ? ' long' : '');
+        return `<button type="button" class="tile${extra}" data-id="${d.id}" aria-pressed="${pressed}" style="${tileStyle(d)}" title="${esc(d.name)}: ${esc(d.desc)}">
           <span class="tile-num">${d.number}</span><span class="tile-sym">${esc(d.sym)}</span><span class="tile-name">${esc(d.name)}</span><span class="tile-swatch"></span></button>`;
       }).join('');
       return `<section class="group" style="--cat:var(--cat-${cat.key})">
-        <div class="group-head">${cat.name}<span>${known}/${items.length}</span></div>
+        <div class="group-head">${cat.name}<span>${known}/${all.length}</span></div>
         <div class="tiles">${tiles}</div></section>`;
     }).join('');
+    $('palette').innerHTML = groups || `<p class="empty-search">No discovered element matches “${esc(this.filter)}”.</p>`;
     this.fresh.clear();
     if (hadFocus) $('palette').querySelector('[aria-pressed="true"]')?.focus();
 
@@ -172,15 +195,26 @@ export class UI {
     }
     const d = DEFS[selection.id];
     const facts = [];
-    if (d.state !== State.SOLID && d.state !== State.ENERGY) facts.push(`Density <b>${d.density}</b>`);
-    if (d.temp !== 22) facts.push(`Starts at <b>${fmtTemp(d.temp)}</b>`);
+    const solidish = d.state === State.SOLID || d.state === State.ENERGY;
+    if (!solidish && !d.projectile) facts.push(`Density <b>${d.density}</b>`);
+    if (d.temp !== 22 && !d.projectile) facts.push(`Starts at <b>${fmtTemp(d.temp)}</b>`);
     if (d.high) facts.push(`Changes above <b>${fmtTemp(d.high.temp)}</b>`);
-    if (d.low) facts.push(`Changes below <b>${fmtTemp(d.low.temp)}</b>`);
-    if (d.flammable > 0) facts.push(`Ignites at <b>${fmtTemp(d.ignite)}</b>`);
+    if (d.low && !d.low.restore) facts.push(`Changes below <b>${fmtTemp(d.low.temp)}</b>`);
+    if (d.flammable > 0 && d.ignite < 5000) facts.push(`Ignites at <b>${fmtTemp(d.ignite)}</b>`);
+    if (d.explode > 0) facts.push('<b>Explosive</b>');
     if (d.pressure) facts.push(`Gives way above pressure <b>${d.pressure.above}</b>`);
+    if (d.emits || d.fission) facts.push('<b>Radioactive</b>');
+    if (d.decay) facts.push(`Half-life <b>≈ ${fmtDuration(halfLife(d.decay.chance))}</b>`);
+    if (d.fission) facts.push(`Splits into <b>${d.fission.neutrons} neutrons</b>`);
     if (d.conductor) facts.push('<b>Conducts electricity</b>');
+    if (d.transparent) facts.push('<b>Transparent</b>');
+    if (d.reflect >= 0.8) facts.push('<b>Reflects light</b>');
+    if (d.nAbsorb >= 0.3 && !d.always) facts.push('<b>Absorbs neutrons</b>');
+    if (d.moderator) facts.push('<b>Slows neutrons</b>');
     if (d.acidProof) facts.push('<b>Acid-proof</b>');
-    const sub = d.number ? `No. ${d.number} · ${STATE_NAME[d.state]}` : STATE_NAME[d.state];
+    if (d.projectile) facts.push(`Speed <b>${d.speed} cells/frame</b>`);
+    if (d.charge) facts.push(`Charge <b>${d.charge > 0 ? '+' : '−'}1</b>`);
+    const sub = d.number ? `No. ${d.number} · ${stateName(d)}` : stateName(d);
     box.innerHTML = `<div class="inspect-head">${mini(d)}
         <div><div class="inspect-title">${esc(d.name)}</div><div class="inspect-sub">${sub}</div></div></div>
       <p>${esc(d.desc)}</p>
@@ -293,7 +327,8 @@ export class UI {
     }
   }
 
-  renderStats(count, fps) {
-    $('hud-stats').textContent = `${count.toLocaleString('en-US')} particles · ${fps} fps`;
+  renderStats(count, flying, fps) {
+    const rays = flying ? ` · ${flying.toLocaleString('en-US')} in flight` : '';
+    $('hud-stats').textContent = `${count.toLocaleString('en-US')} particles${rays} · ${fps} fps`;
   }
 }

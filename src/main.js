@@ -190,7 +190,7 @@ function frame(now) {
     fps = Math.round((frames * 1000) / (now - fpsTime));
     frames = 0;
     fpsTime = now;
-    ui.renderStats(renderer.count, fps);
+    ui.renderStats(renderer.count, world.pn, fps);
   }
   requestAnimationFrame(frame);
 }

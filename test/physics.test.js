@@ -118,3 +118,17 @@ test('fire burns wood away and leaves ash and smoke', () => {
   assert.ok(countOf(w, ID.WOOD) < 100, 'most of the wood burned');
   assert.ok(ash > 0 && w.seen[ID.SMOKE], 'left ash and smoke');
 });
+
+test('a thin film of water settles instead of skittering back and forth', () => {
+  const w = makeWorld(200, 60);
+  fillRect(w, 90, 0, 109, 7, ID.WATER);
+  run(w, 600);
+  let moved = 0;
+  for (let f = 0; f < 120; f++) {
+    const before = w.type.slice();
+    w.step();
+    for (let i = 0; i < before.length; i++) if (before[i] !== w.type[i]) moved++;
+  }
+  // Each moving particle changes two cells, so this is under ~5 particles a frame.
+  assert.ok(moved / 120 < 10, `${(moved / 120).toFixed(1)} cells changed per frame`);
+});

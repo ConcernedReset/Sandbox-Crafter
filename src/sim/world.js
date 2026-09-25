@@ -1,38 +1,29 @@
 // The particle simulation. The world is a grid where every cell holds at
 // most one particle; per-cell data lives in parallel typed arrays so the
 // update loop stays fast. Each frame:
-//   1. every particle runs its behaviour, phase changes, reactions and
-//      movement (bottom row first, alternating direction to avoid bias)
-//   2. heat conducts between touching particles and leaks into open air
-//   3. the air pressure grid steps forward
+//   1. every particle runs its behaviour, radioactivity, phase changes,
+//      reactions and movement (bottom row first, alternating direction)
+//   2. flying particles (photons, neutrons...) move on their own layer
+//   3. heat conducts between touching particles and leaks into open air
+//   4. the air pressure grid steps forward
+//
+// Element behaviours live in behaviors.js and the flying-particle layer in
+// particles.js; both are mixed into World below.
 //
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
 import { Air, CELL } from './air.js';
-import { DEFS, ID, NUM, State, AMBIENT, REACT, SPECIAL } from './elements.js';
+import { DEFS, ID, NUM, State, AMBIENT, REACT } from './elements.js';
+import { MAX_TEMP, MIN_TEMP, GRAVITY } from './constants.js';
+import { COND, AIR_COOL, CONDUCTOR } from './lookups.js';
+import { Behaviors } from './behaviors.js';
+import { Particles, initParticles } from './particles.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
-const {
-  WALL, FIRE, SMOKE, ASH, WATER, SNOW, PLANT, WOOD, SPARK, LIGHTNING, CLONE, VOID,
-} = ID;
+const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
 
-const GRAVITY = 0.12;
-const SPARK_COOLDOWN = 6;
-export const MAX_TEMP = 9999;
-export const MIN_TEMP = -273;
-
-// Per-element lookups used in the hot loops.
-const COND = new Float32Array(NUM);
-const AIR_COOL = new Float32Array(NUM);
-const CONDUCTOR = new Uint8Array(NUM);
-const CLONEABLE = new Uint8Array(NUM);
-for (const d of DEFS) {
-  COND[d.id] = d.conduct;
-  AIR_COOL[d.id] = d.id === 0 ? 0 : d.airCool;
-  CONDUCTOR[d.id] = d.conductor ? 1 : 0;
-  CLONEABLE[d.id] = d.id !== 0 && ![WALL, CLONE, VOID, SPARK, LIGHTNING].includes(d.id) ? 1 : 0;
-}
+export { MAX_TEMP, MIN_TEMP };
 
 export class World {
   constructor(width, height, seed = 12345) {
@@ -42,7 +33,9 @@ export class World {
     this.type = new Uint8Array(n);
     this.temp = new Float32Array(n).fill(AMBIENT);
     this.life = new Int16Array(n);
-    this.ctype = new Uint8Array(n); // spark: conductor underneath; fire: fuel; clone: copied element
+    // spark: conductor underneath; fire: fuel; clone: copied element;
+    // molten metal: which metal; lightning/firework/seed: state flag
+    this.ctype = new Uint8Array(n);
     this.vx = new Float32Array(n);
     this.vy = new Float32Array(n);
     this.shade = new Uint8Array(n); // random per particle, picks a colour variant
@@ -54,6 +47,7 @@ export class World {
     this.discoveries = [];
     this.count = 0;
     this.blockedMoving = false;
+    initParticles(this);
   }
 
   rand() {
@@ -88,6 +82,7 @@ export class World {
     this.vx.fill(0);
     this.vy.fill(0);
     this.air.clear();
+    this.pn = 0;
   }
 
   initLife(i, t) {
@@ -98,6 +93,7 @@ export class World {
   // Place a fresh particle (used by painting and by clones).
   spawn(i, t) {
     const d = DEFS[t];
+    if (d.projectile) { this.emitAt(t, i % this.w, (i / this.w) | 0); return; }
     this.type[i] = t;
     this.temp[i] = d.temp;
     this.ctype[i] = 0;
@@ -109,8 +105,16 @@ export class World {
   }
 
   // Turn an existing particle into something else as the result of a rule.
+  // Turning into a flying particle (a photon, say) frees the cell.
   convert(i, to, keepTemp, rule) {
     if (to === 0) { this.clearCell(i); return; }
+    if (DEFS[to].projectile) {
+      const x = i % this.w, y = (i / this.w) | 0;
+      this.clearCell(i);
+      this.emitAt(to, x, y);
+      if (rule >= 0) this.record(to, rule);
+      return;
+    }
     this.type[i] = to;
     this.ctype[i] = 0;
     if (!keepTemp) this.temp[i] = DEFS[to].temp;
@@ -152,6 +156,13 @@ export class World {
     const d = DEFS[t];
     const b = d.burn;
     if (!b) return;
+    if (b.launch) { // fireworks take off instead of burning
+      if (this.ctype[i] !== 1) {
+        this.ctype[i] = 1;
+        this.life[i] = 25 + ((this.rand() * 25) | 0);
+      }
+      return;
+    }
     if (d.explode) this.blast(x, y, d.explode);
     if (b.ash > 0 && this.rand() < b.ash) { this.convert(i, ASH, false, b.ashRule); return; }
     if (b.to !== FIRE && this.rand() < b.toChance) {
@@ -182,7 +193,7 @@ export class World {
         const j = ny * w + nx;
         const e = DEFS[type[j]];
         // Other explosives caught in the blast go off too.
-        if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = e.ignite + 1;
+        if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = Math.min(MAX_TEMP, e.ignite + 1);
         const s = e.state;
         if (s !== POWDER && s !== LIQUID && s !== GAS) continue;
         // Push outward; things below the blast bounce off the ground and
@@ -223,6 +234,8 @@ export class World {
         this.update(i, x, y, t);
       }
     }
+    this.computeField();
+    this.stepProjectiles();
     this.conductHeat();
     air.step();
   }
@@ -237,19 +250,31 @@ export class World {
     }
     if (d.conductor && this.life[i] > 0) this.life[i]--;
 
+    if (d.active && this.radiate(i, x, y, d)) return;
+
     if (d.behavior !== null && this.behave(d.behavior, i, x, y, t, d)) return;
 
     const T = this.temp[i];
     const hi = d.high;
     if (hi !== null && T >= hi.temp && this.rand() < hi.chance) {
-      if (hi.alt >= 0 && this.rand() < hi.altChance) this.convert(i, hi.alt, true, hi.altRule);
-      else this.convert(i, hi.to, true, hi.rule);
+      if (hi.alt >= 0 && this.rand() < hi.altChance) {
+        this.convert(i, hi.alt, true, hi.altRule);
+      } else {
+        this.convert(i, hi.to, true, hi.rule);
+        if (hi.remember) this.ctype[i] = hi.remember;
+      }
       return;
     }
     const lo = d.low;
-    if (lo !== null && T <= lo.temp && this.rand() < lo.chance) {
-      this.convert(i, lo.to, true, lo.rule);
-      return;
+    if (lo !== null) {
+      // Molten metal sets back into whichever metal it was.
+      const was = lo.restore ? this.ctype[i] : 0;
+      const limit = was ? DEFS[was].high.temp - 40 : lo.temp;
+      if (T <= limit && this.rand() < lo.chance) {
+        if (was) this.convert(i, was, true, -1);
+        else this.convert(i, lo.to, true, lo.rule);
+        return;
+      }
     }
     const pr = d.pressure;
     if (pr !== null && this.air.p[this.air.at(x, y)] >= pr.above && this.rand() < pr.chance) {
@@ -257,7 +282,7 @@ export class World {
       else this.convert(i, pr.to, true, pr.rule);
       return;
     }
-    if (d.flammable > 0 && T >= d.ignite && this.rand() < d.igniteChance) {
+    if (d.burn !== null && T >= d.ignite && this.rand() < d.igniteChance) {
       this.ignite(i, x, y);
       return;
     }
@@ -268,10 +293,9 @@ export class World {
         const u = this.type[j];
         if (u !== 0) {
           const r = REACT[t * NUM + u];
-          if (r !== null && this.rand() < r.chance) {
-            if (r.otherTo >= 0) this.convert(j, r.otherTo, r.keepOther, r.otherRule);
-            if (r.selfTo >= 0) { this.convert(i, r.selfTo, r.keepSelf, r.selfRule); return; }
-          }
+          if (r !== null && this.rand() < r.chance
+            && (this.temp[i] >= r.minTemp || this.temp[j] >= r.minTemp)
+            && this.react(i, j, x, y, r)) return;
         }
       }
     }
@@ -285,238 +309,51 @@ export class World {
     }
   }
 
-  // ---- custom behaviours --------------------------------------------------
-  // Each returns true if it fully handled the particle this frame.
-
-  behave(name, i, x, y, t, d) {
-    switch (name) {
-      case 'fire': return this.burnOut(i, x, y, true);
-      case 'plasma': return this.burnOut(i, x, y, false);
-      case 'decay':
-        if (--this.life[i] <= 0) { this.clearCell(i); return true; }
-        return false;
-      case 'spark': return this.updateSpark(i, x, y);
-      case 'battery': return this.updateBattery(x, y);
-      case 'plant': return this.updatePlant(i, x, y);
-      case 'cloud': return this.updateCloud(i, x, y);
-      case 'lightning': return this.updateLightning(i, x, y);
-      case 'acid': return this.updateAcid(i, x, y);
-      case 'clone': return this.updateClone(i, x, y);
-      case 'void': return this.updateVoid(i, x, y);
-      default: return false;
+  // Radioactivity (warmth, particles thrown off, random decay), glowing-hot
+  // filaments, and flowers dropping fruit. Returns true if i decayed.
+  radiate(i, x, y, d) {
+    if (d.selfHeat !== 0) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + d.selfHeat);
+    if (d.emits !== null) {
+      for (const m of d.emits) if (this.rand() < m.chance) this.emitAt(m.id, x, y);
     }
-  }
-
-  // Fire and plasma: count down, ignite neighbours, maybe leave smoke.
-  // Fire burning a solid or a non-explosive powder stays on its fuel as an
-  // ember and throws loose flames upward, so logs burn in place.
-  burnOut(i, x, y, smoky) {
-    const fuel = this.ctype[i];
-    if (--this.life[i] <= 0) {
-      const b = fuel ? DEFS[fuel].burn : null;
-      if (smoky && b && b.smoke > 0 && this.rand() < b.smoke) this.convert(i, SMOKE, false, b.smokeRule);
-      else this.clearCell(i);
+    if (d.hotEmit !== null && this.temp[i] >= d.hotEmit.temp && this.rand() < d.hotEmit.chance) {
+      this.emitAt(PHOTON, x, y);
+    }
+    if (d.decay !== null && this.rand() < d.decay.chance) {
+      const o = d.decay;
+      if (o.spawn >= 0 && this.spawnNear(x, y, o.spawn) >= 0) this.record(o.spawn, o.spawnRule);
+      this.convert(i, o.to, true, o.rule);
       return true;
     }
-    this.igniteAround(x, y);
-    if (fuel && smoky) {
-      const f = DEFS[fuel];
-      if (f.state === SOLID || (f.state === POWDER && f.explode === 0)) {
-        if (y > 0 && this.rand() < 0.25 && this.type[i - this.w] === 0) {
-          const j = i - this.w;
-          this.spawn(j, FIRE);
-          this.life[j] = 10 + ((this.rand() * 20) | 0);
-          this.temp[j] = this.temp[i];
-        }
-        if (f.state === POWDER) this.movePowder(i, x, y, f);
-        return true;
-      }
+    if (d.produce !== null && this.rand() < d.produce.chance) {
+      const p = d.produce;
+      const j = y + 1 < this.h && this.type[i + this.w] === 0 ? i + this.w : -1;
+      if (j >= 0) this.spawn(j, p.id);
+      if (j >= 0 || this.spawnNear(x, y, p.id) >= 0) this.record(p.id, p.rule);
     }
     return false;
   }
 
-  igniteAround(x, y) {
-    const { w, h } = this;
-    for (let k = 0; k < 4; k++) {
-      const nx = k === 0 ? x + 1 : k === 1 ? x - 1 : x;
-      const ny = k === 2 ? y + 1 : k === 3 ? y - 1 : y;
-      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-      const j = ny * w + nx;
-      const f = DEFS[this.type[j]].flammable;
-      if (f > 0 && this.rand() < f) this.ignite(j, nx, ny);
+  // Apply a contact reaction between i (at x, y) and its neighbour j.
+  // Returns true if i itself changed.
+  react(i, j, x, y, r) {
+    if (r.heat) {
+      this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + r.heat);
+      this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
     }
-  }
-
-  updateSpark(i, x, y) {
-    const { w, h, type } = this;
-    if (this.life[i] >= 3) {
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const nx = x + dx, ny = y + dy;
-          if ((dx === 0 && dy === 0) || nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          const j = ny * w + nx;
-          const u = type[j];
-          if (CONDUCTOR[u] && this.life[j] === 0) this.sparkAt(j);
-          else if (DEFS[u].explode > 0) this.ignite(j, nx, ny);
-        }
-      }
+    const o = r.other;
+    if (o.alt >= 0 && this.rand() < o.altChance) this.convert(j, o.alt, r.keepOther, o.altRule);
+    else if (o.to >= 0) this.convert(j, o.to, r.keepOther, o.rule);
+    if (r.spawn >= 0 && this.spawnNear(x, y, r.spawn) >= 0) this.record(r.spawn, r.spawnRule);
+    for (const e of r.emit) {
+      this.emitAt(e.id, x, y);
+      this.record(e.id, e.rule);
     }
-    if (this.ctype[i]) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + 1);
-    if (--this.life[i] <= 0) {
-      const under = this.ctype[i];
-      if (under) {
-        type[i] = under;
-        this.ctype[i] = 0;
-        this.life[i] = SPARK_COOLDOWN;
-      } else {
-        this.clearCell(i);
-      }
-      return true;
-    }
-    return false; // falls through to reactions (electrolysis, lightning)
-  }
-
-  updateBattery(x, y) {
-    const { w, h, type } = this;
-    for (let k = 0; k < 4; k++) {
-      const nx = k === 0 ? x + 1 : k === 1 ? x - 1 : x;
-      const ny = k === 2 ? y + 1 : k === 3 ? y - 1 : y;
-      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-      const j = ny * w + nx;
-      if (CONDUCTOR[type[j]] && this.life[j] === 0) {
-        this.sparkAt(j);
-        this.record(SPARK, SPECIAL['battery-spark']);
-      }
-    }
-    return true;
-  }
-
-  updatePlant(i, x, y) {
-    // Grow into touching water.
-    if (this.rand() < 0.02) {
-      const j = this.randomNeighbor(x, y);
-      if (j >= 0 && this.type[j] === WATER) {
-        this.convert(j, PLANT, false, -1);
-        this.shade[j] = (this.rand() * 256) | 0;
-      }
-    }
-    // Plant fully surrounded by plant or wood slowly turns woody.
-    if (this.rand() < 0.003 && x > 0 && y > 0 && x < this.w - 1 && y < this.h - 1) {
-      const { type, w } = this;
-      const a = type[i - 1], b = type[i + 1], c = type[i - w], e = type[i + w];
-      if ((a === PLANT || a === WOOD) && (b === PLANT || b === WOOD)
-        && (c === PLANT || c === WOOD) && (e === PLANT || e === WOOD)) {
-        this.convert(i, WOOD, true, SPECIAL['plant-wood']);
-        return true;
-      }
-    }
+    if (r.explode) this.blast(x, y, r.explode);
+    const s = r.self;
+    if (s.alt >= 0 && this.rand() < s.altChance) { this.convert(i, s.alt, r.keepSelf, s.altRule); return true; }
+    if (s.to >= 0) { this.convert(i, s.to, r.keepSelf, s.rule); return true; }
     return false;
-  }
-
-  updateCloud(i, x, y) {
-    if (y < this.h - 1 && this.rand() < 0.002) {
-      const j = i + this.w;
-      if (this.type[j] === 0) {
-        const cold = this.temp[i] < 0;
-        this.spawn(j, cold ? SNOW : WATER);
-        if (cold) this.record(SNOW, SPECIAL['cloud-snow']);
-        if (this.rand() < 0.3) { this.clearCell(i); return true; }
-      }
-    }
-    return false;
-  }
-
-  updateLightning(i, x, y) {
-    const { w, h, type } = this;
-    if (this.ctype[i] === 1) { // fading trail
-      if (--this.life[i] <= 0) this.clearCell(i);
-      return true;
-    }
-    let cur = i, cx = x, cy = y;
-    for (let s = 0; s < 4; s++) {
-      const nx = cx + ((this.rand() * 3) | 0) - 1;
-      const ny = cy + 1;
-      if (nx < 0 || nx >= w || ny >= h) { this.strike(cur, cx, cy); return true; }
-      const j = ny * w + nx;
-      const u = type[j];
-      if (u === 0 || (DEFS[u].displaceable && DEFS[u].state === GAS)) {
-        type[j] = LIGHTNING;
-        this.ctype[j] = 0;
-        this.life[j] = this.life[cur] - 1;
-        this.temp[j] = this.temp[cur];
-        this.clock[j] = this.tick;
-        this.ctype[cur] = 1;
-        this.life[cur] = 3 + ((this.rand() * 4) | 0);
-        cur = j; cx = nx; cy = ny;
-        if (this.life[cur] <= 0) { this.ctype[cur] = 1; this.life[cur] = 3; return true; }
-      } else {
-        this.strike(cur, cx, cy);
-        return true;
-      }
-    }
-    return true;
-  }
-
-  strike(i, x, y) {
-    const { w, h, type } = this;
-    this.ctype[i] = 1;
-    this.life[i] = 5;
-    this.air.addPressure(this.air.at(x, y), 6);
-    for (let dy = -1; dy <= 3; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        const j = ny * w + nx;
-        const u = type[j];
-        if (u === 0 || u === LIGHTNING || u === WALL) continue;
-        this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 1200);
-        if (CONDUCTOR[u] && this.life[j] === 0) { this.sparkAt(j); continue; }
-        if (DEFS[u].flammable > 0) { this.ignite(j, nx, ny); continue; }
-        const r = REACT[LIGHTNING * NUM + u];
-        if (r !== null && r.otherTo >= 0) this.convert(j, r.otherTo, r.keepOther, r.otherRule);
-      }
-    }
-  }
-
-  updateAcid(i, x, y) {
-    const j = this.randomNeighbor(x, y);
-    if (j < 0) return false;
-    const u = this.type[j];
-    if (u === 0) return false;
-    const e = DEFS[u];
-    if (e.acidProof || e.indestructible || REACT[this.type[i] * NUM + u] !== null) return false;
-    if ((e.state === SOLID || e.state === POWDER || u === ID.MUD) && this.rand() < 0.08) {
-      this.clearCell(j);
-      if (this.rand() < 0.35) { this.clearCell(i); return true; }
-    }
-    return false;
-  }
-
-  updateClone(i, x, y) {
-    const c = this.ctype[i];
-    const j = this.randomNeighbor(x, y);
-    if (j < 0) return true;
-    const u = this.type[j];
-    if (c === 0) {
-      if (CLONEABLE[u]) this.ctype[i] = u;
-    } else if (u === 0 && this.rand() < 0.3) {
-      this.spawn(j, c);
-    }
-    return true;
-  }
-
-  updateVoid(i, x, y) {
-    const { w, h, type } = this;
-    for (let k = 0; k < 4; k++) {
-      const nx = k === 0 ? x + 1 : k === 1 ? x - 1 : x;
-      const ny = k === 2 ? y + 1 : k === 3 ? y - 1 : y;
-      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-      const j = ny * w + nx;
-      const u = type[j];
-      if (u !== 0 && u !== VOID && !DEFS[u].indestructible && this.rand() < 0.5) this.clearCell(j);
-    }
-    this.air.addPressure(this.air.at(x, y), -0.3);
-    return true;
   }
 
   // ---- movement -----------------------------------------------------------
@@ -527,7 +364,12 @@ export class World {
     const u = this.type[j];
     if (u === 0) return true;
     const e = DEFS[u];
-    if (!e.displaceable) return false;
+    if (!e.displaceable) {
+      // Neutronium sinks through powders; liquids drain through gravel.
+      if (dy > 0 && d.crush && e.state === POWDER && d.density > e.density) return true;
+      if (e.permeable && d.state === LIQUID && dy >= 0) return this.rand() < 0.3;
+      return false;
+    }
     if (dy > 0) {
       if (d.density <= e.density) return false;
       // Powders sink through liquids more slowly than they fall through air.
@@ -631,23 +473,33 @@ export class World {
     }
 
     // Flow sideways, remembering the direction so the liquid keeps going.
+    // A liquid only rushes sideways when something is pressing down on it or
+    // there is a drop to fall into; otherwise a thin film would skitter back
+    // and forth forever. Liquid stacked on liquid creeps one cell at a time
+    // so puddles still flatten out; a film on bare ground barely moves.
     this.vy[i] = 0;
     if (d.viscosity > 0 && this.rand() < d.viscosity) return;
+    const above = y > 0 ? DEFS[this.type[i - w]].state : 0;
+    const pushed = above === LIQUID || above === POWDER;
+    const creep = y + 1 < h && DEFS[this.type[i + w]].state === LIQUID ? 0.1 : 0.01;
     for (let k = 0, dir = flow; k < 2; k++, dir = -dir) {
       let target = -1;
+      let drop = false;
       for (let s = 1; s <= d.spread; s++) {
         const nx = x + dir * s;
         if (nx < 0 || nx >= w) break;
         const jj = i + dir * s;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
-        if (y + 1 < h && this.type[jj + w] === 0) break; // found a drop, fall next frame
+        if (y + 1 < h && this.canEnter(d, jj + w, 1)) { drop = true; break; }
       }
-      if (target >= 0) {
-        this.swap(i, target);
-        this.vx[target] = dir * 0.5;
-        return;
+      if (target < 0) continue;
+      if (!drop && !pushed) {
+        if (this.rand() < creep) target = i + dir; else continue;
       }
+      this.swap(i, target);
+      this.vx[target] = dir * 0.5;
+      return;
     }
     this.vx[i] = -flow * 0.1;
   }
@@ -726,6 +578,13 @@ export class World {
   }
 
   paint(cx, cy, r, t, density = 1) {
+    if (DEFS[t].projectile) {
+      // Flying particles are sprayed out in random directions.
+      this.forCircle(cx, cy, r, (i, x, y) => {
+        if (this.rand() < density * 0.15) this.spawnProjectile(t, x + this.rand(), y + this.rand());
+      });
+      return;
+    }
     this.forCircle(cx, cy, r, (i) => {
       const u = this.type[i];
       if (t === SPARK && CONDUCTOR[u] && this.life[i] === 0) { this.sparkAt(i); return; }
@@ -735,6 +594,7 @@ export class World {
 
   erase(cx, cy, r) {
     this.forCircle(cx, cy, r, (i) => { if (this.type[i]) this.clearCell(i); });
+    this.eraseProjectiles(cx, cy, r);
   }
 
   heat(cx, cy, r, amount) {
@@ -770,3 +630,4 @@ export class World {
   }
 }
 
+Object.assign(World.prototype, Behaviors, Particles);
