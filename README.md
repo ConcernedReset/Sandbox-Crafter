@@ -71,6 +71,34 @@ Each frame (60 per second):
    flow, and the map edges leak to zero. That's why a sealed Wall box can hold
    the pressure needed to make diamonds, and why explosions send out a
    visible shockwave in the Pressure view.
+
+   **Pressure tears solids apart.** Every solid has a strength: the pressure it
+   can take at room temperature before particles on its exposed surface are
+   torn loose. Torn-off pieces stay the same element but become debris that
+   the air throws around and that falls and piles like rubble (drawn a
+   little darker). Debris still sitting against a surface shields it, so a
+   blast strips a structure layer by layer. Heat weakens a solid steadily
+   towards its melting point (or, for things that burn, its ignition point),
+   down to a tenth of its cold strength.
+
+   | Material | Strength | | Material | Strength |
+   | -------- | -------: |-| -------- | -------: |
+   | Plant, Flower | 5 | | Brick | 45 |
+   | Fuse | 10 | | Granite | 60 |
+   | Wood | 12 | | Concrete | 70 |
+   | Ice | 15 | | Lead | 60 |
+   | Glass | 25 | | Gold | 80 |
+   | Stone | 40 | | Metal (iron) | 150 |
+   | Obsidian | 50 | | Steel | 200 |
+   | Titanium | 220 | | Tungsten | 240 |
+   | Diamond | 250 | | Wall, Void, Clone | can't tear |
+
+   For scale: a small gunpowder charge peaks at about 70 next to it, a large
+   nitro or C4 charge at 100–190, and the pressure tool in a sealed box can
+   be pumped all the way to 256. So a gunpowder blast shreds a wooden shed and
+   chips stone, while cold iron needs an enormous point-blank charge or a
+   pumped pressure box. Iron at 1000 °C, though, is down to about 60 and gives
+   way to a nitro blast that doesn't touch it cold.
 5. **Electricity** travels along conductors as short-lived Spark particles
    followed by a cooldown, so pulses flow along a wire in one direction.
 6. **Flying particles** (photons, electrons, protons, neutrons, positrons and
@@ -144,7 +172,9 @@ npm test
 
 The physics tests cover sand piling, water levelling (and thin films
 settling), oil floating on water, heat conduction, pressure containment,
-explosions, electricity and burning. The radiation tests cover light, neutron
+explosions, electricity and burning. The pressure tests cover blasts tearing
+wood before stone before metal, hot metal tearing where cold metal holds, and
+debris falling. The radiation tests cover light, neutron
 shielding, reactor criticality, the plutonium blast, magnets and decay. The
 recipe tests run all 250 production rules in the real simulation.
 

@@ -41,6 +41,9 @@ export const CATEGORIES = [
 //   ignite      temperature at which it catches fire on its own
 //   burn        what burning leaves behind (see normalize())
 //   explode     air pressure released when it ignites
+//   strength    (solids) air pressure it takes to tear a particle loose at room
+//               temperature; 0 means it can't be torn. Heat weakens it
+//               towards its melting or ignition point (or softenAt)
 //   spread      how far a liquid flows sideways per frame
 //   viscosity   chance a liquid refuses to flow sideways this frame
 //   rise/sink   gas buoyancy (chance per frame to move up/down)
@@ -109,7 +112,7 @@ export const ELEMENT_LIST = [
   {
     key: 'ICE', name: 'Ice', sym: 'Ic', cat: 'solid', state: SOLID,
     colors: ['#bfe6f5', '#a8dcf0', '#cdeef9', '#b4e1f3'], density: 0.9, temp: -15, conduct: 0.4,
-    airCool: 0.0003, transparent: true,
+    airCool: 0.0003, transparent: true, strength: 15,
     high: { temp: 1, to: 'WATER', chance: 0.03 },
     desc: 'Frozen water. Melts back above 0 °C.',
     hint: 'Chill Water below its freezing point.',
@@ -133,7 +136,7 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'STONE', name: 'Stone', sym: 'Sn', cat: 'solid', state: SOLID,
-    colors: ['#8a8d91', '#7f8286', '#94979b', '#777a7e'], density: 2.5, conduct: 0.2,
+    colors: ['#8a8d91', '#7f8286', '#94979b', '#777a7e'], density: 2.5, conduct: 0.2, strength: 40,
     high: { temp: 1050, to: 'LAVA', chance: 0.02 },
     pressure: { above: 25, to: 'GRAVEL', chance: 0.01 },
     desc: 'Solid rock. Good for building.',
@@ -141,7 +144,7 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'OBSIDIAN', name: 'Obsidian', sym: 'Ob', cat: 'solid', state: SOLID,
-    colors: ['#2a2135', '#231c2e', '#33283f', '#1d1726'], density: 2.4, conduct: 0.15,
+    colors: ['#2a2135', '#231c2e', '#33283f', '#1d1726'], density: 2.4, conduct: 0.15, strength: 50,
     high: { temp: 1300, to: 'LAVA', chance: 0.02 },
     desc: 'Volcanic glass, made when lava is quenched.',
     hint: 'Cool Lava suddenly, with something wet.',
@@ -157,6 +160,7 @@ export const ELEMENT_LIST = [
   {
     key: 'GLASS', name: 'Glass', sym: 'Gl', cat: 'solid', state: SOLID,
     colors: ['#9fd3e6', '#b0dcec', '#94cbe0'], density: 2.5, conduct: 0.1, acidProof: true, transparent: true,
+    strength: 25,
     high: { temp: 1600, to: 'MOLTEN_GLASS', chance: 0.02 },
     pressure: { above: 30, to: 'SAND', chance: 0.05 },
     desc: 'Acid can\'t eat through it. Shatters under heavy pressure.',
@@ -172,14 +176,14 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'BRICK', name: 'Brick', sym: 'Bk', cat: 'solid', state: SOLID,
-    colors: ['#a0462f', '#8f3d29', '#b04f35', '#9a4a33'], density: 2.0, conduct: 0.1,
+    colors: ['#a0462f', '#8f3d29', '#b04f35', '#9a4a33'], density: 2.0, conduct: 0.1, strength: 45,
     high: { temp: 1500, to: 'LAVA', chance: 0.02 },
     desc: 'Baked mud. Takes a lot of heat before it gives.',
     hint: 'Bake Mud.',
   },
   {
     key: 'PLANT', name: 'Plant', sym: 'Pl', cat: 'life', state: SOLID,
-    colors: ['#3fa34d', '#37953f', '#4cb35a', '#2f8a3a'], density: 1.0, conduct: 0.1,
+    colors: ['#3fa34d', '#37953f', '#4cb35a', '#2f8a3a'], density: 0.9, conduct: 0.1, strength: 5,
     flammable: 0.12, ignite: 250, burn: { ash: 0.2, smoke: 0.35 },
     pressure: { above: 10, to: 'OIL', chance: 0.02 },
     behavior: 'plant',
@@ -188,7 +192,7 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'WOOD', name: 'Wood', sym: 'Wd', cat: 'solid', state: SOLID,
-    colors: ['#8a5a2b', '#7d5026', '#946233', '#6f4722'], density: 1.2, conduct: 0.08,
+    colors: ['#8a5a2b', '#7d5026', '#946233', '#6f4722'], density: 0.7, conduct: 0.08, strength: 12,
     flammable: 0.05, ignite: 300, burn: { ash: 0.3, smoke: 0.5, fireLife: [80, 140] },
     pressure: { above: 10, to: 'COAL', chance: 0.02 },
     desc: 'Burns slowly and leaves ash behind.',
@@ -233,7 +237,7 @@ export const ELEMENT_LIST = [
   {
     key: 'DIAMOND', name: 'Diamond', sym: 'Dm', cat: 'mineral', state: SOLID,
     colors: ['#bff4ff', '#d8fbff', '#a6ecfa', '#e8feff'], density: 3.5, conduct: 1.0,
-    acidProof: true, sparkle: true, transparent: true,
+    acidProof: true, sparkle: true, transparent: true, strength: 250,
     pressure: { above: 100, to: 'VOID', chance: 0.005 },
     desc: 'Won\'t melt, won\'t dissolve, and conducts heat better than anything.',
     hint: 'Squeeze Coal much harder. Walls keep pressure from escaping.',
@@ -241,7 +245,7 @@ export const ELEMENT_LIST = [
   {
     key: 'METAL', name: 'Metal', sym: 'Fe', cat: 'metal', state: SOLID,
     colors: ['#8e9aa8', '#86929f', '#98a4b1', '#7f8b98'], density: 7.8, conduct: 0.9,
-    conductor: true, reflect: 0.5,
+    conductor: true, reflect: 0.5, strength: 150,
     high: { temp: 1538, to: 'MOLTEN_METAL', chance: 0.05, remember: true },
     desc: 'Iron. Conducts heat and electricity. Melts at 1538 °C.',
     hint: 'Smelt it: mix Coal into Lava.',
@@ -288,6 +292,7 @@ export const ELEMENT_LIST = [
   {
     key: 'BATTERY', name: 'Battery', sym: 'Bt', cat: 'solid', state: SOLID,
     colors: ['#3b4a3a', '#2f3d2e', '#46573f'], density: 3.0, conduct: 0.2, behavior: 'battery',
+    strength: 60,
     desc: 'Sends a steady stream of sparks into touching metal.',
     hint: 'Metal soaking in Salt Water holds a charge.',
   },
@@ -360,6 +365,7 @@ export const ELEMENT_LIST = [
   {
     key: 'CLONE', name: 'Clone', sym: 'Cn', cat: 'special', state: SOLID,
     colors: ['#d9c23a', '#cdb52f', '#e2cb45'], conduct: 0, acidProof: true, behavior: 'clone',
+    strength: 0,
     desc: 'Copies the first element that touches it, forever.',
     hint: 'Blast a Diamond with Plasma.',
   },
@@ -455,6 +461,14 @@ function addRule(kind, inputs, output) {
   return RULES.length - 1;
 }
 
+// The temperature at which a solid has lost most of its strength: where it
+// melts, or where it catches fire.
+function softeningPoint(e) {
+  if (e.high && e.high.temp > AMBIENT + 1) return e.high.temp;
+  if (e.ignite !== undefined && e.ignite < 5000) return e.ignite;
+  return 2000;
+}
+
 function normalize(e, i) {
   const d = {
     id: i,
@@ -524,6 +538,8 @@ function normalize(e, i) {
     sticky: !!e.sticky,
     crush: !!e.crush,
     permeable: !!e.permeable,
+    strength: e.state === SOLID && !e.indestructible ? (e.strength ?? 50) : 0,
+    softenAt: e.softenAt ?? softeningPoint(e),
     desc: e.desc ?? '',
     hint: e.hint ?? '',
   };

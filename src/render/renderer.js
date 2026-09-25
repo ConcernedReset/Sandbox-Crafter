@@ -171,7 +171,7 @@ export class Renderer {
 
   paint() {
     const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view } = this;
-    const { w, h, type, temp, life, ctype, shade } = world;
+    const { w, h, type, temp, life, ctype, shade, loose } = world;
     const air = world.air;
     const cols = air.cols;
     const glow = this.glowAcc;
@@ -326,6 +326,8 @@ export class Renderer {
             }
             default: break;
           }
+          // Debris torn off by pressure is drawn a little darker than intact solid.
+          if (loose[i]) { r *= 0.78; g *= 0.78; b *= 0.78; }
           emit += glowAmt[t];
           if (emit > 0) {
             const gi = (gRow + ((x / CELL) | 0)) * 3;

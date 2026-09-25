@@ -203,6 +203,7 @@ export class UI {
     if (d.flammable > 0 && d.ignite < 5000) facts.push(`Ignites at <b>${fmtTemp(d.ignite)}</b>`);
     if (d.explode > 0) facts.push('<b>Explosive</b>');
     if (d.pressure) facts.push(`Gives way above pressure <b>${d.pressure.above}</b>`);
+    if (d.strength > 0) facts.push(`Tears loose above pressure <b>${d.strength}</b> (less when hot)`);
     if (d.emits || d.fission) facts.push('<b>Radioactive</b>');
     if (d.decay) facts.push(`Half-life <b>≈ ${fmtDuration(halfLife(d.decay.chance))}</b>`);
     if (d.fission) facts.push(`Splits into <b>${d.fission.neutrons} neutrons</b>`);
@@ -322,6 +323,7 @@ export class UI {
       if (c && t === ID.SPARK) name = `Spark on ${DEFS[c].name}`;
       else if (c && t === ID.FIRE) name = `Burning ${DEFS[c].name}`;
       else if (c && t === ID.CLONE) name = `Clone of ${DEFS[c].name}`;
+      if (world.loose[i]) name += ' (torn loose)';
       const temp = t ? `${sep}${fmtTemp(world.temp[i])}` : '';
       cell.innerHTML = `<b>${esc(name)}</b>${temp}${sep}pressure ${p >= 0 ? '+' : ''}${p.toFixed(1)}${sep}x ${hover.x} y ${hover.y}`;
     }

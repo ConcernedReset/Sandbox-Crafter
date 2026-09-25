@@ -43,7 +43,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Smoke burns away completely when there is extra Oxygen. Acid fizzes on Limestone too.',
   },
   {
-    key: 'DRY_ICE', name: 'Dry Ice', sym: 'Di', cat: 'solid', state: SOLID,
+    key: 'DRY_ICE', name: 'Dry Ice', sym: 'Di', cat: 'solid', state: SOLID, strength: 12,
     colors: ['#eef3f7', '#e3eaf0', '#f5f8fa'], temp: -80, conduct: 0.2, airCool: 0.0004,
     high: { temp: -78, to: 'CARBON_DIOXIDE', chance: 0.01 },
     desc: 'Frozen carbon dioxide. Turns straight into gas without melting.',
@@ -73,14 +73,14 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Crush Stone.',
   },
   {
-    key: 'QUARTZ', name: 'Quartz', sym: 'Qz', cat: 'mineral', state: SOLID,
+    key: 'QUARTZ', name: 'Quartz', sym: 'Qz', cat: 'mineral', state: SOLID, strength: 55,
     colors: ['#f1f4f7', '#e5ebf0', '#dbe3ea'], conduct: 0.15, transparent: true, acidProof: true,
     high: { temp: 1700, to: 'MOLTEN_GLASS', chance: 0.02 },
     desc: 'Clear crystal. Light passes straight through.',
     hint: 'Squeeze Sand.',
   },
   {
-    key: 'GRANITE', name: 'Granite', sym: 'Gt', cat: 'mineral', state: SOLID,
+    key: 'GRANITE', name: 'Granite', sym: 'Gt', cat: 'mineral', state: SOLID, strength: 60,
     colors: ['#b9a39c', '#a8948d', '#c7b3ab', '#8f7f79'], density: 2.7, conduct: 0.2,
     high: { temp: 1250, to: 'LAVA', chance: 0.02 },
     pressure: { above: 40, to: 'PITCHBLENDE', chance: 0.01 },
@@ -95,7 +95,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Steam rising off Lava leaves deposits behind.',
   },
   {
-    key: 'COPPER', name: 'Copper', sym: 'Cu', cat: 'metal', state: SOLID,
+    key: 'COPPER', name: 'Copper', sym: 'Cu', cat: 'metal', state: SOLID, strength: 120,
     colors: ['#c7743e', '#b86a37', '#d27f48'], density: 8.96, conduct: 0.95, conductor: true,
     reflect: 0.5, high: melt(1085),
     desc: 'Excellent conductor. Turns green in water.',
@@ -108,7 +108,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Leave Copper in Water.',
   },
   {
-    key: 'LIMESTONE', name: 'Limestone', sym: 'Ls', cat: 'mineral', state: SOLID,
+    key: 'LIMESTONE', name: 'Limestone', sym: 'Ls', cat: 'mineral', state: SOLID, strength: 35,
     colors: ['#dad3bf', '#cfc8b3', '#e3dccb'], density: 2.7, conduct: 0.15,
     high: { temp: 850, to: 'CEMENT', chance: 0.02 },
     desc: 'Pale rock from the sea floor. Roast it to make cement.',
@@ -128,7 +128,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Mix Cement with Water.',
   },
   {
-    key: 'CONCRETE', name: 'Concrete', sym: 'Cc', cat: 'solid', state: SOLID,
+    key: 'CONCRETE', name: 'Concrete', sym: 'Cc', cat: 'solid', state: SOLID, strength: 70,
     colors: ['#a3a39e', '#999994', '#adada8'], density: 2.4, conduct: 0.1, nAbsorb: 0.15,
     desc: 'Strong building material that also blocks some radiation.',
     hint: 'Wait for Wet Concrete to set.',
@@ -151,7 +151,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Refine Oil with Hydrogen.',
   },
   {
-    key: 'PLASTIC', name: 'Plastic', sym: 'Pc', cat: 'solid', state: SOLID,
+    key: 'PLASTIC', name: 'Plastic', sym: 'Pc', cat: 'solid', state: SOLID, strength: 18,
     colors: ['#e9edf2', '#dfe4ea', '#f2f4f7'], conduct: 0.05, acidProof: true, moderator: true,
     flammable: 0.02, ignite: 350, burn: { smoke: 0.9, fireLife: [40, 80] },
     desc: 'Acid-proof and insulating. Burns with thick smoke.',
@@ -213,20 +213,20 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Run electricity through Salt Water.',
   },
   {
-    key: 'ALUMINUM', name: 'Aluminum', sym: 'Al', cat: 'metal', state: SOLID,
+    key: 'ALUMINUM', name: 'Aluminum', sym: 'Al', cat: 'metal', state: SOLID, strength: 100,
     colors: ['#c3cbd2', '#b8c0c8', '#ced5db'], density: 2.7, conduct: 0.9, conductor: true,
     reflect: 0.6, high: melt(660),
     desc: 'Light metal. Mixed with rust it makes thermite.',
     hint: 'Run electricity through Clay.',
   },
   {
-    key: 'SILICON', name: 'Silicon', sym: 'Si', cat: 'solid', state: SOLID,
+    key: 'SILICON', name: 'Silicon', sym: 'Si', cat: 'solid', state: SOLID, strength: 45,
     colors: ['#3f4a66', '#36405a', '#495573'], conduct: 0.3,
     desc: 'Solar cell. Light hitting it sends a spark into the metal it touches.',
     hint: 'Heat Sand with Magnesium.',
   },
   {
-    key: 'TITANIUM', name: 'Titanium', sym: 'Ti', cat: 'metal', state: SOLID,
+    key: 'TITANIUM', name: 'Titanium', sym: 'Ti', cat: 'metal', state: SOLID, strength: 220,
     colors: ['#9a9fa8', '#8f949d', '#a5aab2'], density: 4.5, conduct: 0.08, acidProof: true,
     reflect: 0.3, high: melt(1668),
     desc: 'Strong, acid-proof and slow to conduct heat.',
@@ -239,21 +239,21 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Heat Glass with Magnesium.',
   },
   {
-    key: 'GRAPHITE', name: 'Graphite', sym: 'Gr', cat: 'solid', state: SOLID,
+    key: 'GRAPHITE', name: 'Graphite', sym: 'Gr', cat: 'solid', state: SOLID, strength: 25,
     colors: ['#3a3c40', '#333539', '#44464a'], conduct: 0.5, conductor: true, moderator: true,
     flammable: 0.003, ignite: 700, burn: { smoke: 0.3, fireTemp: 1100, fireLife: [100, 200] },
     desc: 'Conducts electricity, and slows neutrons so they split atoms more easily.',
     hint: 'Run a current through Coal.',
   },
   {
-    key: 'STEEL', name: 'Steel', sym: 'Ss', cat: 'metal', state: SOLID,
+    key: 'STEEL', name: 'Steel', sym: 'Ss', cat: 'metal', state: SOLID, strength: 200,
     colors: ['#7d8894', '#737e8a', '#87929e'], density: 7.9, conduct: 0.5, conductor: true,
     reflect: 0.4, high: melt(1510),
     desc: 'Iron hardened with carbon. It doesn\'t rust.',
     hint: 'Heat Metal with Coal.',
   },
   {
-    key: 'MAGNET', name: 'Magnet', sym: 'Mag', cat: 'metal', state: SOLID,
+    key: 'MAGNET', name: 'Magnet', sym: 'Mag', cat: 'metal', state: SOLID, strength: 120,
     colors: ['#b83a3a', '#5b5f6b', '#a83434', '#6a6e7a'], density: 7.8, conduct: 0.6, behavior: 'magnet',
     desc: 'Bends the paths of charged particles and pulls ferrofluid.',
     hint: 'Strike Metal with Lightning.',
@@ -265,7 +265,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Stir Rust into Oil.',
   },
   {
-    key: 'TUNGSTEN', name: 'Tungsten', sym: 'W', cat: 'metal', state: SOLID,
+    key: 'TUNGSTEN', name: 'Tungsten', sym: 'W', cat: 'metal', state: SOLID, strength: 240,
     colors: ['#8d8f94', '#83858a', '#96989d'], density: 19.3, conduct: 0.5, conductor: true,
     sparkHeat: 60, hotEmit: { temp: 1800, chance: 0.08 }, high: melt(3422),
     desc: 'Melts at 3422 °C. Put a current through it and it glows like a bulb filament.',
@@ -294,21 +294,21 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Soak Fertilizer in Oil.',
   },
   {
-    key: 'DYNAMITE', name: 'Dynamite', sym: 'Dy', cat: 'explosive', state: SOLID,
+    key: 'DYNAMITE', name: 'Dynamite', sym: 'Dy', cat: 'explosive', state: SOLID, strength: 15,
     colors: ['#c9453a', '#b83c32', '#d4503f'], conduct: 0.1,
     flammable: 0.08, ignite: 250, explode: 16, burn: { smoke: 0.4, fireTemp: 1500, fireLife: [15, 30] },
     desc: 'Nitro soaked into clay, so it only goes off when you light it.',
     hint: 'Soak Nitro into Clay.',
   },
   {
-    key: 'C4', name: 'C4', sym: 'C4', cat: 'explosive', state: SOLID,
+    key: 'C4', name: 'C4', sym: 'C4', cat: 'explosive', state: SOLID, strength: 20,
     colors: ['#e8e2c8', '#ded7bc', '#f0ead2'], conduct: 0.05,
     ignite: 5000, explode: 26, burn: { fireTemp: 2000, fireLife: [15, 30] },
     desc: 'Plastic explosive. Fire won\'t set it off, but a spark or another blast will.',
     hint: 'Knead Plastic with Nitro.',
   },
   {
-    key: 'FUSE', name: 'Fuse', sym: 'Fs', cat: 'explosive', state: SOLID,
+    key: 'FUSE', name: 'Fuse', sym: 'Fs', cat: 'explosive', state: SOLID, strength: 10,
     colors: ['#8a7045', '#7d6540', '#957a4c'], conduct: 0.05,
     flammable: 0.35, ignite: 300, burn: { fireTemp: 700, fireLife: [6, 12] },
     desc: 'Burns steadily along its length. Use it to light things from a distance.',
@@ -331,14 +331,14 @@ export const EXPANSION_ELEMENTS = [
 
   // ---- gems and light -------------------------------------------------------
   {
-    key: 'RUBY', name: 'Ruby', sym: 'Rb', cat: 'mineral', state: SOLID,
+    key: 'RUBY', name: 'Ruby', sym: 'Rb', cat: 'mineral', state: SOLID, strength: 180,
     colors: ['#d11d4a', '#c01642', '#e02a57'], conduct: 0.3, transparent: true, acidProof: true,
     behavior: 'recover',
     desc: 'Red crystal. Light passing through it is amplified, a photon at a time. Put it between mirrors for a laser.',
     hint: 'Squeeze Clay very hard.',
   },
   {
-    key: 'LASER', name: 'Laser', sym: 'Lz', cat: 'energy', state: SOLID,
+    key: 'LASER', name: 'Laser', sym: 'Lz', cat: 'energy', state: SOLID, strength: 60,
     colors: ['#5a1a1a', '#6b2020', '#4d1616'], conduct: 0.2, behavior: 'laser', glowAmount: 0.3,
     desc: 'Fires beams of light out of every exposed face.',
     hint: 'Pump a Ruby with a Spark.',
@@ -374,7 +374,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Plants take root in Dirt.',
   },
   {
-    key: 'MOSS', name: 'Moss', sym: 'Ms', cat: 'life', state: SOLID,
+    key: 'MOSS', name: 'Moss', sym: 'Ms', cat: 'life', state: SOLID, strength: 6,
     colors: ['#4f7a3a', '#456e32', '#5a8744'], conduct: 0.1,
     flammable: 0.03, ignite: 250, burn: { ash: 0.2, smoke: 0.3 },
     grow: { into: ['STONE', 'CONCRETE', 'BRICK'], chance: 0.002 }, behavior: 'grow',
@@ -382,7 +382,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Plants cling to Stone.',
   },
   {
-    key: 'FUNGUS', name: 'Fungus', sym: 'Fu', cat: 'life', state: SOLID,
+    key: 'FUNGUS', name: 'Fungus', sym: 'Fu', cat: 'life', state: SOLID, strength: 6,
     colors: ['#d8c49a', '#cbb68b', '#e3d1a8'], conduct: 0.1, glowAmount: 0.12,
     flammable: 0.03, ignite: 250, burn: { smoke: 0.4 },
     grow: { into: ['WOOD', 'PLANT'], chance: 0.004 }, behavior: 'grow',
@@ -404,7 +404,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Plasma shining through Glass.',
   },
   {
-    key: 'FLOWER', name: 'Flower', sym: 'Fl', cat: 'life', state: SOLID,
+    key: 'FLOWER', name: 'Flower', sym: 'Fl', cat: 'life', state: SOLID, strength: 5,
     colors: ['#f07aa8', '#f2c14a', '#b98cf0', '#f5f5f5', '#f07aa8'], conduct: 0.1,
     flammable: 0.1, ignite: 250, burn: { ash: 0.3, smoke: 0.3 },
     produce: { el: 'FRUIT', chance: 0.0008 },
@@ -462,7 +462,7 @@ export const EXPANSION_ELEMENTS = [
 
   // ---- the uranium ore chain ------------------------------------------------
   {
-    key: 'PITCHBLENDE', name: 'Pitchblende', sym: 'Pi', cat: 'nuclear', state: SOLID,
+    key: 'PITCHBLENDE', name: 'Pitchblende', sym: 'Pi', cat: 'nuclear', state: SOLID, strength: 50,
     colors: ['#2d302b', '#252823', '#3a4a32', '#2a2d28'], density: 7, conduct: 0.2,
     emits: [{ p: 'PHOTON', chance: 0.0003 }, { p: 'NEUTRON', chance: 0.00003 }], glowAmount: 0.06,
     high: { temp: 700, to: 'YELLOWCAKE', chance: 0.02 },
@@ -569,7 +569,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Wait for Radon to decay.',
   },
   {
-    key: 'LEAD', name: 'Lead', sym: 'Pb', cat: 'metal', state: SOLID,
+    key: 'LEAD', name: 'Lead', sym: 'Pb', cat: 'metal', state: SOLID, strength: 60,
     colors: ['#6d7280', '#626775', '#777c89'], density: 11.3, conduct: 0.35, conductor: true,
     nAbsorb: 0.35, high: melt(327),
     pressure: { above: 120, to: 'NEUTRONIUM', chance: 0.005 },
@@ -577,14 +577,14 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Where the radioactive decay chain ends.',
   },
   {
-    key: 'SILVER', name: 'Silver', sym: 'Ag', cat: 'metal', state: SOLID,
+    key: 'SILVER', name: 'Silver', sym: 'Ag', cat: 'metal', state: SOLID, strength: 90,
     colors: ['#d4d8dd', '#c8ccd2', '#e0e3e7'], density: 10.5, conduct: 1.0, conductor: true,
     reflect: 0.9, high: melt(962),
     desc: 'The best conductor of all. Coats glass to make mirrors.',
     hint: 'Dissolve Lead in Acid and see what\'s left over.',
   },
   {
-    key: 'MIRROR', name: 'Mirror', sym: 'Mi', cat: 'solid', state: SOLID,
+    key: 'MIRROR', name: 'Mirror', sym: 'Mi', cat: 'solid', state: SOLID, strength: 25,
     colors: ['#d9e4ec', '#e6eef4', '#cfdbe4'], conduct: 0.1, reflect: 1, acidProof: true,
     desc: 'Reflects light perfectly.',
     hint: 'Coat Glass with Silver.',
@@ -609,7 +609,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Fuse Helium inside Plasma, the way stars do.',
   },
   {
-    key: 'GEIGER', name: 'Geiger Tube', sym: 'Gc', cat: 'solid', state: SOLID,
+    key: 'GEIGER', name: 'Geiger Tube', sym: 'Gc', cat: 'solid', state: SOLID, strength: 30,
     colors: ['#5a6b5a', '#4f5f4f', '#657665'], conduct: 0.1, detector: true, behavior: 'geiger',
     desc: 'Radiation detector. Flashes, and sparks the metal it touches, when a particle passes through.',
     hint: 'Neon with a dash of Chlorine, the gas inside real Geiger counters.',
@@ -647,7 +647,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Lithium splits when a Neutron hits it.',
   },
   {
-    key: 'COBALT', name: 'Cobalt-60', sym: 'Co', cat: 'nuclear', state: SOLID,
+    key: 'COBALT', name: 'Cobalt-60', sym: 'Co', cat: 'nuclear', state: SOLID, strength: 150,
     colors: ['#5a6fa8', '#50649a', '#6479b5'], density: 8.9, conduct: 0.6, conductor: true,
     emits: [{ p: 'PHOTON', chance: 0.004 }], glowAmount: 0.25, decay: { chance: 0.00005, to: 'METAL' },
     high: melt(1495),
@@ -657,34 +657,34 @@ export const EXPANSION_ELEMENTS = [
 
   // ---- alchemy ----------------------------------------------------------------
   {
-    key: 'GOLD', name: 'Gold', sym: 'Au', cat: 'metal', state: SOLID,
+    key: 'GOLD', name: 'Gold', sym: 'Au', cat: 'metal', state: SOLID, strength: 80,
     colors: ['#f2c53d', '#e6b830', '#f7d256'], density: 19.3, conduct: 0.8, conductor: true,
     acidProof: true, reflect: 0.9, high: melt(1064),
     desc: 'Never rusts or dissolves. The alchemists\' dream.',
     hint: 'Real alchemy: hit Mercury with Neutrons.',
   },
   {
-    key: 'PHILOSOPHERS_STONE', name: 'Philosopher\'s Stone', sym: 'PS', cat: 'special', state: SOLID,
+    key: 'PHILOSOPHERS_STONE', name: 'Philosopher\'s Stone', sym: 'PS', cat: 'special', state: SOLID, strength: 0,
     colors: ['#b0122d', '#9c0f28', '#c41a36'], conduct: 0.2, acidProof: true, glowAmount: 0.25,
     behavior: 'philosopher',
     desc: 'Turns the metals it touches into gold.',
     hint: 'Marry Gold with Mercury.',
   },
   {
-    key: 'EMERALD', name: 'Emerald', sym: 'Em', cat: 'mineral', state: SOLID,
+    key: 'EMERALD', name: 'Emerald', sym: 'Em', cat: 'mineral', state: SOLID, strength: 150,
     colors: ['#1fa86a', '#1a9960', '#28b877'], conduct: 0.3, transparent: true, acidProof: true,
     desc: 'Green gem, and the ore of beryllium.',
     hint: 'Quartz stained by Verdigris.',
   },
   {
-    key: 'BERYLLIUM', name: 'Beryllium', sym: 'Be', cat: 'metal', state: SOLID,
+    key: 'BERYLLIUM', name: 'Beryllium', sym: 'Be', cat: 'metal', state: SOLID, strength: 140,
     colors: ['#b4bfb6', '#a9b4ab', '#bec9c0'], density: 1.85, conduct: 0.7, high: melt(1287),
     behavior: 'recover',
     desc: 'Light metal. Neutrons that hit it come out doubled.',
     hint: 'Dissolve Emerald in Acid.',
   },
   {
-    key: 'AMETHYST', name: 'Amethyst', sym: 'Ay', cat: 'mineral', state: SOLID,
+    key: 'AMETHYST', name: 'Amethyst', sym: 'Ay', cat: 'mineral', state: SOLID, strength: 120,
     colors: ['#9b59d0', '#8d4cc2', '#a968dc'], conduct: 0.3, transparent: true, acidProof: true,
     desc: 'Purple quartz, coloured by radiation.',
     hint: 'Irradiate Quartz with Neutrons.',

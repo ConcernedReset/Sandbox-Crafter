@@ -10,6 +10,10 @@
 // Element behaviours live in behaviors.js and the flying-particle layer in
 // particles.js; both are mixed into World below.
 //
+// Solids have a strength. When the air pressure around an exposed solid
+// particle beats it (and heat weakens it), the particle is torn loose and
+// becomes debris that the air can throw around.
+//
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
@@ -39,6 +43,7 @@ export class World {
     this.vx = new Float32Array(n);
     this.vy = new Float32Array(n);
     this.shade = new Uint8Array(n); // random per particle, picks a colour variant
+    this.loose = new Uint8Array(n); // 1 for a solid particle torn off by pressure
     this.clock = new Uint32Array(n); // tick on which the cell was last updated
     this.tick = 1;
     this.air = new Air(Math.ceil(width / CELL), Math.ceil(height / CELL));
@@ -72,6 +77,7 @@ export class World {
     this.ctype[i] = 0;
     this.vx[i] = 0;
     this.vy[i] = 0;
+    this.loose[i] = 0;
   }
 
   clearAll() {
@@ -81,6 +87,7 @@ export class World {
     this.ctype.fill(0);
     this.vx.fill(0);
     this.vy.fill(0);
+    this.loose.fill(0);
     this.air.clear();
     this.pn = 0;
   }
@@ -99,6 +106,7 @@ export class World {
     this.ctype[i] = 0;
     this.vx[i] = 0;
     this.vy[i] = 0;
+    this.loose[i] = 0;
     this.shade[i] = (this.rand() * 256) | 0;
     this.initLife(i, t);
     this.clock[i] = this.tick;
@@ -117,6 +125,7 @@ export class World {
     }
     this.type[i] = to;
     this.ctype[i] = 0;
+    this.loose[i] = 0;
     if (!keepTemp) this.temp[i] = DEFS[to].temp;
     this.initLife(i, to);
     this.clock[i] = this.tick;
@@ -131,7 +140,7 @@ export class World {
   }
 
   swap(i, j) {
-    const { type, temp, life, ctype, vx, vy, shade } = this;
+    const { type, temp, life, ctype, vx, vy, shade, loose } = this;
     let a;
     a = type[i]; type[i] = type[j]; type[j] = a;
     a = temp[i]; temp[i] = temp[j]; temp[j] = a;
@@ -140,6 +149,7 @@ export class World {
     a = vx[i]; vx[i] = vx[j]; vx[j] = a;
     a = vy[i]; vy[i] = vy[j]; vy[j] = a;
     a = shade[i]; shade[i] = shade[j]; shade[j] = a;
+    a = loose[i]; loose[i] = loose[j]; loose[j] = a;
     this.clock[i] = this.tick;
     this.clock[j] = this.tick;
   }
@@ -195,7 +205,7 @@ export class World {
         // Other explosives caught in the blast go off too.
         if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = Math.min(MAX_TEMP, e.ignite + 1);
         const s = e.state;
-        if (s !== POWDER && s !== LIQUID && s !== GAS) continue;
+        if (s !== POWDER && s !== LIQUID && s !== GAS && !this.loose[j]) continue;
         // Push outward; things below the blast bounce off the ground and
         // get thrown up, which digs a crater.
         const dist = Math.sqrt(d2);
@@ -251,8 +261,13 @@ export class World {
     if (d.conductor && this.life[i] > 0) this.life[i]--;
 
     if (d.active && this.radiate(i, x, y, d)) return;
+    if (d.strength > 0 && this.loose[i] === 0) this.tear(i, x, y, d);
 
-    if (d.behavior !== null && this.behave(d.behavior, i, x, y, t, d)) return;
+    if (d.behavior !== null && this.behave(d.behavior, i, x, y, t, d)) {
+      // A torn-off magnet or battery still falls like debris.
+      if (this.loose[i] && this.type[i] === t) this.movePowder(i, x, y, d);
+      return;
+    }
 
     const T = this.temp[i];
     const hi = d.high;
@@ -305,8 +320,41 @@ export class World {
       case LIQUID: this.moveLiquid(i, x, y, d); break;
       case GAS: this.moveGas(i, x, y, d); break;
       case ENERGY: if (!d.fixed) this.moveGas(i, x, y, d); break;
+      case SOLID: if (this.loose[i]) this.movePowder(i, x, y, d); break;
       default: break;
     }
+  }
+
+  // Pressure tears exposed solid particles loose. Each solid has a strength
+  // (the pressure it can take at room temperature); heat weakens it steadily,
+  // down to a tenth of that at its melting or ignition point. The further the
+  // pressure is past that, the faster the surface is stripped away.
+  tear(i, x, y, d) {
+    const p = Math.abs(this.air.p[this.air.at(x, y)]);
+    if (p < d.strength * 0.1) return; // cheap early exit: can't tear even when white-hot
+    let s = d.strength;
+    if (d.softenAt > AMBIENT) {
+      const frac = (this.temp[i] - AMBIENT) / (d.softenAt - AMBIENT);
+      if (frac > 0) s *= 1 - 0.9 * (frac < 1 ? frac : 1);
+    }
+    if (p <= s || this.rand() >= Math.min(0.9, (1.5 * (p - s)) / s)) return;
+    if (!this.exposed(i, x, y)) return;
+    this.loose[i] = 1;
+  }
+
+  // Is this particle on a surface, touching empty space or a fluid? Debris
+  // still sitting against it shields it until the debris is blown clear.
+  exposed(i, x, y) {
+    const { w, h, type } = this;
+    for (let k = 0; k < 4; k++) {
+      const nx = k === 0 ? x + 1 : k === 1 ? x - 1 : x;
+      const ny = k === 2 ? y + 1 : k === 3 ? y - 1 : y;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const j = ny * w + nx;
+      const u = type[j];
+      if (u === 0 || DEFS[u].displaceable) return true;
+    }
+    return false;
   }
 
   // Radioactivity (warmth, particles thrown off, random decay), glowing-hot
