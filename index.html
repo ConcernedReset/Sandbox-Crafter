@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sandbox Crafter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Pixelify+Sans:wght@500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <h1 class="wordmark">Sandbox <span>Crafter</span></h1>
+
+    <div class="meter" id="meter" title="Elements discovered">
+      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">40</span> elements</div>
+      <div class="meter-cells" id="meter-cells" aria-hidden="true"></div>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="btn-pause" type="button" aria-pressed="false" title="Pause (Space)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg>
+        <span>Pause</span>
+      </button>
+      <button class="btn" id="btn-step" type="button" title="Advance one frame (.)" disabled>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l7 5-7 5zM11 3h2v10h-2z"/></svg>
+        <span>Step</span>
+      </button>
+      <div class="segmented" role="radiogroup" aria-label="View">
+        <button type="button" role="radio" aria-checked="true" data-view="normal" title="Normal view (1)">Normal</button>
+        <button type="button" role="radio" aria-checked="false" data-view="heat" title="Temperature view (2)">Heat</button>
+        <button type="button" role="radio" aria-checked="false" data-view="pressure" title="Air pressure view (3)">Pressure</button>
+      </div>
+      <button class="btn" id="btn-clear" type="button" title="Remove every particle">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h6l1 2h3v2H1V4h3zM3 7h10l-1 8H4z"/></svg>
+        <span>Clear</span>
+      </button>
+      <div class="menu-wrap">
+        <button class="btn icon-only" id="btn-menu" type="button" aria-haspopup="true" aria-expanded="false" title="More">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="13" cy="8" r="1.6"/></svg>
+          <span class="sr-only">More options</span>
+        </button>
+        <div class="menu" id="menu" hidden>
+          <button type="button" id="menu-scene">Load the starting scene</button>
+          <label class="menu-toggle"><input type="checkbox" id="menu-freeplay"> Free play: unlock every element</label>
+          <button type="button" id="menu-reset" class="danger">Reset discoveries…</button>
+          <div class="menu-confirm" id="menu-confirm" hidden>
+            <p>Forget every element you've discovered?</p>
+            <div class="menu-confirm-row">
+              <button type="button" id="menu-reset-yes" class="danger">Reset</button>
+              <button type="button" id="menu-reset-no">Keep them</button>
+            </div>
+          </div>
+          <div class="menu-keys">
+            <div><kbd>Space</kbd> pause</div>
+            <div><kbd>.</kbd> step</div>
+            <div><kbd>[</kbd> <kbd>]</kbd> brush size</div>
+            <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> views</div>
+            <div>Right-click erases</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="chamber" aria-label="Simulation">
+      <div class="screen">
+        <div class="viewport" id="viewport">
+          <canvas id="world" aria-label="Sandbox. Drag to paint with the selected element or tool."></canvas>
+          <div class="toasts" id="toasts" aria-live="polite"></div>
+          <div class="paused-flag" id="paused-flag" hidden>Paused</div>
+        </div>
+        <div class="tip" id="tip" hidden>
+          <p>Paint with elements, then heat, cool, squeeze and mix them to discover new ones. Try pouring <b>Water</b> onto <b>Dirt</b>.</p>
+          <button type="button" id="tip-close" aria-label="Dismiss tip">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.1L8 6.6l4.5-4.5 1.4 1.4L9.4 8l4.5 4.5-1.4 1.4L8 9.4l-4.5 4.5-1.4-1.4L6.6 8 2.1 3.5z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="hud">
+        <div class="hud-cell" id="hud-cell">Point at a particle to inspect it</div>
+        <div class="hud-stats" id="hud-stats"></div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-elements" aria-selected="true" aria-controls="panel-elements">Elements</button>
+        <button type="button" role="tab" id="tab-recipes" aria-selected="false" aria-controls="panel-recipes">
+          Recipe book <span class="badge" id="recipe-badge" hidden>0</span>
+        </button>
+      </div>
+
+      <div class="panel-body" id="panel-elements" role="tabpanel" aria-labelledby="tab-elements">
+        <div class="tools" id="tools"></div>
+        <div class="brush">
+          <label for="brush">Brush</label>
+          <input type="range" id="brush" min="1" max="24" value="4">
+          <output id="brush-out" for="brush">4</output>
+        </div>
+        <div class="palette" id="palette"></div>
+        <div class="inspect" id="inspect"></div>
+      </div>
+
+      <div class="panel-body" id="panel-recipes" role="tabpanel" aria-labelledby="tab-recipes" hidden>
+        <div id="recipes"></div>
+      </div>
+    </aside>
+  </main>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

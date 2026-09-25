@@ -1,0 +1,14 @@
+{
+  "name": "sandbox-crafter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A falling-sand physics sandbox where you discover new elements by combining them.",
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
