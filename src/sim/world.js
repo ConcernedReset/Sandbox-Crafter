@@ -38,12 +38,12 @@ export class World {
     this.w = width;
     this.h = height;
     const n = width * height;
-    this.type = new Uint8Array(n);
+    this.type = new Uint16Array(n);
     this.temp = new Float32Array(n).fill(AMBIENT);
     this.life = new Int16Array(n);
     // spark: conductor underneath; fire: fuel; clone: copied element;
     // molten metal: which metal; lightning/firework/seed: state flag
-    this.ctype = new Uint8Array(n);
+    this.ctype = new Uint16Array(n);
     this.vx = new Float32Array(n);
     this.vy = new Float32Array(n);
     this.shade = new Uint8Array(n); // random per particle, picks a colour variant
@@ -383,7 +383,8 @@ export class World {
   }
 
   // Radioactivity (warmth, particles thrown off, random decay), glowing-hot
-  // filaments, and flowers dropping fruit. Returns true if i decayed.
+  // filaments, hot crystals sparking, and flowers dropping fruit. Returns true
+  // if i decayed.
   radiate(i, x, y, d) {
     if (d.selfHeat !== 0) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + d.selfHeat);
     if (d.emits !== null) {
@@ -392,10 +393,15 @@ export class World {
     if (d.hotEmit !== null && this.temp[i] >= d.hotEmit.temp && this.rand() < d.hotEmit.chance) {
       this.emitAt(PHOTON, x, y);
     }
+    // Pyroelectric crystals (tourmaline) build up a charge as they heat.
+    if (d.hotSpark !== null && this.temp[i] >= d.hotSpark.temp && this.rand() < d.hotSpark.chance) {
+      this.sparkNeighbors(x, y);
+    }
     if (d.decay !== null && this.rand() < d.decay.chance) {
       const o = d.decay;
       if (o.spawn >= 0 && this.spawnNear(x, y, o.spawn) >= 0) this.record(o.spawn, o.spawnRule);
-      this.convert(i, o.to, true, o.rule);
+      if (o.alt >= 0 && this.rand() < o.altChance) this.convert(i, o.alt, true, o.altRule);
+      else this.convert(i, o.to, true, o.rule);
       return true;
     }
     if (d.produce !== null && this.rand() < d.produce.chance) {

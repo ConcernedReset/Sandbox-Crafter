@@ -28,6 +28,13 @@
   --cat-particle: #5fe0f0;
   --cat-nuclear: #b8e04a;
   --cat-special: #e2649f;
+  --cat-alloy: #c98a4b;
+  --cat-rareearth: #e9dd6f;
+  --cat-chemical: #c78cff;
+  --cat-material: #b3a48c;
+  --cat-device: #78a8ff;
+  --cat-food: #f29e70;
+  --cat-creature: #ff8fa3;
 
   --font-display: 'Pixelify Sans', 'Courier New', monospace;
   --font-ui: 'IBM Plex Sans Condensed', 'Arial Narrow', system-ui, sans-serif;
@@ -101,12 +108,12 @@ kbd {
 .meter-label b { color: var(--text); font-weight: 500; }
 .meter-cells {
   display: grid;
-  grid-template-columns: repeat(70, 1fr);
+  grid-template-columns: repeat(var(--meter-cols, 70), 1fr);
   gap: 1px;
 }
 .meter-cells i {
   display: block;
-  height: 5px;
+  height: 3px;
   border-radius: 1px;
   background: var(--line);
   transition: background-color 300ms;
@@ -487,6 +494,8 @@ kbd {
   cursor: default;
 }
 .tile.locked .tile-num { color: var(--faint); }
+.tile.more .tile-sym { font: 600 15px/1 var(--font-mono); }
+.tile.more .tile-name { white-space: normal; font-size: 9.5px; }
 .tile.fresh { animation: fresh 900ms ease-out 2; }
 @keyframes fresh {
   0% { box-shadow: 0 0 0 0 rgba(217, 164, 65, 0.9); }

@@ -103,7 +103,10 @@ export class UI {
 
   buildMeter() {
     $('meter-total').textContent = COLLECTIBLE.length;
-    $('meter-cells').innerHTML = COLLECTIBLE.map(() => '<i></i>').join('');
+    const cells = $('meter-cells');
+    // Four rows of cells, however many elements there are.
+    cells.style.setProperty('--meter-cols', Math.ceil(COLLECTIBLE.length / 4));
+    cells.innerHTML = COLLECTIBLE.map(() => '<i></i>').join('');
   }
 
   renderMeter() {
@@ -160,11 +163,11 @@ export class UI {
       const items = all.filter(matches);
       if (!items.length) return '';
       const known = all.filter((d) => progress.usable(d.id)).length;
-      const tiles = items.map((d) => {
-        if (!progress.usable(d.id)) {
-          return `<div class="tile locked" style="--cat:var(--cat-${d.cat})" aria-label="Undiscovered element">
-            <span class="tile-num">${d.number}</span><span class="tile-sym">?</span><span class="tile-name">???</span></div>`;
-        }
+      // Undiscovered elements are summed up in one tile rather than shown one by one.
+      const locked = items.length - items.filter((d) => progress.usable(d.id)).length;
+      const more = locked ? `<div class="tile locked more" style="--cat:var(--cat-${cat.key})" aria-label="${locked} undiscovered">
+            <span class="tile-num">&nbsp;</span><span class="tile-sym">+${locked}</span><span class="tile-name">to discover</span></div>` : '';
+      const tiles = items.filter((d) => progress.usable(d.id)).map((d) => {
         const pressed = selection.kind === 'element' && selection.id === d.id;
         const extra = (this.fresh.has(d.id) ? ' fresh' : '') + (d.sym.length > 2 ? ' long' : '');
         return `<button type="button" class="tile${extra}" data-id="${d.id}" aria-pressed="${pressed}" style="${tileStyle(d)}" title="${esc(d.name)}: ${esc(d.desc)}">
@@ -172,7 +175,7 @@ export class UI {
       }).join('');
       return `<section class="group" style="--cat:var(--cat-${cat.key})">
         <div class="group-head">${cat.name}<span>${known}/${all.length}</span></div>
-        <div class="tiles">${tiles}</div></section>`;
+        <div class="tiles">${tiles}${more}</div></section>`;
     }).join('');
     $('palette').innerHTML = groups || `<p class="empty-search">No discovered element matches “${esc(this.filter)}”.</p>`;
     this.fresh.clear();
@@ -209,6 +212,23 @@ export class UI {
     if (d.emits || d.fission) facts.push('<b>Radioactive</b>');
     if (d.decay) facts.push(`Half-life <b>≈ ${fmtDuration(halfLife(d.decay.chance))}</b>`);
     if (d.fission) facts.push(`Splits into <b>${d.fission.neutrons} neutrons</b>`);
+    if (d.critter) {
+      const where = { swim: 'Swims in water', fly: 'Flies', walk: 'Walks and climbs', burrow: 'Burrows through soil' };
+      facts.push(`<b>Alive.</b> ${where[d.critter.moves]}`);
+      const eats = DEFS.filter((e) => d.critter.food[e.id] && e.id !== ID.SALT_WATER).map((e) => e.name);
+      if (eats.length) facts.push(`Eats <b>${esc(eats.join(', '))}</b>`);
+      if (d.critter.tough) facts.push('<b>Survives heat and cold</b>');
+    }
+    if (d.stalk) facts.push('<b>Grows straight up</b>');
+    if (d.behavior === 'magnet') facts.push(d.magnet > 1 ? `<b>Magnet</b>, ${d.magnet}× the usual pull` : '<b>Magnet</b>');
+    if (d.behavior === 'electromagnet') facts.push('<b>Magnetic while current flows</b>');
+    if (d.behavior === 'battery') facts.push(d.batteryRate < 1 ? '<b>Weak battery</b>' : '<b>Battery</b>');
+    if (d.excite) facts.push('<b>Glows</b> when excited');
+    if (d.hotSpark) facts.push(`<b>Sparks</b> when heated past ${fmtTemp(d.hotSpark.temp)}`);
+    if (d.flame) facts.push(`Burns with a <b style="color:${d.flame}">coloured flame</b>`);
+    if (d.uvBlock) facts.push('<b>Blocks ultraviolet</b>');
+    if (d.xrayOpaque) facts.push('<b>Stops X-rays</b>');
+    if (d.wet && !d.projectile) facts.push('<b>Heated by microwaves</b>');
     if (d.conductor) facts.push('<b>Conducts electricity</b>');
     if (d.transparent) facts.push('<b>Transparent</b>');
     if (d.reflect >= 0.8) facts.push('<b>Reflects light</b>');
@@ -323,7 +343,7 @@ export class UI {
       let name = t ? DEFS[t].name : 'Air';
       const c = world.ctype[i];
       if (c && t === ID.SPARK) name = `Spark on ${DEFS[c].name}`;
-      else if (c && t === ID.FIRE) name = `Burning ${DEFS[c].name}`;
+      else if ((c & 0x7fff) && t === ID.FIRE) name = `Burning ${DEFS[c & 0x7fff].name}`;
       else if (c && t === ID.CLONE) name = `Clone of ${DEFS[c].name}`;
       if (world.loose[i]) name += ' (torn loose)';
       const temp = t ? `${sep}${fmtTemp(world.temp[i])}` : '';

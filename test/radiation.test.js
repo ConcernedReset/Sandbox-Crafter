@@ -76,7 +76,8 @@ test('a large ball of plutonium explodes; a pinch of it does not', () => {
   };
   const big = pile(16), small = pile(4);
   assert.ok(big.left < 0.6 && big.fallout > 20, `16x16 pile: ${JSON.stringify(big)}`);
-  assert.equal(small.left, 1, 'a 4x4 pinch stays put');
+  // A stray neutron may split or transmute an atom or two, but nothing runs away.
+  assert.ok(small.left >= 0.75 && small.fallout <= 4, `4x4 pinch: ${JSON.stringify(small)}`);
 });
 
 test('deuterium doubles the neutrons that pass through it', () => {

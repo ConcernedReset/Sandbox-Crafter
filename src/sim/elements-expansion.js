@@ -90,7 +90,8 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'SULFUR', name: 'Sulfur', sym: 'S', cat: 'mineral', state: POWDER,
     colors: ['#e8d84a', '#dccb3c', '#f0e05a'], density: 2.0, conduct: 0.1,
-    flammable: 0.05, ignite: 232, burn: { smoke: 0.6, fireTemp: 800 },
+    flammable: 0.05, ignite: 232, flame: '#5a7aff',
+    burn: { to: 'SULFUR_DIOXIDE', toChance: 0.4, smoke: 0.3, fireTemp: 800 },
     desc: 'Yellow mineral from volcanic vents. Burns with a blue flame.',
     hint: 'Steam rising off Lava leaves deposits behind.',
   },
@@ -111,11 +112,12 @@ export const EXPANSION_ELEMENTS = [
     key: 'LIMESTONE', name: 'Limestone', sym: 'Ls', cat: 'mineral', state: SOLID, strength: 35,
     colors: ['#dad3bf', '#cfc8b3', '#e3dccb'], density: 2.7, conduct: 0.15,
     high: { temp: 850, to: 'CEMENT', chance: 0.02 },
+    pressure: { above: 25, to: 'MARBLE', chance: 0.01 },
     desc: 'Pale rock from the sea floor. Roast it to make cement.',
     hint: 'Leave Stone under Salt Water.',
   },
   {
-    key: 'CEMENT', name: 'Cement', sym: 'Cm', cat: 'powder', state: POWDER,
+    key: 'CEMENT', name: 'Cement', sym: 'Ct', cat: 'powder', state: POWDER,
     colors: ['#b5b2a8', '#aaa79d', '#c0bdb3'], density: 1.5, conduct: 0.1,
     desc: 'Grey powder that hardens when mixed with water.',
     hint: 'Roast Limestone.',
@@ -153,6 +155,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'PLASTIC', name: 'Plastic', sym: 'Pc', cat: 'solid', state: SOLID, strength: 18,
     colors: ['#e9edf2', '#dfe4ea', '#f2f4f7'], conduct: 0.05, acidProof: true, moderator: true,
+    pressure: { above: 30, to: 'MICROPLASTIC', chance: 0.01 },
     flammable: 0.02, ignite: 350, burn: { smoke: 0.9, fireLife: [40, 80] },
     desc: 'Acid-proof and insulating. Burns with thick smoke.',
     hint: 'Compress Propane.',
@@ -166,7 +169,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Split Salt with electricity.',
   },
   {
-    key: 'CHLORINE', name: 'Chlorine', sym: 'Ch', cat: 'gas', state: GAS,
+    key: 'CHLORINE', name: 'Chlorine', sym: 'Cl', cat: 'gas', state: GAS,
     colors: ['#c8e05a', '#bcd64c'], alpha: 0.55, density: 0.2, rise: 0.08, sink: 0.35, airDrag: 0.35,
     desc: 'Heavy, poisonous gas. Kills plants, and explodes with hydrogen when heated or lit.',
     hint: 'Split Salt with electricity.',
@@ -208,7 +211,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'MAGNESIUM', name: 'Magnesium', sym: 'Mg', cat: 'metal', state: POWDER,
     colors: ['#d0d4d8', '#c4c9ce', '#dadde1'], density: 1.7, conduct: 0.6,
-    flammable: 0.02, ignite: 650, burn: { fireTemp: 3000, fireLife: [25, 45], flare: true },
+    flammable: 0.02, ignite: 650, flame: '#ffffff', burn: { fireTemp: 3000, fireLife: [25, 45], flare: true },
     desc: 'Burns with a blinding white light that throws off photons. Hot magnesium pulls pure elements out of minerals.',
     hint: 'Run electricity through Salt Water.',
   },
@@ -294,7 +297,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Soak Fertilizer in Oil.',
   },
   {
-    key: 'DYNAMITE', name: 'Dynamite', sym: 'Dy', cat: 'explosive', state: SOLID, strength: 15,
+    key: 'DYNAMITE', name: 'Dynamite', sym: 'Dn', cat: 'explosive', state: SOLID, strength: 15,
     colors: ['#c9453a', '#b83c32', '#d4503f'], conduct: 0.1,
     flammable: 0.08, ignite: 250, explode: 16, burn: { smoke: 0.4, fireTemp: 1500, fireLife: [15, 30] },
     desc: 'Nitro soaked into clay, so it only goes off when you light it.',
@@ -331,7 +334,7 @@ export const EXPANSION_ELEMENTS = [
 
   // ---- gems and light -------------------------------------------------------
   {
-    key: 'RUBY', name: 'Ruby', sym: 'Rb', cat: 'mineral', state: SOLID, strength: 180,
+    key: 'RUBY', name: 'Ruby', sym: 'Ry', cat: 'mineral', state: SOLID, strength: 180,
     colors: ['#d11d4a', '#c01642', '#e02a57'], conduct: 0.3, transparent: true, acidProof: true,
     behavior: 'recover',
     desc: 'Red crystal. Light passing through it is amplified, a photon at a time. Put it between mirrors for a laser.',
@@ -347,14 +350,15 @@ export const EXPANSION_ELEMENTS = [
     key: 'CINNABAR', name: 'Cinnabar', sym: 'Ci', cat: 'mineral', state: POWDER,
     colors: ['#b8322a', '#a82a23', '#c63d33'], density: 8.1,
     high: { temp: 580, to: 'MERCURY', chance: 0.05 },
+    pressure: { above: 20, to: 'VERMILION', chance: 0.01 },
     desc: 'Red mercury ore.',
     hint: 'Sulfur seeping into Granite.',
   },
   {
     key: 'MERCURY', name: 'Mercury', sym: 'Hg', cat: 'metal', state: LIQUID,
     colors: ['#c7ccd4', '#b9bfc8', '#d5d9df'], density: 13.5, conduct: 0.3, conductor: true,
-    spread: 6, reflect: 0.8,
-    desc: 'A metal that is liquid at room temperature. Conducts electricity.',
+    spread: 6, reflect: 0.8, high: { temp: 357, to: 'MERCURY_VAPOR', chance: 0.05 },
+    desc: 'A metal that is liquid at room temperature. Conducts electricity, and boils at 357 °C.',
     hint: 'Roast Cinnabar.',
   },
   {
@@ -404,7 +408,7 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Plasma shining through Glass.',
   },
   {
-    key: 'FLOWER', name: 'Flower', sym: 'Fl', cat: 'life', state: SOLID, strength: 5,
+    key: 'FLOWER', name: 'Flower', sym: 'Bl', cat: 'life', state: SOLID, strength: 5,
     colors: ['#f07aa8', '#f2c14a', '#b98cf0', '#f5f5f5', '#f07aa8'], conduct: 0.1,
     flammable: 0.1, ignite: 250, burn: { ash: 0.3, smoke: 0.3 },
     produce: { el: 'FRUIT', chance: 0.0008 },
@@ -412,8 +416,8 @@ export const EXPANSION_ELEMENTS = [
     hint: 'Shine light on a Plant.',
   },
   {
-    key: 'FRUIT', name: 'Fruit', sym: 'Fr', cat: 'life', state: POWDER,
-    colors: ['#e0442e', '#f06a2a', '#d93a4a', '#f2a23a'], density: 1.0,
+    key: 'FRUIT', name: 'Fruit', sym: 'Ft', cat: 'life', state: POWDER,
+    colors: ['#e0442e', '#f06a2a', '#d93a4a', '#f2a23a'], density: 1.0, wet: true,
     flammable: 0.02, ignite: 300, burn: { smoke: 0.4 },
     life: [900, 1500], behavior: 'decay', lifeEnd: { to: 'SEED', alt: 'ALCOHOL', altChance: 0.35 },
     desc: 'Falls from flowers. Rots into seeds, and sometimes ferments.',
@@ -493,7 +497,7 @@ export const EXPANSION_ELEMENTS = [
     emits: [{ p: 'NEUTRON', chance: 0.0015 }], glowAmount: 0.25,
     fission: {
       neutrons: 3, heat: 1500, blast: 6, photons: 2,
-      products: [['FALLOUT', 0.4], ['PLASMA', 0.3]],
+      products: [['FALLOUT', 0.4], ['PLASMA', 0.3]], capture: ['AMERICIUM', 0.04],
     },
     high: { temp: 2500, to: 'CORIUM', chance: 0.05 },
     desc: 'Extremely fissile. Each split releases three neutrons, so a big enough pile runs away into a nuclear explosion.',
@@ -605,6 +609,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'NEON', name: 'Neon', sym: 'Ne', cat: 'gas', state: GAS,
     colors: ['#f08a6a', '#e87c5c'], alpha: 0.35, density: 0.03, rise: 0.6, airDrag: 0.4, behavior: 'neon',
+    excite: { color: '#ff5a3c' },
     desc: 'Glows red-orange when electricity or electrons pass through it.',
     hint: 'Fuse Helium inside Plasma, the way stars do.',
   },
@@ -633,7 +638,7 @@ export const EXPANSION_ELEMENTS = [
   },
   {
     key: 'HEAVY_WATER', name: 'Heavy Water', sym: 'D2O', cat: 'nuclear', state: LIQUID,
-    colors: ['#3d6fc4', '#4577cc', '#3668bb'], density: 1.1, conduct: 0.3, spread: 7,
+    colors: ['#3d6fc4', '#4577cc', '#3668bb'], density: 1.1, conduct: 0.3, spread: 7, wet: true,
     transparent: true, moderator: true,
     desc: 'Water made from deuterium. Slows neutrons down without swallowing them.',
     hint: 'Burn Deuterium.',
@@ -649,7 +654,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'COBALT', name: 'Cobalt-60', sym: 'Co', cat: 'nuclear', state: SOLID, strength: 150,
     colors: ['#5a6fa8', '#50649a', '#6479b5'], density: 8.9, conduct: 0.6, conductor: true,
-    emits: [{ p: 'PHOTON', chance: 0.004 }], glowAmount: 0.25, decay: { chance: 0.00005, to: 'METAL' },
+    emits: [{ p: 'GAMMA', chance: 0.004 }], glowAmount: 0.25, decay: { chance: 0.00005, to: 'METAL' },
     high: melt(1495),
     desc: 'Metal made radioactive by neutrons. It shines gamma rays.',
     hint: 'Bombard Metal with Neutrons.',
@@ -686,6 +691,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'AMETHYST', name: 'Amethyst', sym: 'Ay', cat: 'mineral', state: SOLID, strength: 120,
     colors: ['#9b59d0', '#8d4cc2', '#a968dc'], conduct: 0.3, transparent: true, acidProof: true,
+    high: { temp: 470, to: 'CITRINE', chance: 0.02 },
     desc: 'Purple quartz, coloured by radiation.',
     hint: 'Irradiate Quartz with Neutrons.',
   },
@@ -860,7 +866,7 @@ export const PARTICLE_HITS = [
   { p: 'PROTON', t: 'NEUTRONIUM', chance: 0.3, tTo: 'STRANGE_MATTER' },
   { p: 'NEUTRON', t: 'URANIUM', chance: 0.06, fission: true },
   { p: 'NEUTRON', t: 'PLUTONIUM', chance: 0.3, fission: true },
-  { p: 'NEUTRON', t: 'THORIUM', chance: 0.05, tTo: 'URANIUM' },
+  { p: 'NEUTRON', t: 'THORIUM', chance: 0.05, tTo: 'PROTACTINIUM' },
   { p: 'NEUTRON', t: 'DEUTERIUM', chance: 0.08, emit: ['NEUTRON'], keep: true, recover: 30 },
   { p: 'NEUTRON', t: 'BERYLLIUM', chance: 0.1, emit: ['NEUTRON'], keep: true, recover: 30 },
   { p: 'NEUTRON', t: 'HYDROGEN', chance: 0.05, tTo: 'DEUTERIUM' },
@@ -877,5 +883,5 @@ export const PARTICLE_HITS = [
 // When two flying particles land in the same cell.
 export const PARTICLE_PAIRS = [
   { a: 'ELECTRON', b: 'PROTON', chance: 0.8, gridTo: 'HYDROGEN' },
-  { a: 'ELECTRON', b: 'POSITRON', chance: 0.9, emit: ['PHOTON', 'PHOTON'] },
+  { a: 'ELECTRON', b: 'POSITRON', chance: 0.9, emit: ['GAMMA', 'GAMMA'] },
 ];

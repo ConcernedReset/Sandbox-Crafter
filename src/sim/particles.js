@@ -22,7 +22,7 @@ export function initParticles(world) {
   world.py = new Float32Array(CAPACITY);
   world.pvx = new Float32Array(CAPACITY);
   world.pvy = new Float32Array(CAPACITY);
-  world.ptype = new Uint8Array(CAPACITY);
+  world.ptype = new Uint16Array(CAPACITY);
   world.plife = new Int16Array(CAPACITY);
   world.pn = 0;
   world.pmap = new Int32Array(world.w * world.h); // index + 1 of a particle in each cell
@@ -214,8 +214,53 @@ export const Particles = {
         this.annihilate(k, ix, iy);
         if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 150);
         return DEAD;
+      case PMODE.alpha:
+      case PMODE.ion: {
+        // Heavy and slow: stopped by the first thing that isn't a gas (even
+        // paper), where it picks up electrons and settles as an atom.
+        if (GASLIKE[u]) return PASS;
+        const li = ly * this.w + lx;
+        const ex = d.expire;
+        if (ex && this.type[li] === 0 && this.rand() < 0.5) {
+          this.spawn(li, ex[0].id);
+          this.record(ex[0].id, ex[0].rule);
+        }
+        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 10);
+        return DEAD;
+      }
+      case PMODE.gamma: {
+        // Dense matter soaks up gamma rays; light matter barely slows them.
+        if (GASLIKE[u]) return PASS;
+        const stop = e.indestructible ? 1 : Math.min(0.9, e.density * 0.025 + e.nAbsorb * 0.3);
+        if (this.rand() >= stop) return PASS;
+        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 20);
+        return DEAD;
+      }
+      case PMODE.xray:
+        // Straight through flesh, wood and water; stopped by bone and metal.
+        if (GASLIKE[u] || (!e.xrayOpaque && !e.indestructible && e.density < 3)) return PASS;
+        return DEAD;
+      case PMODE.uv:
+        // Like light, except ordinary glass blocks it (quartz doesn't).
+        if ((e.transparent && !e.uvBlock) || (GASLIKE[u] && !e.opaque)) return PASS;
+        if (e.reflect > 0 && this.rand() < e.reflect) { this.bounce(k, ix, iy, lx, ly); return BOUNCE; }
+        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 10);
+        return DEAD;
+      case PMODE.microwave:
+        // Metal reflects them and arcs; anything wet soaks them up and heats.
+        if (CONDUCTOR[u]) {
+          if (this.life[j] === 0 && this.rand() < 0.3) this.sparkAt(j);
+          this.bounce(k, ix, iy, lx, ly);
+          return BOUNCE;
+        }
+        if (e.indestructible) return DEAD;
+        if (e.wet) {
+          this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 12);
+          return this.rand() < 0.3 ? DEAD : PASS;
+        }
+        return PASS;
       default:
-        return PASS; // neutrinos
+        return PASS; // neutrinos, muons and other ghosts
     }
   },
 
@@ -307,9 +352,27 @@ export const Particles = {
     return true;
   },
 
-  // A free neutron decays into a proton, an electron and a neutrino.
+  // A free neutron decays into a proton, an electron and a neutrino. Other
+  // short-lived particles (pions, muons, the Higgs) decay into what their
+  // `expire` list says; alphas settle as helium.
   expireProjectile(k, t) {
-    if (t !== NEUTRON) { this.killProjectile(k); return; }
+    if (t !== NEUTRON) {
+      const ex = DEFS[t].expire;
+      const x = this.px[k], y = this.py[k];
+      this.killProjectile(k);
+      if (ex === null) return;
+      for (const e of ex) {
+        if (DEFS[e.id].projectile) {
+          this.spawnProjectile(e.id, x, y);
+        } else {
+          const c = (y | 0) * this.w + (x | 0);
+          if (this.type[c] !== 0) continue;
+          this.spawn(c, e.id);
+        }
+        this.record(e.id, e.rule);
+      }
+      return;
+    }
     const x = this.px[k], y = this.py[k], vx = this.pvx[k], vy = this.pvy[k];
     this.killProjectile(k);
     this.spawnProjectile(PROTON, x, y, vx * 0.75, vy * 0.75);

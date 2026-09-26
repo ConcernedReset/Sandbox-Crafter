@@ -1,5 +1,6 @@
 // Every element, reaction and recipe in the game is defined in this file and
-// in elements-expansion.js. The simulation, the palette and the recipe book
+// in elements-expansion.js, elements-periodic.js, elements-chemistry.js and
+// elements-world.js. The simulation, the palette and the recipe book
 // are all generated from these tables, so a recipe that exists here is
 // guaranteed to be something the simulation can actually do (see
 // test/recipes.test.js).
@@ -8,6 +9,11 @@ import { State, AMBIENT } from './constants.js';
 import {
   EXPANSION_ELEMENTS, EXPANSION_REACTIONS, PARTICLE_HITS, PARTICLE_PAIRS,
 } from './elements-expansion.js';
+import {
+  PERIODIC_ELEMENTS, PERIODIC_REACTIONS, PERIODIC_HITS, PERIODIC_PAIRS,
+} from './elements-periodic.js';
+import { CHEMISTRY_ELEMENTS, CHEMISTRY_REACTIONS, CHEMISTRY_HITS } from './elements-chemistry.js';
+import { WORLD_ELEMENTS, WORLD_REACTIONS, WORLD_HITS, WORLD_PAIRS } from './elements-world.js';
 
 export { State, AMBIENT };
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
@@ -23,6 +29,13 @@ export const CATEGORIES = [
   { key: 'explosive', name: 'Explosives' },
   { key: 'energy', name: 'Energy' },
   { key: 'particle', name: 'Particles' },
+  { key: 'alloy', name: 'Alloys' },
+  { key: 'rareearth', name: 'Rare earths' },
+  { key: 'chemical', name: 'Chemicals' },
+  { key: 'material', name: 'Materials' },
+  { key: 'device', name: 'Devices' },
+  { key: 'food', name: 'Food' },
+  { key: 'creature', name: 'Creatures' },
   { key: 'nuclear', name: 'Radioactive' },
   { key: 'special', name: 'Exotic' },
 ];
@@ -80,7 +93,7 @@ export const ELEMENT_LIST = [
   {
     key: 'WATER', name: 'Water', sym: 'Wa', cat: 'liquid', state: LIQUID, start: true,
     colors: ['#2f7fd8', '#3486e0', '#2a78cf', '#3a8de6'],
-    density: 1.0, conduct: 0.3, spread: 8, transparent: true,
+    density: 1.0, conduct: 0.3, spread: 8, transparent: true, wet: true,
     high: { temp: 100, to: 'STEAM', chance: 0.2 },
     low: { temp: 0, to: 'ICE', chance: 0.1 },
     desc: 'Flows and levels out. Boils at 100 °C, freezes at 0 °C.',
@@ -119,14 +132,15 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'MUD', name: 'Mud', sym: 'Mu', cat: 'liquid', state: LIQUID,
-    colors: ['#5a3d27', '#533823', '#61432b', '#4d3420'], density: 1.3, conduct: 0.2,
+    colors: ['#5a3d27', '#533823', '#61432b', '#4d3420'], density: 1.3, conduct: 0.2, wet: true,
     spread: 1, viscosity: 0.85,
     high: { temp: 150, to: 'BRICK', chance: 0.04 },
+    pressure: { above: 15, to: 'SHALE', chance: 0.01 },
     desc: 'Thick, slow sludge that sinks under water.',
     hint: 'Dirt gets messy when it gets wet.',
   },
   {
-    key: 'LAVA', name: 'Lava', sym: 'Lv', cat: 'liquid', state: LIQUID,
+    key: 'LAVA', name: 'Lava', sym: 'Lm', cat: 'liquid', state: LIQUID,
     colors: ['#ff5a1f', '#f24d12', '#ff7a2e', '#e84410'], density: 2.5, temp: 1100, conduct: 0.3,
     airCool: 0.0006, spread: 2, viscosity: 0.6, glow: true,
     low: { temp: 850, to: 'STONE', chance: 0.05 },
@@ -135,7 +149,7 @@ export const ELEMENT_LIST = [
     hint: 'Dirt melts if you get it hot enough. Really hot.',
   },
   {
-    key: 'STONE', name: 'Stone', sym: 'Sn', cat: 'solid', state: SOLID,
+    key: 'STONE', name: 'Stone', sym: 'Rk', cat: 'solid', state: SOLID,
     colors: ['#8a8d91', '#7f8286', '#94979b', '#777a7e'], density: 2.5, conduct: 0.2, strength: 40,
     high: { temp: 1050, to: 'LAVA', chance: 0.02 },
     pressure: { above: 25, to: 'GRAVEL', chance: 0.01 },
@@ -159,7 +173,7 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'GLASS', name: 'Glass', sym: 'Gl', cat: 'solid', state: SOLID,
-    colors: ['#9fd3e6', '#b0dcec', '#94cbe0'], density: 2.5, conduct: 0.1, acidProof: true, transparent: true,
+    colors: ['#9fd3e6', '#b0dcec', '#94cbe0'], density: 2.5, conduct: 0.1, acidProof: true, transparent: true, uvBlock: true,
     strength: 25,
     high: { temp: 1600, to: 'MOLTEN_GLASS', chance: 0.02 },
     pressure: { above: 30, to: 'SAND', chance: 0.05 },
@@ -171,11 +185,12 @@ export const ELEMENT_LIST = [
     colors: ['#f2f6fa', '#e6eef6', '#ffffff', '#dde7f0'], density: 0.5, temp: -8, conduct: 0.2,
     airCool: 0.0004, fallRate: 0.35, airDrag: 0.15,
     high: { temp: 1, to: 'WATER', chance: 0.02 },
+    pressure: { above: 15, to: 'GLACIER_ICE', chance: 0.01 },
     desc: 'Drifts down slowly and floats on water.',
     hint: 'Steam freezes when it touches something icy.',
   },
   {
-    key: 'BRICK', name: 'Brick', sym: 'Bk', cat: 'solid', state: SOLID,
+    key: 'BRICK', name: 'Brick', sym: 'Bc', cat: 'solid', state: SOLID,
     colors: ['#a0462f', '#8f3d29', '#b04f35', '#9a4a33'], density: 2.0, conduct: 0.1, strength: 45,
     high: { temp: 1500, to: 'LAVA', chance: 0.02 },
     desc: 'Baked mud. Takes a lot of heat before it gives.',
@@ -206,7 +221,7 @@ export const ELEMENT_LIST = [
     hint: 'Burn something that grew.',
   },
   {
-    key: 'ASH', name: 'Ash', sym: 'As', cat: 'powder', state: POWDER,
+    key: 'ASH', name: 'Ash', sym: 'Ah', cat: 'powder', state: POWDER,
     colors: ['#b8b4ac', '#aaa69e', '#c4c0b8', '#9f9b94'], density: 0.7, conduct: 0.1,
     fallRate: 0.6, airDrag: 0.12,
     desc: 'Light, powdery leftovers. Floats on water.',
@@ -214,7 +229,7 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'SALT_WATER', name: 'Salt Water', sym: 'Bn', cat: 'liquid', state: LIQUID,
-    colors: ['#2f94b8', '#3399bd', '#2a8bad', '#3aa2c4'], density: 1.1, conduct: 0.3, spread: 8, transparent: true,
+    colors: ['#2f94b8', '#3399bd', '#2a8bad', '#3aa2c4'], density: 1.1, conduct: 0.3, spread: 8, transparent: true, wet: true,
     high: { temp: 102, to: 'STEAM', chance: 0.2, alt: 'SALT', altChance: 0.35 },
     low: { temp: -18, to: 'ICE', chance: 0.1 },
     desc: 'Brine. Freezes at a lower temperature than fresh water.',
@@ -223,6 +238,7 @@ export const ELEMENT_LIST = [
   {
     key: 'SALT', name: 'Salt', sym: 'Sl', cat: 'powder', state: POWDER,
     colors: ['#f4f1ec', '#e9e5de', '#fbfaf7', '#e2ddd5'], density: 2.1, conduct: 0.2,
+    high: { temp: 801, to: 'MOLTEN_SALT', chance: 0.05 },
     desc: 'Dissolves in water and melts ice.',
     hint: 'Boil the Salt Water away.',
   },
@@ -251,7 +267,7 @@ export const ELEMENT_LIST = [
     hint: 'Smelt it: mix Coal into Lava.',
   },
   {
-    key: 'MOLTEN_METAL', name: 'Molten Metal', sym: 'Mt', cat: 'liquid', state: LIQUID,
+    key: 'MOLTEN_METAL', name: 'Molten Metal', sym: 'Mm', cat: 'liquid', state: LIQUID,
     colors: ['#ffcf6b', '#ffc04d', '#ffdb85'], density: 7.0, temp: 1700, conduct: 0.6,
     airCool: 0.0008, spread: 3, viscosity: 0.3, glow: true,
     low: { temp: 1450, to: 'METAL', chance: 0.05, restore: true },
@@ -262,6 +278,7 @@ export const ELEMENT_LIST = [
     key: 'RUST', name: 'Rust', sym: 'Rs', cat: 'powder', state: POWDER,
     colors: ['#9c4a1e', '#8a4019', '#aa5626', '#7f3a16'], density: 2.0, conduct: 0.2,
     high: { temp: 1538, to: 'MOLTEN_METAL', chance: 0.02, remember: 'METAL' },
+    pressure: { above: 20, to: 'HEMATITE', chance: 0.01 },
     desc: 'Crumbly iron oxide.',
     hint: 'Leave Metal sitting in Water.',
   },
@@ -270,12 +287,13 @@ export const ELEMENT_LIST = [
     colors: ['#4a3a1c', '#54421f', '#3f3118'], density: 0.8, conduct: 0.1, spread: 3, viscosity: 0.2,
     flammable: 0.08, ignite: 400, burn: { smoke: 0.6, fireLife: [60, 120] },
     high: { temp: 350, to: 'PROPANE', chance: 0.05 },
+    low: { temp: -10, to: 'WAX', chance: 0.02 },
     desc: 'Floats on water and burns readily. Heated without a flame, it cracks into propane.',
     hint: 'Compress Plants.',
   },
   {
     key: 'METHANE', name: 'Methane', sym: 'Me', cat: 'gas', state: GAS,
-    colors: ['#9fc2a0', '#93b694'], alpha: 0.3, density: 0.04, conduct: 0.05, rise: 0.55, sink: 0.05,
+    colors: ['#9fc2a0', '#93b694'], alpha: 0.3, density: 0.04, conduct: 0.05, rise: 0.55, sink: 0.05, flame: '#5a8aff',
     airDrag: 0.4, flammable: 1, ignite: 540, burn: { fireTemp: 1000, fireLife: [10, 25] },
     explode: 3,
     desc: 'Swamp gas. Pops when lit.',
@@ -308,18 +326,19 @@ export const ELEMENT_LIST = [
     airDrag: 0.5, flammable: 1, ignite: 500,
     pressure: { above: 80, to: 'STAR', chance: 0.002 },
     burn: { to: 'STEAM', toChance: 0.5, fireTemp: 1500, fireLife: [8, 18] }, explode: 4,
+    low: { temp: -253, to: 'LIQUID_HYDROGEN', chance: 0.05 },
     desc: 'The lightest gas. Burns explosively into steam.',
     hint: 'Run electricity through Water.',
   },
   {
-    key: 'ACID', name: 'Acid', sym: 'Ac', cat: 'liquid', state: LIQUID,
+    key: 'ACID', name: 'Acid', sym: 'Ad', cat: 'liquid', state: LIQUID,
     colors: ['#8be04e', '#7fd443', '#96ea59'], density: 1.05, conduct: 0.3, spread: 4,
     acidProof: true, transparent: true, behavior: 'acid',
     desc: 'Eats through almost everything except glass and diamond.',
     hint: 'Hydrogen reacts with Salt.',
   },
   {
-    key: 'CLOUD', name: 'Cloud', sym: 'Cl', cat: 'gas', state: GAS,
+    key: 'CLOUD', name: 'Cloud', sym: 'Cld', cat: 'gas', state: GAS,
     colors: ['#dfe4ea', '#d2d8df', '#e9edf1'], alpha: 0.85, density: 0.06, temp: 10, conduct: 0.1,
     airCool: 0.0005, rise: 0.06, sink: 0.05, airDrag: 0.3, drift: 0.12, behavior: 'cloud',
     desc: 'Hangs in the air and rains. Snows when it is below freezing.',
@@ -333,7 +352,7 @@ export const ELEMENT_LIST = [
     hint: 'Put a Spark into a Cloud.',
   },
   {
-    key: 'PLASMA', name: 'Plasma', sym: 'Pm', cat: 'energy', state: ENERGY,
+    key: 'PLASMA', name: 'Plasma', sym: 'Pz', cat: 'energy', state: ENERGY,
     colors: ['#e07bff'], density: 0.015, temp: 5000, holdTemp: true, conduct: 0.5,
     life: [25, 55], rise: 0.6, sink: 0.05, airDrag: 0.5, behavior: 'plasma',
     desc: 'Superheated gas at 5000 °C. Melts nearly anything.',
@@ -347,7 +366,7 @@ export const ELEMENT_LIST = [
     hint: 'Mix Rust with Gunpowder.',
   },
   {
-    key: 'NITRO', name: 'Nitro', sym: 'Ni', cat: 'explosive', state: LIQUID,
+    key: 'NITRO', name: 'Nitro', sym: 'Nt', cat: 'explosive', state: LIQUID,
     colors: ['#e6dc5a', '#dcd24f', '#efe56a'], density: 1.2, conduct: 0.2, spread: 4,
     flammable: 1, ignite: 200, burn: { fireTemp: 2500, fireLife: [15, 30] }, explode: 30,
     pressure: { above: 10, ignite: true, chance: 0.5 },
@@ -355,7 +374,7 @@ export const ELEMENT_LIST = [
     hint: 'Treat Oil with Acid.',
   },
   {
-    key: 'CRYO', name: 'Cryo', sym: 'Cr', cat: 'liquid', state: LIQUID,
+    key: 'CRYO', name: 'Cryo', sym: 'Cry', cat: 'liquid', state: LIQUID,
     colors: ['#bdf3ff', '#a8ecfb', '#cff7ff'], density: 0.8, temp: -196, holdTemp: true,
     conduct: 0.5, spread: 5, life: [400, 700], behavior: 'decay', lifeEnd: { to: 'NITROGEN' },
     transparent: true,
@@ -363,7 +382,7 @@ export const ELEMENT_LIST = [
     hint: 'Salt makes Snow extremely cold.',
   },
   {
-    key: 'CLONE', name: 'Clone', sym: 'Cn', cat: 'special', state: SOLID,
+    key: 'CLONE', name: 'Clone', sym: 'Cln', cat: 'special', state: SOLID,
     colors: ['#d9c23a', '#cdb52f', '#e2cb45'], conduct: 0, acidProof: true, behavior: 'clone',
     strength: 0,
     desc: 'Copies the first element that touches it, forever.',
@@ -377,6 +396,9 @@ export const ELEMENT_LIST = [
   },
 
   ...EXPANSION_ELEMENTS,
+  ...PERIODIC_ELEMENTS,
+  ...CHEMISTRY_ELEMENTS,
+  ...WORLD_ELEMENTS,
 
   // ---- always available ---------------------------------------------------
   {
@@ -413,8 +435,11 @@ export const REACTIONS = [
   { a: 'DIAMOND', b: 'PLASMA', chance: 0.004, aTo: 'CLONE', bTo: 'EMPTY' },
   { a: 'WATER', b: 'SPARK', chance: 0.15, aTo: 'HYDROGEN', aAlt: 'OXYGEN', aAltChance: 0.34, bTo: null },
   { a: 'CLOUD', b: 'SPARK', chance: 0.5, aTo: 'LIGHTNING', bTo: null },
-  { a: 'SAND', b: 'LIGHTNING', chance: 0.5, aTo: 'GLASS', bTo: null },
+  { a: 'SAND', b: 'LIGHTNING', chance: 0.5, aTo: 'GLASS', aAlt: 'FULGURITE', aAltChance: 0.3, bTo: null },
   ...EXPANSION_REACTIONS,
+  ...PERIODIC_REACTIONS,
+  ...CHEMISTRY_REACTIONS,
+  ...WORLD_REACTIONS,
 ];
 
 // Rules that come from custom behaviours rather than the tables above. They
@@ -438,7 +463,7 @@ ELEMENT_LIST.forEach((e, i) => {
   ID[e.key] = i;
 });
 export const NUM = ELEMENT_LIST.length;
-if (NUM > 255) throw new Error('Element ids must fit in a byte');
+if (NUM > 65535) throw new Error('Element ids must fit in 16 bits');
 
 const id = (key) => {
   if (key === null || key === undefined) return -1;
@@ -447,7 +472,10 @@ const id = (key) => {
 };
 
 // How each kind of flying particle behaves when it meets matter.
-export const PMODE = { photon: 1, electron: 2, proton: 3, neutron: 4, positron: 5, neutrino: 6 };
+export const PMODE = {
+  photon: 1, electron: 2, proton: 3, neutron: 4, positron: 5, neutrino: 6,
+  alpha: 7, ion: 8, gamma: 9, xray: 10, uv: 11, microwave: 12, ghost: 13,
+};
 
 // RULES: every way an element can be produced, for discovery tracking and
 // the recipe book. { kind, inputs: [ids], output: id }
@@ -530,7 +558,21 @@ function normalize(e, i) {
     moderator: !!e.moderator,
     detector: !!e.detector,
     hotEmit: e.hotEmit ?? null,
+    hotSpark: e.hotSpark ?? null,
     sparkHeat: e.sparkHeat ?? 1,
+    uvBlock: !!e.uvBlock,
+    xrayOpaque: !!e.xrayOpaque,
+    wet: !!e.wet,
+    expire: null,
+    // glowing and colour
+    excite: null,
+    flame: e.flame ?? null,
+    render: e.render ?? null,
+    // gadgets and creatures
+    magnet: e.magnet ?? 1,
+    batteryRate: e.batteryRate ?? 1,
+    critter: null,
+    stalk: null,
     // everything else
     lifeEnd: null,
     produce: null,
@@ -543,6 +585,8 @@ function normalize(e, i) {
     desc: e.desc ?? '',
     hint: e.hint ?? '',
   };
+  // Anything that glows when excited counts down its glow like Neon does.
+  if (e.excite && d.behavior === null) d.behavior = 'neon';
   // Liquids, gases and loose energy can be pushed aside by heavier things.
   d.displaceable = !d.projectile
     && (e.state === LIQUID || e.state === GAS || (e.state === ENERGY && !d.fixed));
@@ -584,6 +628,7 @@ function compileOutcome(src, inputs, kind) {
     altChance: src.altChance ?? 0,
     spawn: src.spawn ? id(src.spawn) : -1,
     chance: src.chance ?? 1,
+    explode: src.explode ?? 0,
     rule: -1,
     altRule: -1,
     spawnRule: -1,
@@ -635,11 +680,67 @@ ELEMENT_LIST.forEach((e, i) => {
     for (const k of e.grow.into) into[id(k)] = 1;
     d.grow = { into, chance: e.grow.chance, surface: !!e.grow.surface };
   }
+  if (e.expire) d.expire = emitList(e.expire, [i], 'time');
+  if (e.excite) {
+    const c = e.excite.color;
+    d.excite = {
+      rgb: [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)],
+      emit: id(e.excite.emit ?? 'PHOTON'),
+    };
+  }
+  if (e.stalk) {
+    const into = new Uint8Array(NUM);
+    for (const k of e.stalk.into ?? ['EMPTY']) into[id(k)] = 1;
+    d.stalk = { into, height: e.stalk.height, rate: e.stalk.rate ?? 0.05 };
+  }
+  if (e.critter) {
+    const c = e.critter;
+    const home = new Uint8Array(NUM);
+    for (const k of c.home ?? ['EMPTY']) home[id(k)] = 1;
+    const dig = new Uint8Array(NUM);
+    for (const k of c.dig ?? []) dig[id(k)] = 1;
+    const food = new Array(NUM).fill(null);
+    for (const f of c.eats ?? []) {
+      const meal = {
+        becomes: id(f.becomes ?? 'EMPTY'),
+        drops: f.drops ? id(f.drops) : -1,
+        becomesRule: -1,
+        dropsRule: -1,
+        eggRule: -1,
+      };
+      const inputs = [i, id(f.food)];
+      if (meal.becomes > 0 && meal.becomes !== id(f.food)) meal.becomesRule = addRule('contact', inputs, meal.becomes);
+      if (meal.drops > 0) meal.dropsRule = addRule('contact', inputs, meal.drops);
+      // A well-fed creature lays an egg (or breeds); that counts as a recipe too.
+      if (c.egg) meal.eggRule = addRule('contact', inputs, id(c.egg));
+      food[id(f.food)] = meal;
+    }
+    d.critter = {
+      moves: c.moves, // 'swim', 'fly', 'walk' or 'burrow'
+      home,
+      dig,
+      food,
+      speed: c.speed ?? 0.3,
+      breed: c.breed ?? 0,
+      egg: c.egg ? id(c.egg) : i,
+      spark: c.spark ?? 0,
+      ignite: !!c.ignite,
+      tough: !!c.tough,
+      // A swimmer's trail (squid ink) needs water to be left in.
+      trail: c.trail ? {
+        id: id(c.trail[0]),
+        chance: c.trail[1],
+        rule: c.moves === 'swim'
+          ? addRule('contact', [i, id(c.home[0])], id(c.trail[0]))
+          : addRule('time', [i], id(c.trail[0])),
+      } : null,
+    };
+  }
 });
 
 // One flag so the simulation can skip radioactivity checks for most elements.
 for (const d of DEFS) {
-  d.active = d.selfHeat !== 0 || d.emits !== null || d.hotEmit !== null
+  d.active = d.selfHeat !== 0 || d.emits !== null || d.hotEmit !== null || d.hotSpark !== null
     || d.decay !== null || d.produce !== null;
 }
 
@@ -664,6 +765,7 @@ ELEMENT_LIST.forEach((e, i) => {
 export const REACT = new Array(NUM * NUM).fill(null);
 for (const r of REACTIONS) {
   const a = id(r.a), b = id(r.b);
+  if (REACT[a * NUM + b] !== null) throw new Error(`Two reactions for ${r.a} + ${r.b}`);
   const inputs = [a, b];
   const side = (to, alt, altChance) => {
     const o = { to: id(to), alt: alt ? id(alt) : -1, altChance: altChance ?? 0, rule: -1, altRule: -1 };
@@ -690,9 +792,10 @@ for (const r of REACTIONS) {
 
 // Particle hits: HIT[particle * NUM + target].
 export const HIT = new Array(NUM * NUM).fill(null);
-for (const h of PARTICLE_HITS) {
+for (const h of [...PARTICLE_HITS, ...PERIODIC_HITS, ...CHEMISTRY_HITS, ...WORLD_HITS]) {
   const p = id(h.p), t = id(h.t);
   if (!DEFS[p].projectile) throw new Error(`${h.p} is not a particle`);
+  if (HIT[p * NUM + t] !== null) throw new Error(`Two hit rules for ${h.p} on ${h.t}`);
   const inputs = [t, p];
   HIT[p * NUM + t] = {
     chance: h.chance,
@@ -715,8 +818,9 @@ for (const h of PARTICLE_HITS) {
 
 // Particle pairs: PAIR[a * NUM + b].
 export const PAIR = new Array(NUM * NUM).fill(null);
-for (const r of PARTICLE_PAIRS) {
+for (const r of [...PARTICLE_PAIRS, ...PERIODIC_PAIRS, ...WORLD_PAIRS]) {
   const a = id(r.a), b = id(r.b);
+  if (PAIR[a * NUM + b] !== null) throw new Error(`Two pair rules for ${r.a} + ${r.b}`);
   const entry = {
     chance: r.chance,
     gridTo: r.gridTo ? id(r.gridTo) : -1,

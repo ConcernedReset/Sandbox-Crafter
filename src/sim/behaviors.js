@@ -6,14 +6,15 @@ import { DEFS, ID, NUM, State, REACT, SPECIAL } from './elements.js';
 import { MAX_TEMP } from './constants.js';
 import { CONDUCTOR, CLONEABLE, ORGANIC, TRANSMUTABLE, SPEW } from './lookups.js';
 
-const { SOLID, POWDER, GAS } = State;
+const { SOLID, POWDER, LIQUID, GAS } = State;
 const {
   WALL, FIRE, SMOKE, WATER, SNOW, PLANT, WOOD, SPARK, LIGHTNING, VOID, DIRT, MUD, GRASS, SEED,
-  GLITTER, NEON, PHOTON, NEUTRON, ANTIMATTER, BLACK_HOLE, STRANGE_MATTER, DARK_MATTER, GOLD,
-  VIRUS, LYE,
+  GLITTER, PHOTON, NEUTRON, ANTIMATTER, BLACK_HOLE, STRANGE_MATTER, DARK_MATTER, GOLD,
+  VIRUS, LYE, ELECTRON,
 } = ID;
 
 const SPARK_COOLDOWN = 6;
+export const LOOSE_FLAME = 0x8000;
 const DX4 = [1, -1, 0, 0];
 const DY4 = [0, 0, 1, -1];
 
@@ -24,7 +25,7 @@ export const Behaviors = {
       case 'plasma': return this.burnOut(i, x, y, false);
       case 'decay': return this.lifeRunsOut(i, d);
       case 'spark': return this.updateSpark(i, x, y);
-      case 'battery': return this.updateBattery(x, y);
+      case 'battery': return this.updateBattery(x, y, d);
       case 'plant': return this.updatePlant(i, x, y);
       case 'cloud': return this.updateCloud(i, x, y);
       case 'lightning': return this.updateLightning(i, x, y);
@@ -40,13 +41,31 @@ export const Behaviors = {
       case 'neon':
       case 'geiger':
       case 'recover': // life counts down: glow, flash, or time until it can amplify again
-        if (this.life[i] > 0) this.life[i]--;
+        if (this.life[i] > 0) {
+          // A glowing gas passes the glow along to the gas beside it, so the
+          // whole tube lights up rather than just the cells by the electrode.
+          if (name === 'neon' && this.life[i] > 4 && !d.conductor) {
+            const j = this.randomNeighbor(x, y);
+            if (j >= 0 && this.type[j] === t && this.life[j] < this.life[i] - 2) this.life[j] = this.life[i] - 2;
+          }
+          // A glowing conductor (an LED) already counts its life down as spark cooldown.
+          if (!d.conductor) this.life[i]--;
+        }
         return name === 'geiger';
       case 'laser': return this.updateLaser(x, y);
       case 'magnet':
-        this.magnetCount[this.air.at(x, y)]++;
+        this.magnetCount[this.air.at(x, y)] += d.magnet;
         this.magnetTotal++;
         return true;
+      case 'electromagnet': // only while current is flowing through it
+        if (this.life[i] > 0) {
+          this.magnetCount[this.air.at(x, y)] += d.magnet;
+          this.magnetTotal++;
+        }
+        return false;
+      case 'critter': return this.updateCritter(i, x, y, t, d);
+      case 'stalk': return this.updateStalk(i, x, y, t, d);
+      case 'meteor': return this.updateMeteor(i, x, y, d);
       case 'ferrofluid': return this.updateFerrofluid(i, x, y);
       case 'superfluid': return this.updateSuperfluid(i, x, y, d);
       case 'antimatter': return this.updateAntimatter(i, x, y);
@@ -93,6 +112,7 @@ export const Behaviors = {
   lifeRunsOut(i, d) {
     if (--this.life[i] > 0) return false;
     const le = d.lifeEnd;
+    if (le !== null && le.explode) this.blast(i % this.w, (i / this.w) | 0, le.explode);
     if (le === null) this.clearCell(i);
     else if (le.alt >= 0 && this.rand() < le.altChance) this.convert(i, le.alt, false, le.altRule);
     else this.convert(i, le.to, false, le.rule);
@@ -103,7 +123,15 @@ export const Behaviors = {
   // Fire burning a solid, a sticky liquid or a non-explosive powder stays on
   // its fuel as an ember and throws loose flames upward, so logs burn in place.
   burnOut(i, x, y, smoky) {
-    const fuel = this.ctype[i];
+    // Flames thrown off a burning ember carry its fuel with the LOOSE bit set,
+    // only so they're drawn in the fuel's flame colour.
+    const c = this.ctype[i];
+    const fuel = c & ~LOOSE_FLAME;
+    if (c & LOOSE_FLAME) {
+      if (--this.life[i] <= 0) { this.clearCell(i); return true; }
+      this.igniteAround(x, y);
+      return false;
+    }
     if (--this.life[i] <= 0) {
       const b = fuel ? DEFS[fuel].burn : null;
       if (smoky && b && b.smoke > 0 && this.rand() < b.smoke) this.convert(i, SMOKE, false, b.smokeRule);
@@ -120,6 +148,7 @@ export const Behaviors = {
           this.spawn(j, FIRE);
           this.life[j] = 10 + ((this.rand() * 20) | 0);
           this.temp[j] = this.temp[i];
+          if (f.flame) this.ctype[j] = fuel | LOOSE_FLAME;
         }
         if (f.state === POWDER) this.movePowder(i, x, y, f);
         return true;
@@ -150,9 +179,9 @@ export const Behaviors = {
           const u = type[j];
           if (CONDUCTOR[u] && this.life[j] === 0) this.sparkAt(j);
           else if (DEFS[u].explode > 0) this.ignite(j, nx, ny);
-          else if (u === NEON) {
+          else if (DEFS[u].excite !== null && !CONDUCTOR[u]) { // neon, argon, sodium vapour... light up
             this.life[j] = 20;
-            if (this.rand() < 0.05) this.emitAt(PHOTON, nx, ny);
+            if (this.rand() < 0.05) this.emitAt(DEFS[u].excite.emit, nx, ny);
           }
         }
       }
@@ -164,6 +193,9 @@ export const Behaviors = {
         type[i] = under;
         this.ctype[i] = 0;
         this.life[i] = SPARK_COOLDOWN;
+        // An LED lights up as the current passes through it.
+        const ex = DEFS[under].excite;
+        if (ex !== null && this.rand() < 0.3) this.emitAt(ex.emit, x, y);
       } else {
         this.clearCell(i);
       }
@@ -172,8 +204,9 @@ export const Behaviors = {
     return false; // falls through to reactions (electrolysis, lightning)
   },
 
-  updateBattery(x, y) {
+  updateBattery(x, y, d) {
     const { w, h, type } = this;
+    if (d.batteryRate < 1 && this.rand() >= d.batteryRate) return true; // a weak cell
     for (let k = 0; k < 4; k++) {
       const nx = x + DX4[k], ny = y + DY4[k];
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
@@ -267,7 +300,9 @@ export const Behaviors = {
         this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 1200);
         const r = REACT[LIGHTNING * NUM + u];
         if (r !== null && r.other.to >= 0 && this.rand() < r.chance) {
-          this.convert(j, r.other.to, r.keepOther, r.other.rule);
+          const o = r.other;
+          if (o.alt >= 0 && this.rand() < o.altChance) this.convert(j, o.alt, r.keepOther, o.altRule);
+          else this.convert(j, o.to, r.keepOther, o.rule);
           continue;
         }
         if (CONDUCTOR[u] && this.life[j] === 0) { this.sparkAt(j); continue; }
@@ -558,6 +593,139 @@ export const Behaviors = {
   updatePhilosopher(x, y) {
     const j = this.randomNeighbor(x, y);
     if (j >= 0 && TRANSMUTABLE[this.type[j]] && this.rand() < 0.02) this.convert(j, GOLD, true, -1);
+    return true;
+  },
+
+  // ---- creatures ------------------------------------------------------------
+
+  // Fish swim through water, birds fly through air, ants walk, worms burrow.
+  // They eat what they find, breed (or lay eggs) when fed, and die of old age,
+  // heat or cold, or (for swimmers) being out of the water.
+  updateCritter(i, x, y, t, d) {
+    const c = d.critter;
+    const { w, h, type } = this;
+    const T = this.temp[i];
+    if (!c.tough && (T > 60 || T < -15)) { this.critterDies(i, d); return true; }
+    let wet = false;
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k], ny = y + DY4[k];
+      if (nx >= 0 && ny >= 0 && nx < w && ny < h && c.home[type[ny * w + nx]]) { wet = true; break; }
+    }
+    const stranded = c.moves === 'swim' && !wet;
+    this.life[i] -= stranded ? 8 : 1;
+    if (this.life[i] <= 0) { this.critterDies(i, d); return true; }
+
+    if (c.spark && this.rand() < c.spark) { // an electric eel's jolt
+      for (let n = 0; n < 3; n++) this.emitAt(ELECTRON, x, y);
+    }
+    if (c.ignite && this.rand() < 0.2) this.igniteAround(x, y);
+
+    // Eat something next to it.
+    if (this.rand() < 0.1) {
+      const j = this.randomNeighbor(x, y);
+      const meal = j >= 0 ? c.food[type[j]] : null;
+      if (meal) { this.eat(i, j, x, y, t, d, meal); return false; }
+    }
+
+    // Move.
+    if (stranded || c.moves === 'walk' || c.moves === 'burrow') {
+      // Fall if there is nothing underneath.
+      if (y + 1 < h) {
+        const b = i + w;
+        const u = type[b];
+        if (u === 0 || (DEFS[u].displaceable && !c.home[u] && DEFS[u].state !== LIQUID)) {
+          this.swap(i, b);
+          return true;
+        }
+      }
+    }
+    if (this.rand() >= c.speed) return false;
+    let j = -1;
+    if (c.moves === 'walk') {
+      if (this.ctype[i] === 0) this.ctype[i] = this.rand() < 0.5 ? 1 : 2;
+      const dx = this.ctype[i] === 1 ? 1 : -1;
+      const nx = x + dx;
+      if (nx < 0 || nx >= w) { this.ctype[i] = 3 - this.ctype[i]; return false; }
+      if (type[i + dx] === 0) j = i + dx;
+      else if (y > 0 && type[i - w] === 0 && type[i - w + dx] === 0) j = i - w + dx; // climb a step
+      else { this.ctype[i] = 3 - this.ctype[i]; return false; }
+    } else {
+      const a = (this.rand() * 8) | 0;
+      const dx = a < 3 ? -1 : a < 5 ? 0 : 1;
+      let dy = a === 0 || a === 3 || a === 5 ? -1 : a === 1 || a === 6 ? 0 : 1;
+      if (dx === 0 && dy === 0) dy = 1;
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) return false;
+      const k = ny * w + nx;
+      const u = type[k];
+      if (c.moves === 'burrow' ? (u === 0 || c.dig[u]) : c.home[u]) j = k;
+    }
+    if (j < 0) return false;
+    this.swap(i, j);
+    if (c.trail && (type[i] === 0 || c.home[type[i]]) && this.rand() < c.trail.chance) {
+      this.spawn(i, c.trail.id);
+      this.record(c.trail.id, c.trail.rule);
+    }
+    return true;
+  },
+
+  eat(i, j, x, y, t, d, meal) {
+    const c = d.critter;
+    const food = this.type[j];
+    let dropped = -1;
+    if (meal.drops >= 0) {
+      // Honey and the like go into an empty cell nearby, or where the food was.
+      dropped = this.spawnNear(x, y, meal.drops);
+      if (dropped < 0) { this.convert(j, meal.drops, false, meal.dropsRule); dropped = j; }
+      else this.record(meal.drops, meal.dropsRule);
+    }
+    if (dropped !== j && meal.becomes !== food) this.convert(j, meal.becomes, false, meal.becomesRule);
+    this.life[i] = Math.min(d.lifeMax, this.life[i] + 300);
+    if (c.breed && this.rand() < c.breed) {
+      let k = -1;
+      for (let n = 0; n < 8 && k < 0; n++) {
+        const m = this.randomNeighbor(x, y);
+        if (m >= 0 && (this.type[m] === 0 || (c.home[this.type[m]] && this.type[m] !== t))) k = m;
+      }
+      if (k >= 0) {
+        this.convert(k, c.egg, false, meal.eggRule);
+        this.shade[k] = (this.rand() * 256) | 0;
+      }
+    }
+  },
+
+  critterDies(i, d) {
+    const le = d.lifeEnd;
+    if (le === null) this.clearCell(i);
+    else if (le.alt >= 0 && this.rand() < le.altChance) this.convert(i, le.alt, false, le.altRule);
+    else this.convert(i, le.to, false, le.rule);
+  },
+
+  // Bamboo, wheat, kelp and cactus grow straight up to a random height.
+  updateStalk(i, x, y, t, d) {
+    const s = d.stalk;
+    if (this.ctype[i] === 0) {
+      this.ctype[i] = 1;
+      this.life[i] = s.height[0] + ((this.rand() * (s.height[1] - s.height[0] + 1)) | 0);
+    }
+    if (this.life[i] > 0 && y > 0 && this.rand() < s.rate) {
+      const j = i - this.w;
+      if (s.into[this.type[j]]) {
+        this.spawn(j, t);
+        this.ctype[j] = 1;
+        this.life[j] = this.life[i] - 1;
+        this.life[i] = 0;
+      }
+    }
+    return false;
+  },
+
+  // A meteor falls like a stone and explodes where it lands.
+  updateMeteor(i, x, y, d) {
+    if (y + 1 < this.h && this.canEnter(d, i + this.w, 1)) return false;
+    const le = d.lifeEnd;
+    this.blast(x, y, le.explode);
+    this.convert(i, le.to, false, le.rule);
     return true;
   },
 };

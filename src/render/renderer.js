@@ -47,7 +47,13 @@ function heatIndex(T) {
 
 const MODE = {
   PLAIN: 0, GAS: 1, FIRE: 2, PLASMA: 3, SPARK: 4, LIGHTNING: 5, CLONE: 6, VOID: 7, MOLTEN: 8,
-  NEON: 9, FLASH: 10, GLITTER: 11, STAR: 12, STRANGE: 13, PULSE: 14,
+  NEON: 9, FLASH: 10, GLITTER: 11, STAR: 12, STRANGE: 13, PULSE: 14, BLINK: 15,
+};
+
+// Elements can ask for a drawing style by name with their `render` field.
+const RENDER = {
+  molten: MODE.MOLTEN, neon: MODE.NEON, flash: MODE.FLASH, glitter: MODE.GLITTER, star: MODE.STAR,
+  strange: MODE.STRANGE, pulse: MODE.PULSE, blink: MODE.BLINK, plasma: MODE.PLASMA,
 };
 
 export class Renderer {
@@ -86,9 +92,13 @@ export class Renderer {
     this.glowAmt = new Float32Array(NUM);
     this.projColor = new Uint32Array(NUM);
     this.projRGB = new Uint8Array(NUM * 3);
+    this.exciteRGB = new Uint8Array(NUM * 3);
+    this.flameRGB = new Int16Array(NUM * 3).fill(-1);
     for (const d of DEFS) {
       this.alpha[d.id] = d.alpha;
       this.glowAmt[d.id] = d.glowAmount;
+      if (d.excite) this.exciteRGB.set(d.excite.rgb, d.id * 3);
+      if (d.flame) this.flameRGB.set(hex(d.flame), d.id * 3);
       if (d.projectile) {
         // Ghostly particles (neutrinos) are drawn faintly.
         const a = d.alpha;
@@ -103,6 +113,8 @@ export class Renderer {
       let m = MODE.PLAIN;
       if (d.state === State.GAS) m = MODE.GAS;
       if (d.glow) m = MODE.MOLTEN;
+      if (d.excite) m = MODE.NEON;
+      if (d.render) m = RENDER[d.render];
       this.mode[d.id] = m;
     }
     this.mode[ID.FIRE] = MODE.FIRE;
@@ -170,7 +182,7 @@ export class Renderer {
   }
 
   paint() {
-    const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view } = this;
+    const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB } = this;
     const { w, h, type, temp, life, ctype, shade, loose } = world;
     const air = world.air;
     const cols = air.cols;
@@ -240,9 +252,10 @@ export class Renderer {
               break;
             }
             case MODE.NEON: {
-              if (life[i] > 0) { // excited by current: a bright sign glow
-                r = 255; g = 90 + (life[i] & 3) * 6; b = 60;
-                emit = 1.2;
+              if (life[i] > 0) { // excited by current or light: a bright sign glow
+                const q = t * 3, f = 0.7 + Math.min(1, life[i] / 20) * 0.3;
+                r = exciteRGB[q] * f; g = exciteRGB[q + 1] * f; b = exciteRGB[q + 2] * f;
+                emit = 0.45;
               } else {
                 const a = alpha[t];
                 r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
@@ -268,6 +281,11 @@ export class Renderer {
               r = palRGB[q]; g = palRGB[q + 1]; b = palRGB[q + 2];
               break;
             }
+            case MODE.BLINK: { // fireflies and plankton flash on and off
+              const on = ((frame + ((i * 37) & 127)) % 110) < 14;
+              if (on) { r = r * 0.4 + 153; g = g * 0.4 + 153; b = b * 0.4 + 60; emit = 1.1; }
+              break;
+            }
             case MODE.PULSE: {
               const pulse = 0.8 + 0.2 * Math.sin(frame * 0.15 + x * 0.3 + y * 0.2);
               const a = alpha[t];
@@ -275,12 +293,21 @@ export class Renderer {
               break;
             }
             case MODE.FIRE: {
-              const fuel = ctype[i];
+              const c = ctype[i];
+              const fuel = c & 0x7fff, loose = c & 0x8000;
               const flick = ((i * 131 + frame * 17) & 15) / 15;
               const v = Math.min(1, life[i] / 45) * 0.8 + flick * 0.2;
               const k = Math.min(255, (v * 255) | 0) * 3;
               r = FIRE[k]; g = FIRE[k + 1]; b = FIRE[k + 2];
-              if (fuel && DEFS[fuel].state !== State.GAS && DEFS[fuel].state !== State.LIQUID) {
+              const fq = fuel * 3;
+              if (fuel && flameRGB[fq] >= 0) { // strontium burns red, barium green, sulfur blue
+                const f = 0.45 + 0.55 * v;
+                r = r * 0.2 + flameRGB[fq] * 0.8 * f;
+                g = g * 0.2 + flameRGB[fq + 1] * 0.8 * f;
+                b = b * 0.2 + flameRGB[fq + 2] * 0.8 * f;
+                const a = 0.45 + 0.55 * v;
+                r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+              } else if (fuel && !loose && DEFS[fuel].state !== State.GAS && DEFS[fuel].state !== State.LIQUID) {
                 // An ember: the fuel's own colour, glowing.
                 const q = (fuel * SHADES + s) * 3;
                 r = palRGB[q] * 0.35 + r * 0.65; g = palRGB[q + 1] * 0.35 + g * 0.55; b = palRGB[q + 2] * 0.35 + b * 0.4;
