@@ -7,8 +7,8 @@
 //   1. pressure changes by how much air flows in or out (divergence)
 //   2. velocity is pushed from high pressure towards low pressure
 // A ring of blocks around the edge is held at zero pressure, so air can
-// escape the map, and Wall blocks stop flow entirely so sealed boxes hold
-// pressure.
+// escape the map, and blocked blocks (Wall, or a line of strong solid across
+// the block) stop flow entirely so sealed boxes hold pressure.
 
 export const CELL = 4;
 
@@ -30,6 +30,8 @@ export class Air {
     this.vx = new Float32Array(n);
     this.vy = new Float32Array(n);
     this.blocked = new Uint8Array(n);
+    this.next = new Uint8Array(n); // blocked map being built by the current frame's scan
+    this.solid = new Uint8Array(n); // airtight particles counted in each block this frame
     this.scratch = new Float32Array(n);
   }
 

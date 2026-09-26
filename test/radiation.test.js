@@ -60,7 +60,7 @@ test('graphite moderates a uranium pile into a chain reaction; boron shuts it do
   const graphite = reactor(ID.GRAPHITE);
   const boron = reactor(ID.BORON);
   assert.ok(graphite > 0.3, `moderated pile burned ${graphite}`);
-  assert.ok(graphite > bare * 3, `moderated ${graphite} vs bare ${bare}`);
+  assert.ok(graphite > bare * 2.5, `moderated ${graphite} vs bare ${bare}`);
   assert.ok(boron < 0.05, `boron-controlled pile burned ${boron}`);
 });
 

@@ -81,9 +81,9 @@ test('heat weakens metal: a blast that cold metal shrugs off tears hot metal', (
     const w = new World(240, 120, 5);
     fillRect(w, 0, 115, 239, 119, ID.WALL);
     fillRect(w, 140, 60, 147, 114, ID.METAL);
-    fillRect(w, 125, 103, 137, 114, ID.NITRO);
+    fillRect(w, 125, 103, 137, 114, ID.GUNPOWDER);
     run(w, 40);
-    detonate(w, ID.NITRO, 125, 137);
+    detonate(w, ID.GUNPOWDER, 125, 137);
     run(w, 150, () => {
       for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.METAL) w.temp[i] = metalTemp;
     });
@@ -124,4 +124,81 @@ test('torn-off debris falls and piles up on the floor', () => {
     }
   }
   assert.ok(lowest === box.y1 && onFloor > torn / 2, `${onFloor} of ${torn} pieces reached the floor`);
+});
+
+// A hollow box of `material`, walls `t` thick, standing on a wall floor.
+function vessel(w, material, x0, y0, x1, y1, t) {
+  fillRect(w, 0, y1 + 1, w.w - 1, w.h - 1, ID.WALL);
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const inside = x >= x0 + t && x <= x1 - t && y >= y0 + t && y <= y1 - t;
+      if (!inside) w.spawn(y * w.w + x, material);
+    }
+  }
+  return { cx: (x0 + x1) >> 1, cy: (y0 + y1) >> 1 };
+}
+
+test('strong solids hold air in, even a one-cell skin; wood leaks', () => {
+  const pumped = (material, t, spark) => {
+    const w = new World(100, 70, 4);
+    const { cx, cy } = vessel(w, material, 30, 20, 70, 60, t);
+    if (spark) w.paint(30, 20, 1, ID.SPARK);
+    run(w, 300, (f) => {
+      w.pressurize(cx, cy, 5, 2);
+      if (spark && f % 20 === 0) w.paint(30, 20, 1, ID.SPARK);
+    });
+    return w.pressureAt(cx, cy);
+  };
+  const steel = pumped(ID.STEEL, 6);
+  assert.ok(steel > 100, `steel box holds ${steel.toFixed(0)}`);
+  assert.ok(pumped(ID.STEEL, 6, true) > 100, 'current running through the steel does not open it');
+  assert.ok(pumped(ID.WOOD, 6) < 20, 'wood lets the air through');
+  assert.ok(pumped(ID.STEEL, 1) > 50, 'an unbroken line of steel seals like Wall');
+});
+
+test('a sealed vessel holds until the pressure passes its strength, then bursts', () => {
+  const w = new World(100, 70, 4);
+  const box = { x0: 30, y0: 20, x1: 70, y1: 60 };
+  const { cx, cy } = vessel(w, ID.METAL, box.x0, box.y0, box.x1, box.y1, 6);
+  let peak = 0, burst = -1;
+  run(w, 1500, (f) => {
+    if (burst < 0) w.pressurize(cx, cy, 5, 2);
+    const p = w.pressureAt(cx, cy);
+    if (p > peak) peak = p;
+    if (burst < 0 && peak > 100 && p < peak / 2) burst = f;
+  });
+  assert.ok(burst > 0, 'the vessel gave way');
+  // Metal's strength is 150: it held well past a hundred, and not much past its strength.
+  assert.ok(peak > 120 && peak < 200, `peaked at ${peak.toFixed(0)}`);
+  assert.ok(Math.abs(w.pressureAt(cx, cy)) < 30, 'the pressure escaped');
+  let thrown = 0;
+  for (let i = 0; i < w.type.length; i++) {
+    if (w.type[i] !== ID.METAL || !w.loose[i]) continue;
+    const x = i % w.w, y = (i / w.w) | 0;
+    if (x < box.x0 - 3 || x > box.x1 + 3 || y < box.y0 - 3) thrown++;
+  }
+  assert.ok(thrown > 10, `${thrown} fragments thrown clear of the vessel`);
+});
+
+test('a charge sealed in a steel shell bursts it open and flings the fragments', () => {
+  const w = new World(200, 110, 8);
+  fillRect(w, 0, 105, 199, 109, ID.WALL);
+  const t = 3, x0 = 95, x1 = 104, y1 = 104 - t, y0 = y1 - 9;
+  fillRect(w, x0 - t, y0 - t, x1 + t, 104, ID.STEEL);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) w.clearCell(y * w.w + x);
+  fillRect(w, x0, y0, x1, y1, ID.C4);
+  run(w, 5);
+  const before = intact(w, ID.STEEL);
+  w.paint(x0 - t, y0 - t, 1, ID.SPARK); // the spark runs through the steel into the charge
+  let farthest = 0;
+  run(w, 200, () => {
+    for (let i = 0; i < w.type.length; i++) {
+      if (w.type[i] === ID.STEEL && w.loose[i]) {
+        const d = Math.hypot(i % w.w - 100, ((i / w.w) | 0) - (y0 + y1) / 2);
+        if (d > farthest) farthest = d;
+      }
+    }
+  });
+  assert.ok(before - intact(w, ID.STEEL) > 15, `${before - intact(w, ID.STEEL)} shell cells torn`);
+  assert.ok(farthest > 40, `fragments flew ${farthest.toFixed(0)} cells`);
 });

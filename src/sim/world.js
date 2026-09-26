@@ -20,12 +20,16 @@
 import { Air, CELL } from './air.js';
 import { DEFS, ID, NUM, State, AMBIENT, REACT } from './elements.js';
 import { MAX_TEMP, MIN_TEMP, GRAVITY } from './constants.js';
-import { COND, AIR_COOL, CONDUCTOR } from './lookups.js';
+import { COND, AIR_COOL, CONDUCTOR, AIRTIGHT } from './lookups.js';
 import { Behaviors } from './behaviors.js';
 import { Particles, initParticles } from './particles.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
+
+// An air block is sealed once this many of its 16 cells are airtight solid:
+// any unbroken line of strong solid across it.
+const SEAL_COUNT = 4;
 
 export { MAX_TEMP, MIN_TEMP };
 
@@ -227,9 +231,12 @@ export class World {
   // ---- main loop ----------------------------------------------------------
 
   step() {
-    const { w, h, type, clock, air } = this;
+    const { w, h, type, clock, air, loose } = this;
     const tick = ++this.tick;
-    air.blocked.fill(0);
+    // Particles read last frame's complete blocked map while this frame's is built.
+    const next = air.next;
+    next.fill(0);
+    air.solid.fill(0);
     for (let y = h - 1; y >= 0; y--) {
       const leftToRight = ((tick + y) & 1) === 0;
       const row = y * w;
@@ -238,12 +245,17 @@ export class World {
         const i = row + x;
         const t = type[i];
         if (t === 0) continue;
-        if (t === WALL) { air.blocked[air.at(x, y)] = 1; continue; }
+        if (t === WALL) { next[air.at(x, y)] = 1; continue; }
+        // Metal carrying a spark is still metal as far as the air is concerned.
+        if ((AIRTIGHT[t] || (t === SPARK && AIRTIGHT[this.ctype[i]])) && !loose[i]) air.solid[air.at(x, y)]++;
         if (clock[i] === tick) continue;
         clock[i] = tick;
         this.update(i, x, y, t);
       }
     }
+    for (let a = 0; a < next.length; a++) if (air.solid[a] >= SEAL_COUNT) next[a] = 1;
+    air.next = air.blocked;
+    air.blocked = next;
     this.computeField();
     this.stepProjectiles();
     this.conductHeat();
@@ -292,7 +304,7 @@ export class World {
       }
     }
     const pr = d.pressure;
-    if (pr !== null && this.air.p[this.air.at(x, y)] >= pr.above && this.rand() < pr.chance) {
+    if (pr !== null && this.pressureOn(x, y, d) >= pr.above && this.rand() < pr.chance) {
       if (pr.ignite) this.ignite(i, x, y);
       else this.convert(i, pr.to, true, pr.rule);
       return;
@@ -330,7 +342,7 @@ export class World {
   // down to a tenth of that at its melting or ignition point. The further the
   // pressure is past that, the faster the surface is stripped away.
   tear(i, x, y, d) {
-    const p = Math.abs(this.air.p[this.air.at(x, y)]);
+    const p = this.pressureOn(x, y, d, true);
     if (p < d.strength * 0.1) return; // cheap early exit: can't tear even when white-hot
     let s = d.strength;
     if (d.softenAt > AMBIENT) {
@@ -340,6 +352,19 @@ export class World {
     if (p <= s || this.rand() >= Math.min(0.9, (1.5 * (p - s)) / s)) return;
     if (!this.exposed(i, x, y)) return;
     this.loose[i] = 1;
+  }
+
+  // The air pressure a particle feels. A solid feels the strongest pressure in
+  // its own air block or the ones beside it: a sealed block has no air of its
+  // own, and the last thin layer of a breached shell still has the full
+  // pressure of the chamber behind it. `magnitude` counts suction too.
+  pressureOn(x, y, d, magnitude = false) {
+    const { p, W } = this.air;
+    const a = this.air.at(x, y);
+    const f = magnitude ? Math.abs : Number;
+    const own = f(p[a]);
+    if (d.state !== SOLID) return own;
+    return Math.max(own, f(p[a - 1]), f(p[a + 1]), f(p[a - W]), f(p[a + W]));
   }
 
   // Is this particle on a surface, touching empty space or a fluid? Debris

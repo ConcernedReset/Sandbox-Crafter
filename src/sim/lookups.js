@@ -10,6 +10,10 @@ export const CONDUCTOR = new Uint8Array(NUM);
 export const CLONEABLE = new Uint8Array(NUM);
 // Light, electrons and protons fly straight through these.
 export const GASLIKE = new Uint8Array(NUM);
+// Strong, non-explosive solids that air can't pass through. An air block with
+// an unbroken line of them across it is sealed, so a shell of stone or metal
+// holds pressure until it tears.
+export const AIRTIGHT = new Uint8Array(NUM);
 
 for (const d of DEFS) {
   COND[d.id] = d.conduct;
@@ -18,6 +22,7 @@ for (const d of DEFS) {
   CLONEABLE[d.id] = d.id !== 0 && !d.projectile
     && ![ID.WALL, ID.CLONE, ID.VOID, ID.SPARK, ID.LIGHTNING].includes(d.id) ? 1 : 0;
   GASLIKE[d.id] = d.state === GAS || (d.state === ENERGY && !d.fixed) ? 1 : 0;
+  AIRTIGHT[d.id] = d.strength >= 25 && d.explode === 0 ? 1 : 0;
 }
 
 const setOf = (keys) => {

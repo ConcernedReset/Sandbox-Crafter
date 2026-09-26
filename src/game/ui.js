@@ -5,6 +5,7 @@ import {
   DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor, halfLife,
 } from '../sim/elements.js';
 import { TOOLS, HEAT_RATE } from './input.js';
+import { AIRTIGHT } from '../sim/lookups.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -204,6 +205,7 @@ export class UI {
     if (d.explode > 0) facts.push('<b>Explosive</b>');
     if (d.pressure) facts.push(`Gives way above pressure <b>${d.pressure.above}</b>`);
     if (d.strength > 0) facts.push(`Tears loose above pressure <b>${d.strength}</b> (less when hot)`);
+    if (AIRTIGHT[d.id]) facts.push('<b>Airtight</b>: a closed shell holds pressure until it tears');
     if (d.emits || d.fission) facts.push('<b>Radioactive</b>');
     if (d.decay) facts.push(`Half-life <b>≈ ${fmtDuration(halfLife(d.decay.chance))}</b>`);
     if (d.fission) facts.push(`Splits into <b>${d.fission.neutrons} neutrons</b>`);
