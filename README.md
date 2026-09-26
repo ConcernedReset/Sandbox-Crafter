@@ -27,6 +27,10 @@ Any static file server works too, e.g. `python3 -m http.server`.
 ## How to play
 
 - **Left-drag** paints with the selected element or tool. **Right-drag** erases.
+- **Shift-drag** draws a straight line and **Ctrl-drag** (Cmd on a Mac) a
+  filled box; both are painted when you let go. The brush can be round or
+  square, from a single cell up to 145 cells across.
+- The panel under the simulation describes the selected element or tool.
 - **Tools:** Erase, Wall (indestructible and airtight), Heat, Cool, Wind (drag
   to blow), Pressure and Vacuum.
 - **Views:** Normal, Heat (a thermal camera) and Pressure (the air grid).
@@ -128,6 +132,10 @@ Each frame (60 per second):
      wall, and are slowed by graphite, heavy water and plastic. Slow neutrons
      split uranium three times as readily as fast ones.
    - Charged particles curve near magnets.
+   - Whatever finally stops a particle takes a hit: it heats up (by about
+     120 °C for light, 350 °C for a proton, 1800 °C for a heavy ion) and the
+     air in front of it gets a kick of pressure, so a heavy beam scorches,
+     melts and tears apart whatever it's aimed at.
    - Alpha particles and heavy ions are stopped by the first solid or liquid
      they meet (a sheet of paper stops an alpha) and settle there as atoms.
    - Gamma rays get through most things; the denser the material, the more
@@ -257,7 +265,8 @@ debris falling, strong shells holding air while wood leaks, a pumped vessel
 bursting once the pressure passes its strength, and a charge sealed in steel
 blowing the shell apart. The radiation tests cover light, neutron
 shielding, reactor criticality, the plutonium blast, magnets and decay. The
-mechanics tests cover X-rays, gamma rays, ultraviolet and microwaves, gadgets
+tools tests cover brush shapes, boxes and particle impacts. The mechanics
+tests cover X-rays, gamma rays, ultraviolet and microwaves, gadgets
 on a battery, creatures, growing plants, meteors, hot ice, tin pest, gallium,
 and the superheavy decay chain. The recipe tests run all 929 production rules
 in the real simulation.

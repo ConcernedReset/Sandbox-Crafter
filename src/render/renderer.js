@@ -165,13 +165,29 @@ export class Renderer {
     if (brush) this.drawBrush(brush);
   }
 
-  drawBrush({ x, y, r, color }) {
+  // The brush outline, plus the line or box being dragged out with Shift or Ctrl.
+  drawBrush({ x, y, r, square, color, from }) {
     const { ctx, canvas } = this;
     const sx = canvas.width / this.world.w;
     const sy = canvas.height / this.world.h;
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse((x + 0.5) * sx, (y + 0.5) * sy, (r + 0.5) * sx, (r + 0.5) * sy, 0, 0, Math.PI * 2);
+    if (from && from.kind === 'box') {
+      const x0 = Math.min(from.x, x), y0 = Math.min(from.y, y);
+      ctx.rect(x0 * sx, y0 * sy, (Math.abs(x - from.x) + 1) * sx, (Math.abs(y - from.y) + 1) * sy);
+    } else {
+      const outline = (cx, cy) => {
+        if (square) ctx.rect((cx - r) * sx, (cy - r) * sy, (2 * r + 1) * sx, (2 * r + 1) * sy);
+        else ctx.ellipse((cx + 0.5) * sx, (cy + 0.5) * sy, (r + 0.5) * sx, (r + 0.5) * sy, 0, 0, Math.PI * 2);
+      };
+      outline(x, y);
+      if (from) {
+        ctx.moveTo((from.x + 0.5) * sx + (square ? 0 : (r + 0.5) * sx), (from.y + 0.5) * sy);
+        outline(from.x, from.y);
+        ctx.moveTo((from.x + 0.5) * sx, (from.y + 0.5) * sy);
+        ctx.lineTo((x + 0.5) * sx, (y + 0.5) * sy);
+      }
+    }
     ctx.lineWidth = Math.max(1, sx * 0.35);
     ctx.strokeStyle = 'rgba(10,12,16,0.6)';
     ctx.stroke();

@@ -4,7 +4,7 @@
 import { World } from './sim/world.js';
 import { DEFS, ID } from './sim/elements.js';
 import { Renderer } from './render/renderer.js';
-import { Input } from './game/input.js';
+import { Input, MAX_BRUSH } from './game/input.js';
 import { Progress } from './game/progress.js';
 import { loadDemoScene } from './game/scene.js';
 import { UI, toolColor } from './game/ui.js';
@@ -22,6 +22,7 @@ const game = {
   progress,
   selection: { kind: 'element', id: ID.SAND },
   brush: 4,
+  brushShape: 'circle',
   paused: false,
   select(sel) {
     this.selection = sel;
@@ -29,7 +30,7 @@ const game = {
     ui.renderInspect();
   },
   setBrush(r) {
-    this.brush = Math.max(1, Math.min(24, r));
+    this.brush = Math.max(0, Math.min(MAX_BRUSH, r));
     ui.setBrush(this.brush);
   },
 };
@@ -97,6 +98,14 @@ function dismissTip() {
 $('btn-pause').addEventListener('click', () => setPaused(!game.paused));
 $('btn-step').addEventListener('click', stepOnce);
 $('btn-clear').addEventListener('click', () => world.clearAll());
+for (const b of document.querySelectorAll('[data-shape]')) {
+  b.addEventListener('click', () => {
+    game.brushShape = b.dataset.shape;
+    for (const o of document.querySelectorAll('[data-shape]')) {
+      o.setAttribute('aria-checked', String(o === b));
+    }
+  });
+}
 for (const b of document.querySelectorAll('[data-view]')) {
   b.addEventListener('click', () => setView(b.dataset.view));
 }
@@ -156,11 +165,14 @@ renderer.resize();
 function brushOutline() {
   if (!hover) return null;
   const sel = game.selection;
+  const shape = input.shape;
   let color;
-  if (input.erasing) color = toolColor('erase');
+  if (input.erasing || shape?.erase) color = toolColor('erase');
   else if (sel.kind === 'tool') color = toolColor(sel.id);
   else color = DEFS[sel.id].colors[0];
-  return { x: hover.x, y: hover.y, r: game.brush, color };
+  const outline = { x: hover.x, y: hover.y, r: game.brush, square: game.brushShape === 'square', color };
+  if (shape) outline.from = { kind: shape.kind, x: shape.x0, y: shape.y0 };
+  return outline;
 }
 
 let last = performance.now();

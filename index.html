@@ -57,6 +57,8 @@
             <div><kbd>Space</kbd> pause</div>
             <div><kbd>.</kbd> step</div>
             <div><kbd>[</kbd> <kbd>]</kbd> brush size</div>
+            <div><kbd>Shift</kbd>-drag a line</div>
+            <div><kbd>Ctrl</kbd>-drag a box</div>
             <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> views</div>
             <div>Right-click erases</div>
           </div>
@@ -84,6 +86,7 @@
         <div class="hud-cell" id="hud-cell">Point at a particle to inspect it</div>
         <div class="hud-stats" id="hud-stats"></div>
       </div>
+      <div class="inspect" id="inspect" aria-live="polite"></div>
     </section>
 
     <aside class="panel">
@@ -98,15 +101,24 @@
         <div class="tools" id="tools"></div>
         <div class="brush">
           <label for="brush">Brush</label>
-          <input type="range" id="brush" min="1" max="24" value="4">
-          <output id="brush-out" for="brush">4</output>
+          <input type="range" id="brush" min="0" max="72" value="4">
+          <output id="brush-out" for="brush">9</output>
+          <div class="shape-toggle" role="radiogroup" aria-label="Brush shape">
+            <button type="button" role="radio" aria-checked="true" data-shape="circle" title="Round brush">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/></svg>
+              <span class="sr-only">Round</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" data-shape="square" title="Square brush">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11"/></svg>
+              <span class="sr-only">Square</span>
+            </button>
+          </div>
         </div>
         <div class="search">
           <label for="search" class="sr-only">Find an element</label>
           <input type="search" id="search" placeholder="Find an element" autocomplete="off" spellcheck="false">
         </div>
         <div class="palette" id="palette"></div>
-        <div class="inspect" id="inspect"></div>
       </div>
 
       <div class="panel-body" id="panel-recipes" role="tabpanel" aria-labelledby="tab-recipes" hidden>

@@ -68,14 +68,6 @@ export const Particles = {
     this.plife[k] = this.plife[last];
   },
 
-  eraseProjectiles(cx, cy, r) {
-    const r2 = r * r + r;
-    for (let k = this.pn - 1; k >= 0; k--) {
-      const dx = this.px[k] - cx - 0.5, dy = this.py[k] - cy - 0.5;
-      if (dx * dx + dy * dy <= r2) this.killProjectile(k);
-    }
-  },
-
   // Spread each magnet's pull over the nearby air cells.
   computeField() {
     const { field, magnetCount } = this;
@@ -179,22 +171,20 @@ export const Particles = {
       case PMODE.photon:
         if (e.transparent || (GASLIKE[u] && !e.opaque)) return PASS;
         if (e.reflect > 0 && this.rand() < e.reflect) { this.bounce(k, ix, iy, lx, ly); return BOUNCE; }
-        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 25);
-        return DEAD;
+        return this.impact(j, lx, ly, d);
       case PMODE.electron:
         if (CONDUCTOR[u]) {
           if (this.life[j] === 0) this.sparkAt(j);
-          return DEAD;
+          return this.impact(j, lx, ly, d);
         }
         if (e.transparent || GASLIKE[u]) return PASS;
-        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 5);
-        return DEAD;
+        return this.impact(j, lx, ly, d);
       case PMODE.proton: {
         if (GASLIKE[u]) return PASS;
         // It stops and sometimes picks up an electron as a wisp of hydrogen.
         const li = ly * this.w + lx;
         if (this.type[li] === 0 && this.rand() < 0.25) this.spawn(li, HYDROGEN);
-        return DEAD;
+        return this.impact(j, lx, ly, d);
       }
       case PMODE.neutron: {
         if (e.moderator) {
@@ -205,15 +195,14 @@ export const Particles = {
             this.pvy[k] *= f;
           }
         }
-        if (e.nAbsorb > 0 && this.rand() < e.nAbsorb) return DEAD;
+        if (e.nAbsorb > 0 && this.rand() < e.nAbsorb) return this.impact(j, lx, ly, d);
         return PASS;
       }
       case PMODE.positron:
         if (GASLIKE[u]) return PASS;
         // Annihilation: two photons fly off in opposite directions.
         this.annihilate(k, ix, iy);
-        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 150);
-        return DEAD;
+        return this.impact(j, lx, ly, d);
       case PMODE.alpha:
       case PMODE.ion: {
         // Heavy and slow: stopped by the first thing that isn't a gas (even
@@ -225,27 +214,24 @@ export const Particles = {
           this.spawn(li, ex[0].id);
           this.record(ex[0].id, ex[0].rule);
         }
-        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 10);
-        return DEAD;
+        return this.impact(j, lx, ly, d);
       }
       case PMODE.gamma: {
         // Dense matter soaks up gamma rays; light matter barely slows them.
         if (GASLIKE[u]) return PASS;
         const stop = e.indestructible ? 1 : Math.min(0.9, e.density * 0.025 + e.nAbsorb * 0.3);
         if (this.rand() >= stop) return PASS;
-        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 20);
-        return DEAD;
+        return this.impact(j, lx, ly, d);
       }
       case PMODE.xray:
         // Straight through flesh, wood and water; stopped by bone and metal.
         if (GASLIKE[u] || (!e.xrayOpaque && !e.indestructible && e.density < 3)) return PASS;
-        return DEAD;
+        return this.impact(j, lx, ly, d);
       case PMODE.uv:
         // Like light, except ordinary glass blocks it (quartz doesn't).
         if ((e.transparent && !e.uvBlock) || (GASLIKE[u] && !e.opaque)) return PASS;
         if (e.reflect > 0 && this.rand() < e.reflect) { this.bounce(k, ix, iy, lx, ly); return BOUNCE; }
-        if (!e.indestructible) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 10);
-        return DEAD;
+        return this.impact(j, lx, ly, d);
       case PMODE.microwave:
         // Metal reflects them and arcs; anything wet soaks them up and heats.
         if (CONDUCTOR[u]) {
@@ -255,7 +241,7 @@ export const Particles = {
         }
         if (e.indestructible) return DEAD;
         if (e.wet) {
-          this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 12);
+          this.impact(j, lx, ly, d);
           return this.rand() < 0.3 ? DEAD : PASS;
         }
         return PASS;
@@ -264,8 +250,20 @@ export const Particles = {
     }
   },
 
+  // A particle slams into cell j, dumping its energy as heat there and as a
+  // kick of air pressure at (x, y), the open cell it hit from (see hitHeat /
+  // hitPressure). Returns DEAD.
+  impact(j, x, y, d) {
+    if (DEFS[this.type[j]].indestructible) return DEAD;
+    if (d.hitHeat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + d.hitHeat);
+    if (d.hitPressure) this.air.addPressure(this.air.at(x, y), d.hitPressure);
+    return DEAD;
+  },
+
   applyHit(k, r, j, ix, iy, lx, ly) {
     if (r.fission) { this.fission(j, this.type[j], ix, iy); return DEAD; }
+    // Whatever else the hit does, a particle that stops here still lands a blow.
+    if (!r.keep) this.impact(j, lx, ly, DEFS[this.ptype[k]]);
     if (r.recover) this.life[j] = r.recover;
     if (r.heat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
     if (r.action === 'spark') this.sparkNeighbors(ix, iy);

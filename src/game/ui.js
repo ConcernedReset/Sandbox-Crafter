@@ -146,9 +146,11 @@ export class UI {
     });
   }
 
+  // The slider holds the brush radius; the readout shows its width in cells.
   setBrush(r) {
     $('brush').value = r;
-    $('brush-out').textContent = r;
+    $('brush-out').textContent = 2 * r + 1;
+    $('brush-out').title = `${2 * r + 1} cells across`;
   }
 
   renderPalette() {

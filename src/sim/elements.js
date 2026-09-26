@@ -67,6 +67,8 @@ export const CATEGORIES = [
 // Radiation and particles:
 //   projectile  flies in a straight line on the particle layer (photon, ...)
 //   speed, charge   for projectiles; charged ones curve near magnets
+//   hitHeat, hitPressure   heat and air pressure a projectile dumps where it's
+//               absorbed (defaults per kind of particle, see HIT_IMPACT)
 //   emits       [{ p, chance }] particles thrown off each frame
 //   selfHeat    °C gained per frame (radioactive warmth)
 //   decay       { chance, to, spawn } random decay, like a half-life
@@ -316,7 +318,7 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'SPARK', name: 'Spark', sym: 'Sp', cat: 'energy', state: ENERGY, fixed: true,
-    colors: ['#fff7a8', '#ffe96b'], life: [4, 4], behavior: 'spark',
+    colors: ['#fff7a8', '#ffe96b'], life: [4, 4], behavior: 'spark', transparent: true,
     desc: 'Electricity. Runs along metal. Paint it onto metal or into the air.',
     hint: 'Touch a Battery to Metal.',
   },
@@ -471,6 +473,14 @@ const id = (key) => {
   return ID[key];
 };
 
+// How hard each kind of flying particle hits whatever absorbs it: [heat in
+// °C, air pressure]. Particles can override these with hitHeat / hitPressure.
+const HIT_IMPACT = {
+  photon: [120, 0.3], electron: [80, 0.4], proton: [350, 2], neutron: [300, 1.5],
+  positron: [900, 5], neutrino: [0, 0], alpha: [450, 2.5], ion: [1800, 8], gamma: [300, 1.5],
+  xray: [120, 0.4], uv: [180, 0.4], microwave: [45, 0], ghost: [0, 0],
+};
+
 // How each kind of flying particle behaves when it meets matter.
 export const PMODE = {
   photon: 1, electron: 2, proton: 3, neutron: 4, positron: 5, neutrino: 6,
@@ -547,6 +557,8 @@ function normalize(e, i) {
     pmode: e.projectile ? PMODE[e.projectile] : 0,
     speed: e.speed ?? 0,
     charge: e.charge ?? 0,
+    hitHeat: e.hitHeat ?? (e.projectile ? HIT_IMPACT[e.projectile][0] : 0),
+    hitPressure: e.hitPressure ?? (e.projectile ? HIT_IMPACT[e.projectile][1] : 0),
     emits: null,
     selfHeat: e.selfHeat ?? 0,
     decay: null,

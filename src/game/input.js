@@ -1,6 +1,8 @@
 // Mouse, touch and pen input on the world canvas. Strokes are interpolated
 // between pointer events so fast drags leave a continuous line, and the
 // selected tool keeps acting every frame while the pointer is held down.
+// Holding Shift while dragging draws a straight line, and Ctrl (or Cmd) a
+// filled box; both are only applied when the button is released.
 
 import { DEFS, ID, State } from '../sim/elements.js';
 
@@ -18,6 +20,7 @@ const DENSITY = {
 };
 
 export const TOOLS = ['erase', 'wall', 'heat', 'cool', 'wind', 'pressure', 'vacuum'];
+export const MAX_BRUSH = 72;
 
 export class Input {
   constructor(canvas, getWorld, state) {
@@ -31,6 +34,7 @@ export class Input {
     this.y = 0;
     this.lastX = 0;
     this.lastY = 0;
+    this.shape = null; // { kind: 'line' | 'box', x0, y0, erase } while Shift/Ctrl-dragging
     this.onHover = null;
 
     canvas.addEventListener('pointerdown', (e) => this.pointerDown(e));
@@ -55,9 +59,14 @@ export class Input {
   pointerDown(e) {
     this.canvas.setPointerCapture(e.pointerId);
     this.toCell(e);
+    this.over = true;
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      this.shape = { kind: e.shiftKey ? 'line' : 'box', x0: this.x, y0: this.y, erase: e.button === 2 };
+      this.hover();
+      return;
+    }
     this.down = true;
     this.erasing = e.button === 2;
-    this.over = true;
     this.lastX = this.x;
     this.lastY = this.y;
     this.hover();
@@ -70,6 +79,11 @@ export class Input {
   }
 
   pointerUp(e) {
+    if (this.shape) {
+      this.toCell(e);
+      this.commitShape(this.shape);
+      this.shape = null;
+    }
     this.down = false;
     this.erasing = false;
     if (e.pointerType !== 'mouse') this.over = false;
@@ -84,38 +98,66 @@ export class Input {
   apply() {
     if (!this.down) return;
     const world = this.getWorld();
-    const r = this.state.brush;
-    const dx = this.x - this.lastX, dy = this.y - this.lastY;
-    const dist = Math.hypot(dx, dy);
-    const steps = Math.max(1, Math.ceil(dist / Math.max(1, r * 0.5)));
-    for (let s = 1; s <= steps; s++) {
-      const px = Math.round(this.lastX + (dx * s) / steps);
-      const py = Math.round(this.lastY + (dy * s) / steps);
-      this.act(world, px, py, r, dx, dy);
-    }
+    world.brushShape = this.state.brushShape;
+    const area = this.strokeArea(world, this.lastX, this.lastY, this.x, this.y);
+    this.act(world, area, this.x - this.lastX, this.y - this.lastY, this.erasing);
     this.lastX = this.x;
     this.lastY = this.y;
   }
 
-  act(world, x, y, r, dx, dy) {
-    if (this.erasing) { world.erase(x, y, r); return; }
+  // Every cell the brush covers on its way from (x0, y0) to (x1, y1), each
+  // visited once, so a stroke heats or pressurises evenly along its length.
+  strokeArea(world, x0, y0, x1, y1) {
+    const r = this.state.brush;
+    const dx = x1 - x0, dy = y1 - y0;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / Math.max(1, r * 0.5)));
+    return (fn) => {
+      const seen = new Set();
+      for (let s = 1; s <= steps; s++) {
+        const px = Math.round(x0 + (dx * s) / steps);
+        const py = Math.round(y0 + (dy * s) / steps);
+        world.brushArea(px, py, r)((i, x, y) => {
+          if (seen.has(i)) return;
+          seen.add(i);
+          fn(i, x, y);
+        });
+      }
+    };
+  }
+
+  // Draw the finished line (with the brush) or fill the finished box.
+  commitShape(shape) {
+    const world = this.getWorld();
+    world.brushShape = this.state.brushShape;
+    const { x0, y0 } = shape, x1 = this.x, y1 = this.y;
+    const area = shape.kind === 'box'
+      ? (fn) => world.forRect(x0, y0, x1, y1, fn)
+      : this.strokeArea(world, x0, y0, x1, y1);
+    // A line drawn with the brush starts at the first point, not just after it.
+    const start = shape.kind === 'line' ? world.brushArea(x0, y0, this.state.brush) : null;
+    const both = start ? (fn) => { start(fn); area(fn); } : area;
+    this.act(world, both, x1 - x0, y1 - y0, shape.erase);
+  }
+
+  act(world, area, dx, dy, erasing) {
+    if (erasing) { world.eraseArea(area); return; }
     const sel = this.state.selection;
     if (sel.kind === 'element') {
-      world.paint(x, y, r, sel.id, DENSITY[DEFS[sel.id].state] ?? 1);
+      world.paintArea(area, sel.id, DENSITY[DEFS[sel.id].state] ?? 1);
       return;
     }
     switch (sel.id) {
-      case 'erase': world.erase(x, y, r); break;
-      case 'wall': world.paint(x, y, r, ID.WALL, 1); break;
-      case 'heat': world.heat(x, y, r, HEAT_RATE); break;
-      case 'cool': world.heat(x, y, r, -HEAT_RATE); break;
-      case 'pressure': world.pressurize(x, y, r, PRESSURE_RATE); break;
-      case 'vacuum': world.pressurize(x, y, r, -PRESSURE_RATE); break;
+      case 'erase': world.eraseArea(area); break;
+      case 'wall': world.paintArea(area, ID.WALL, 1); break;
+      case 'heat': world.heatArea(area, HEAT_RATE); break;
+      case 'cool': world.heatArea(area, -HEAT_RATE); break;
+      case 'pressure': world.pressurizeArea(area, PRESSURE_RATE); break;
+      case 'vacuum': world.pressurizeArea(area, -PRESSURE_RATE); break;
       case 'wind':
         if (dx || dy) {
           const len = Math.hypot(dx, dy);
           const k = Math.min(4, len) * WIND_STRENGTH;
-          world.blow(x, y, r, (dx / len) * k, (dy / len) * k);
+          world.blowArea(area, (dx / len) * k, (dy / len) * k);
         }
         break;
       default: break;

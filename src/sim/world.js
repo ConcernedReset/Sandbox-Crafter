@@ -56,6 +56,7 @@ export class World {
     this.discoveries = [];
     this.count = 0;
     this.blockedMoving = false;
+    this.brushShape = 'circle';
     initParticles(this);
   }
 
@@ -642,7 +643,7 @@ export class World {
 
   // ---- tools (used by the game and by tests) -------------------------------
 
-  // Visit every cell within radius r of (cx, cy).
+  // Visit every cell within radius r of (cx, cy). Radius 0 is a single cell.
   forCircle(cx, cy, r, fn) {
     const r2 = r * r + r * 0.8;
     for (let dy = -r; dy <= r; dy++) {
@@ -656,37 +657,65 @@ export class World {
     }
   }
 
-  paint(cx, cy, r, t, density = 1) {
+  // Visit every cell in the rectangle between two corners (in any order).
+  forRect(x0, y0, x1, y1, fn) {
+    const xa = Math.max(0, Math.min(x0, x1)), xb = Math.min(this.w - 1, Math.max(x0, x1));
+    const ya = Math.max(0, Math.min(y0, y1)), yb = Math.min(this.h - 1, Math.max(y0, y1));
+    for (let y = ya; y <= yb; y++) {
+      for (let x = xa; x <= xb; x++) fn(y * this.w + x, x, y);
+    }
+  }
+
+  // The area under the brush: a circle, or a square when brushShape is 'square'.
+  brushArea(cx, cy, r) {
+    return this.brushShape === 'square'
+      ? (fn) => this.forRect(cx - r, cy - r, cx + r, cy + r, fn)
+      : (fn) => this.forCircle(cx, cy, r, fn);
+  }
+
+  // The tools below each take an `area` (a function that visits cells), so
+  // the same code paints under the brush, along a line, or across a box.
+  paintArea(area, t, density = 1) {
     if (DEFS[t].projectile) {
       // Flying particles are sprayed out in random directions.
-      this.forCircle(cx, cy, r, (i, x, y) => {
+      area((i, x, y) => {
         if (this.rand() < density * 0.15) this.spawnProjectile(t, x + this.rand(), y + this.rand());
       });
       return;
     }
-    this.forCircle(cx, cy, r, (i) => {
+    area((i) => {
       const u = this.type[i];
       if (t === SPARK && CONDUCTOR[u] && this.life[i] === 0) { this.sparkAt(i); return; }
       if (u === 0 && (density >= 1 || this.rand() < density)) this.spawn(i, t);
     });
   }
 
-  erase(cx, cy, r) {
-    this.forCircle(cx, cy, r, (i) => { if (this.type[i]) this.clearCell(i); });
-    this.eraseProjectiles(cx, cy, r);
+  eraseArea(area) {
+    // Mark the cells, then remove flying particles in one pass over them.
+    const mask = this.eraseMask ??= new Uint8Array(this.w * this.h);
+    const cells = [];
+    area((i) => {
+      if (this.type[i]) this.clearCell(i);
+      mask[i] = 1;
+      cells.push(i);
+    });
+    for (let k = this.pn - 1; k >= 0; k--) {
+      if (mask[(this.py[k] | 0) * this.w + (this.px[k] | 0)]) this.killProjectile(k);
+    }
+    for (const i of cells) mask[i] = 0;
   }
 
-  heat(cx, cy, r, amount) {
-    this.forCircle(cx, cy, r, (i) => {
+  heatArea(area, amount) {
+    area((i) => {
       if (!this.type[i] || this.type[i] === WALL) return;
       const T = this.temp[i] + amount;
       this.temp[i] = T > MAX_TEMP ? MAX_TEMP : T < MIN_TEMP ? MIN_TEMP : T;
     });
   }
 
-  pressurize(cx, cy, r, amount) {
+  pressurizeArea(area, amount) {
     const seen = new Set();
-    this.forCircle(cx, cy, r, (i, x, y) => {
+    area((i, x, y) => {
       const a = this.air.at(x, y);
       if (seen.has(a)) return;
       seen.add(a);
@@ -694,15 +723,21 @@ export class World {
     });
   }
 
-  blow(cx, cy, r, dx, dy) {
+  blowArea(area, dx, dy) {
     const seen = new Set();
-    this.forCircle(cx, cy, r, (i, x, y) => {
+    area((i, x, y) => {
       const a = this.air.at(x, y);
       if (seen.has(a) || this.air.blocked[a]) return;
       seen.add(a);
       this.air.addVelocity(a, dx, dy);
     });
   }
+
+  paint(cx, cy, r, t, density = 1) { this.paintArea(this.brushArea(cx, cy, r), t, density); }
+  erase(cx, cy, r) { this.eraseArea(this.brushArea(cx, cy, r)); }
+  heat(cx, cy, r, amount) { this.heatArea(this.brushArea(cx, cy, r), amount); }
+  pressurize(cx, cy, r, amount) { this.pressurizeArea(this.brushArea(cx, cy, r), amount); }
+  blow(cx, cy, r, dx, dy) { this.blowArea(this.brushArea(cx, cy, r), dx, dy); }
 
   pressureAt(x, y) {
     return this.air.p[this.air.at(x, y)];

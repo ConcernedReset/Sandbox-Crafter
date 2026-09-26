@@ -14,6 +14,8 @@
   --brass: #d9a441;
   --brass-soft: rgba(217, 164, 65, 0.14);
   --chamber: #0a0c10;
+  /* The simulation keeps its 5:3 shape and leaves room below for the HUD and inspector. */
+  --screen-w: calc((100dvh - 250px) * 5 / 3);
   --danger: #e76a4d;
 
   --cat-powder: #d8b36a;
@@ -225,7 +227,7 @@ kbd {
 .screen {
   position: relative;
   width: 100%;
-  max-width: calc((100dvh - 120px) * 5 / 3);
+  max-width: var(--screen-w);
   min-width: min(100%, 320px);
   margin-inline: auto;
 }
@@ -344,7 +346,7 @@ kbd {
   gap: 4px 16px;
   flex-wrap: wrap;
   width: 100%;
-  max-width: calc((100dvh - 120px) * 5 / 3);
+  max-width: var(--screen-w);
   min-width: min(100%, 320px);
   margin-inline: auto;
   font: 12px/1.4 var(--font-mono);
@@ -427,7 +429,22 @@ kbd {
   color: var(--muted);
 }
 .brush input { flex: 1; accent-color: var(--brass); min-width: 0; }
-.brush output { font: 12px var(--font-mono); min-width: 2ch; text-align: right; }
+.brush output { font: 12px var(--font-mono); min-width: 3ch; text-align: right; }
+.shape-toggle { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.shape-toggle button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.shape-toggle button + button { border-left: 1px solid var(--line); }
+.shape-toggle svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.shape-toggle button:hover { color: var(--text); }
+.shape-toggle button[aria-checked='true'] { background: var(--brass-soft); color: var(--brass); }
 
 .palette { display: flex; flex-direction: column; gap: 14px; }
 .group-head {
@@ -540,8 +557,14 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+  width: 100%;
+  max-width: var(--screen-w);
+  min-width: min(100%, 320px);
+  margin-inline: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
 }
 .inspect-head { display: flex; align-items: center; gap: 10px; }
 .inspect-title { font: 700 17px/1.1 var(--font-display); }
@@ -602,7 +625,7 @@ kbd {
 @media (max-width: 980px) {
   .stage { grid-template-columns: minmax(0, 1fr); }
   .panel { position: static; max-height: none; }
-  .screen, .hud { max-width: none; }
+  .screen, .hud, .inspect { max-width: none; }
 }
 
 @media (max-width: 560px) {
