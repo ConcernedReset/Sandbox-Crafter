@@ -327,6 +327,49 @@ kbd {
 .tip button:hover { color: var(--text); background: var(--panel-2); }
 .tip svg { width: 12px; height: 12px; fill: currentColor; }
 
+/* Zoom buttons and, when zoomed in, a map of the whole world above them. */
+.zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(10, 12, 16, 0.82);
+}
+.zoom button {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 500 12px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.zoom button + button { border-left: 1px solid var(--line); }
+.zoom button:hover:not(:disabled) { color: var(--text); background: var(--panel-2); }
+.zoom #zoom-reset { min-width: 48px; }
+.zoom svg { width: 12px; height: 12px; fill: currentColor; }
+.viewport .minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 52px;
+  z-index: 4;
+  width: 160px;
+  height: 96px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--chamber);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.viewport .minimap[hidden] { display: none; }
+
 .paused-flag {
   position: absolute;
   top: 12px;
@@ -639,6 +682,9 @@ kbd {
   .segmented button { flex: 1; padding: 0 6px; }
   .tip { position: static; max-width: none; margin-top: 8px; font-size: 12.5px; }
   .tools { grid-template-columns: repeat(4, 1fr); }
+  .zoom { right: 8px; bottom: 8px; }
+  .zoom button { min-width: 28px; height: 26px; padding: 0 6px; }
+  .viewport .minimap { right: 8px; bottom: 42px; width: 80px; height: 48px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

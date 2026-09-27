@@ -2,6 +2,8 @@
 // one pixel per cell, then scaled up with nearest-neighbour filtering. Hot
 // and energetic particles also feed a low-resolution glow layer that is
 // drawn on top with additive blending, which gives fire and lava a bloom.
+// A camera ({ x, y, vw, vh } in cells) picks the part of the world shown, so
+// zooming in just scales up a smaller piece of the same image.
 
 import { DEFS, ID, NUM, State } from '../sim/elements.js';
 import { CELL } from '../sim/air.js';
@@ -67,9 +69,10 @@ const RENDER = {
 };
 
 export class Renderer {
-  constructor(canvas, world) {
+  constructor(canvas, world, camera) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.camera = camera ?? { x: 0, y: 0, vw: world.w, vh: world.h };
     this.view = 'normal';
     this.frame = 0;
     this.count = 0;
@@ -163,30 +166,53 @@ export class Renderer {
   draw(brush) {
     this.frame++;
     this.paint();
-    const { ctx, canvas } = this;
+    const { ctx, canvas, camera: cam } = this;
     this.bufferCtx.putImageData(this.image, 0, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(this.buffer, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(this.buffer, cam.x, cam.y, cam.vw, cam.vh, 0, 0, canvas.width, canvas.height);
     if (this.view !== 'heat') {
       this.glowCtx.putImageData(this.glowImage, 0, 0);
       ctx.imageSmoothingEnabled = true;
       ctx.globalCompositeOperation = 'lighter';
-      const { cols, rows } = this.world.air;
-      // The glow grid can overhang the world slightly; scale to match cells.
-      ctx.drawImage(this.glow, 0, 0, cols, rows, 0, 0,
-        (canvas.width * cols * CELL) / this.world.w, (canvas.height * rows * CELL) / this.world.h);
+      // One glow pixel per air block.
+      ctx.drawImage(this.glow, cam.x / CELL, cam.y / CELL, cam.vw / CELL, cam.vh / CELL,
+        0, 0, canvas.width, canvas.height);
       ctx.globalCompositeOperation = 'source-over';
     }
     if (brush) this.drawBrush(brush);
   }
 
+  // A small map of the whole world with the zoomed-in view marked on it.
+  drawMinimap(map) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(map.clientWidth * dpr));
+    const h = Math.max(1, Math.round(map.clientHeight * dpr));
+    if (map.width !== w || map.height !== h) { map.width = w; map.height = h; }
+    const m = map.getContext('2d');
+    const cam = this.camera;
+    m.imageSmoothingEnabled = true;
+    m.drawImage(this.buffer, 0, 0, w, h);
+    const sx = w / this.world.w, sy = h / this.world.h;
+    const x0 = cam.x * sx, y0 = cam.y * sy, x1 = x0 + cam.vw * sx, y1 = y0 + cam.vh * sy;
+    m.fillStyle = 'rgba(10, 12, 16, 0.55)'; // dim what's off screen
+    m.fillRect(0, 0, w, y0);
+    m.fillRect(0, y1, w, h - y1);
+    m.fillRect(0, y0, x0, y1 - y0);
+    m.fillRect(x1, y0, w - x1, y1 - y0);
+    m.strokeStyle = '#d9a441';
+    m.lineWidth = dpr * 1.5;
+    m.strokeRect(x0 + m.lineWidth / 2, y0 + m.lineWidth / 2, x1 - x0 - m.lineWidth, y1 - y0 - m.lineWidth);
+  }
+
   // The brush outline, plus the line or box being dragged out with Shift or Ctrl.
   drawBrush({ x, y, r, square, color, from }) {
-    const { ctx, canvas } = this;
-    const sx = canvas.width / this.world.w;
-    const sy = canvas.height / this.world.h;
+    const { ctx, canvas, camera: cam } = this;
+    const sx = canvas.width / cam.vw;
+    const sy = canvas.height / cam.vh;
+    const base = canvas.width / this.world.w; // the outline stays thin when zoomed in
     ctx.save();
+    ctx.translate(-cam.x * sx, -cam.y * sy);
     ctx.beginPath();
     if (from && from.kind === 'box') {
       const x0 = Math.min(from.x, x), y0 = Math.min(from.y, y);
@@ -204,10 +230,10 @@ export class Renderer {
         ctx.lineTo((x + 0.5) * sx, (y + 0.5) * sy);
       }
     }
-    ctx.lineWidth = Math.max(1, sx * 0.35);
+    ctx.lineWidth = Math.max(1, base * 0.35);
     ctx.strokeStyle = 'rgba(10,12,16,0.6)';
     ctx.stroke();
-    ctx.lineWidth = Math.max(1, sx * 0.18);
+    ctx.lineWidth = Math.max(1, base * 0.18);
     ctx.strokeStyle = color || 'rgba(236,230,216,0.8)';
     ctx.stroke();
     ctx.restore();

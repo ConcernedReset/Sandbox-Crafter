@@ -5,6 +5,7 @@ import { World } from './sim/world.js';
 import { DEFS, ID } from './sim/elements.js';
 import { Renderer } from './render/renderer.js';
 import { Input, MAX_BRUSH } from './game/input.js';
+import { Camera } from './game/camera.js';
 import { Progress } from './game/progress.js';
 import { loadDemoScene } from './game/scene.js';
 import { UI, toolColor } from './game/ui.js';
@@ -37,8 +38,9 @@ const game = {
 
 const ui = new UI(game);
 const canvas = $('world');
-const renderer = new Renderer(canvas, world);
-const input = new Input(canvas, () => world, game);
+const camera = new Camera(WIDTH, HEIGHT);
+const renderer = new Renderer(canvas, world, camera);
+const input = new Input(canvas, () => world, game, camera);
 let hover = null;
 input.onHover = (pos) => { hover = pos; };
 
@@ -88,6 +90,43 @@ function setView(view) {
     b.setAttribute('aria-checked', String(b.dataset.view === view));
   }
 }
+
+// ---- zoom -----------------------------------------------------------------
+
+// Zoom in or out a step, towards the pointer if it's over the world.
+function zoomStep(dir) {
+  if (input.over) {
+    const { fx, fy } = input.fraction(input.clientX, input.clientY);
+    camera.step(dir, fx, fy);
+  } else {
+    camera.step(dir);
+  }
+}
+
+let shownZoom = 0;
+function updateZoomControls() {
+  if (camera.zoom === shownZoom) return;
+  shownZoom = camera.zoom;
+  const z = camera.zoom;
+  $('zoom-reset').textContent = `${z < 10 ? Math.round(z * 10) / 10 : Math.round(z)}×`;
+  $('zoom-out').disabled = z <= 1;
+  $('zoom-reset').disabled = z <= 1;
+  $('zoom-in').disabled = z >= camera.maxZoom;
+  $('minimap').hidden = z <= 1;
+}
+
+$('zoom-in').addEventListener('click', () => camera.step(1));
+$('zoom-out').addEventListener('click', () => camera.step(-1));
+$('zoom-reset').addEventListener('click', () => camera.zoomTo(1));
+
+// Click or drag on the map to move the view there.
+const minimap = $('minimap');
+function lookAt(e) {
+  const rect = minimap.getBoundingClientRect();
+  camera.centerOn(((e.clientX - rect.left) / rect.width) * WIDTH, ((e.clientY - rect.top) / rect.height) * HEIGHT);
+}
+minimap.addEventListener('pointerdown', (e) => { minimap.setPointerCapture(e.pointerId); lookAt(e); });
+minimap.addEventListener('pointermove', (e) => { if (minimap.hasPointerCapture(e.pointerId)) lookAt(e); });
 
 function dismissTip() {
   $('tip').hidden = true;
@@ -152,6 +191,16 @@ document.addEventListener('keydown', (e) => {
     case '1': setView('normal'); break;
     case '2': setView('heat'); break;
     case '3': setView('pressure'); break;
+    case '=': case '+': zoomStep(1); break;
+    case '-': case '_': zoomStep(-1); break;
+    case '0': camera.zoomTo(1); break;
+    case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
+      if (camera.zoom <= 1 || e.target.closest?.('.panel')) break;
+      e.preventDefault();
+      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      camera.pan(d[0] * camera.vw * 0.1, d[1] * camera.vh * 0.1);
+      break;
+    }
     case 'Escape': setMenu(false); break;
     default: break;
   }
@@ -194,7 +243,10 @@ function frame(now) {
   if (steps === 3) acc = 0; // too slow to keep up; drop the backlog instead of spiralling
   collectDiscoveries();
 
+  input.relocate(); // the view may have moved under a still pointer
+  updateZoomControls();
   renderer.draw(brushOutline());
+  if (camera.zoom > 1) renderer.drawMinimap(minimap);
   ui.renderHud(world, hover);
 
   frames++;

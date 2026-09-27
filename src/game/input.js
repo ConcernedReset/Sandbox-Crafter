@@ -3,6 +3,10 @@
 // selected tool keeps acting every frame while the pointer is held down.
 // Holding Shift while dragging draws a straight line, and Ctrl (or Cmd) a
 // filled box; both are only applied when the button is released.
+//
+// The view zooms with Ctrl-scroll (a trackpad pinch sends the same thing) or
+// a two-finger pinch on a touch screen, and pans with a middle-button drag
+// or by moving both fingers. See camera.js.
 
 import { DEFS, ID, State } from '../sim/elements.js';
 
@@ -23,10 +27,11 @@ export const TOOLS = ['erase', 'wall', 'heat', 'cool', 'wind', 'pressure', 'vacu
 export const MAX_BRUSH = 72;
 
 export class Input {
-  constructor(canvas, getWorld, state) {
+  constructor(canvas, getWorld, state, camera) {
     this.canvas = canvas;
     this.getWorld = getWorld;
     this.state = state; // { selection: {kind, id}, brush }
+    this.camera = camera;
     this.down = false;
     this.erasing = false;
     this.over = false;
@@ -36,6 +41,11 @@ export class Input {
     this.lastY = 0;
     this.shape = null; // { kind: 'line' | 'box', x0, y0, erase } while Shift/Ctrl-dragging
     this.onHover = null;
+    this.clientX = 0; // where the pointer last was, in page pixels
+    this.clientY = 0;
+    this.touches = new Map(); // fingers on the screen, for pinching
+    this.pinch = null;
+    this.panning = null; // a middle-button drag
 
     canvas.addEventListener('pointerdown', (e) => this.pointerDown(e));
     canvas.addEventListener('pointermove', (e) => this.pointerMove(e));
@@ -43,21 +53,59 @@ export class Input {
     canvas.addEventListener('pointercancel', (e) => this.pointerUp(e));
     canvas.addEventListener('pointerleave', () => { this.over = false; this.hover(); });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // no autoscroll
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
+      if (e.ctrlKey || e.metaKey) { // Ctrl-scroll or a trackpad pinch zooms at the pointer
+        const { fx, fy } = this.fraction(e.clientX, e.clientY);
+        const d = Math.max(-25, Math.min(25, e.deltaY));
+        this.camera.zoomTo(this.camera.zoom * Math.exp(-d * 0.01), fx, fy);
+        this.toCell(e);
+        this.hover();
+        return;
+      }
       this.state.setBrush(this.state.brush + (e.deltaY < 0 ? 1 : -1));
     }, { passive: false });
   }
 
-  toCell(e) {
+  // How far across and down the view a point on the page is (0..1).
+  fraction(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
-    const world = this.getWorld();
-    this.x = Math.floor(((e.clientX - rect.left) / rect.width) * world.w);
-    this.y = Math.floor(((e.clientY - rect.top) / rect.height) * world.h);
+    return { fx: (clientX - rect.left) / rect.width, fy: (clientY - rect.top) / rect.height };
+  }
+
+  toCell(e) {
+    this.clientX = e.clientX;
+    this.clientY = e.clientY;
+    this.locate();
+  }
+
+  locate() {
+    const { fx, fy } = this.fraction(this.clientX, this.clientY);
+    const c = this.camera.cellAt(fx, fy);
+    this.x = c.x;
+    this.y = c.y;
+  }
+
+  // The view moved under a still pointer (keys, buttons): update the cell.
+  relocate() {
+    if (!this.over) return;
+    this.locate();
+    this.hover();
   }
 
   pointerDown(e) {
     this.canvas.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'touch') {
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.touches.size >= 2) { this.startPinch(); return; }
+    }
+    if (e.button === 1) { // the middle button drags the view around
+      e.preventDefault();
+      this.panning = { x: e.clientX, y: e.clientY };
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
     this.toCell(e);
     this.over = true;
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
@@ -73,12 +121,59 @@ export class Input {
   }
 
   pointerMove(e) {
+    if (this.touches.has(e.pointerId)) this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pinch) { this.movePinch(); return; }
+    if (this.panning) {
+      const rect = this.canvas.getBoundingClientRect();
+      const cam = this.camera;
+      cam.pan(-((e.clientX - this.panning.x) / rect.width) * cam.vw,
+        -((e.clientY - this.panning.y) / rect.height) * cam.vh);
+      this.panning = { x: e.clientX, y: e.clientY };
+    }
     this.toCell(e);
     this.over = true;
     this.hover();
   }
 
+  // Two fingers down: stop painting and pinch-zoom instead.
+  startPinch() {
+    this.down = false;
+    this.shape = null;
+    this.erasing = false;
+    const { dist, mx, my } = this.fingers();
+    const { fx, fy } = this.fraction(mx, my);
+    const cam = this.camera;
+    this.pinch = { dist, zoom: cam.zoom, px: cam.x + fx * cam.vw, py: cam.y + fy * cam.vh };
+  }
+
+  // Keep the point first pinched under the fingers as they spread and move.
+  movePinch() {
+    const { dist, mx, my } = this.fingers();
+    const { fx, fy } = this.fraction(mx, my);
+    const p = this.pinch;
+    this.camera.zoomTo(p.zoom * (dist / Math.max(1, p.dist)));
+    this.camera.anchor(p.px, p.py, fx, fy);
+  }
+
+  fingers() {
+    const [a, b] = [...this.touches.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+  }
+
   pointerUp(e) {
+    this.touches.delete(e.pointerId);
+    if (this.pinch) {
+      // Lifting a finger ends the pinch; the other one doesn't start painting.
+      if (this.touches.size < 2) this.pinch = null;
+      this.over = false;
+      this.hover();
+      return;
+    }
+    if (this.panning) {
+      this.panning = null;
+      this.canvas.style.cursor = '';
+      return;
+    }
     if (this.shape) {
       this.toCell(e);
       this.commitShape(this.shape);

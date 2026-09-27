@@ -33,11 +33,17 @@ Any static file server works too, e.g. `python3 -m http.server`.
 - **Shift-drag** draws a straight line and **Ctrl-drag** (Cmd on a Mac) a
   filled box; both are painted when you let go. The brush can be round or
   square, from a single cell up to 145 cells across.
+- **Zoom** with the `+` `−` buttons in the corner of the view, `+` / `-` on the
+  keyboard (`0` goes back to the whole world), Ctrl-scroll (Cmd on a Mac, or
+  pinch on a trackpad), or a two-finger pinch on a touch screen. It zooms
+  towards the pointer, up to 12×. Pan with the arrow keys, a middle-button
+  drag or two fingers, or drag the little map that appears while zoomed in.
 - The panel under the simulation describes the selected element or tool.
 - **Tools:** Erase, Wall (indestructible and airtight), Heat, Cool, Wind (drag
   to blow), Pressure and Vacuum.
 - **Views:** Normal, Heat (a thermal camera) and Pressure (the air grid).
-- **Keys:** `Space` pause, `.` step one frame, `[` `]` brush size, `1` `2` `3` views.
+- **Keys:** `Space` pause, `.` step one frame, `[` `]` brush size, `1` `2` `3` views,
+  `+` `-` `0` zoom, arrows pan.
 - The **Recipe book** gives a hint for each element you have the ingredients
   for, and can reveal the recipe if you're stuck.
 - Discoveries are saved in your browser. The `⋯` menu has a free-play mode
@@ -295,7 +301,7 @@ src/sim/particles.js           the flying-particle layer
 src/sim/machines.js            power, controls, doors and the other machines
 src/sim/air.js                 the pressure / wind grid
 src/render/renderer.js         draws the world, glow, particles, heat and pressure views
-src/game/                      input, UI, saved progress, starting scene
+src/game/                      input, zoom camera, UI, saved progress, starting scene
 scripts/recipe-table.js        prints the recipe table at the end of this file
 test/                          node:test suites
 ```
@@ -328,7 +334,8 @@ debris falling, strong shells holding air while wood leaks, a pumped vessel
 bursting once the pressure passes its strength, and a charge sealed in steel
 blowing the shell apart. The radiation tests cover light, neutron
 shielding, reactor criticality, the plutonium blast, magnets and decay. The
-tools tests cover brush shapes, boxes and particle impacts. The machine tests
+tools tests cover brush shapes, boxes and particle impacts, and the camera
+tests cover zooming and panning. The machine tests
 cover coloured reflections, mirrors of metal behind glass, beams turned by
 diagonal mirrors, beam splitters, and every control and machine. The mechanics
 tests cover X-rays, gamma rays, ultraviolet and microwaves, gadgets

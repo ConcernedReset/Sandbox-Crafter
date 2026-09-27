@@ -60,6 +60,9 @@
             <div><kbd>Shift</kbd>-drag a line</div>
             <div><kbd>Ctrl</kbd>-drag a box</div>
             <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> views</div>
+            <div><kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>0</kbd> reset</div>
+            <div><kbd>Ctrl</kbd>-scroll or pinch to zoom</div>
+            <div>Arrows or middle-drag to pan</div>
             <div>Right-click erases</div>
           </div>
         </div>
@@ -74,6 +77,18 @@
           <canvas id="world" aria-label="Sandbox. Drag to paint with the selected element or tool."></canvas>
           <div class="toasts" id="toasts" aria-live="polite"></div>
           <div class="paused-flag" id="paused-flag" hidden>Paused</div>
+          <canvas class="minimap" id="minimap" hidden aria-label="Map of the whole world. Click or drag to move the view."></canvas>
+          <div class="zoom" role="group" aria-label="Zoom">
+            <button type="button" id="zoom-out" title="Zoom out (−)" disabled>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7h10v2H3z"/></svg>
+              <span class="sr-only">Zoom out</span>
+            </button>
+            <button type="button" id="zoom-reset" title="Show the whole world (0)" disabled>1×</button>
+            <button type="button" id="zoom-in" title="Zoom in (+)">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3h2v4h4v2H9v4H7V9H3V7h4z"/></svg>
+              <span class="sr-only">Zoom in</span>
+            </button>
+          </div>
         </div>
         <div class="tip" id="tip" hidden>
           <p>Paint with elements, then heat, cool, squeeze and mix them to discover new ones. Try pouring <b>Water</b> onto <b>Dirt</b>.</p>
