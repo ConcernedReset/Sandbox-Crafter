@@ -336,13 +336,13 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'RUBY', name: 'Ruby', sym: 'Ry', cat: 'mineral', state: SOLID, strength: 180,
     colors: ['#d11d4a', '#c01642', '#e02a57'], conduct: 0.3, transparent: true, acidProof: true,
-    behavior: 'recover',
+    behavior: 'recover', light: '#ff2d4a',
     desc: 'Red crystal. Light passing through it is amplified, a photon at a time. Put it between mirrors for a laser.',
     hint: 'Squeeze Clay very hard.',
   },
   {
     key: 'LASER', name: 'Laser', sym: 'Lz', cat: 'energy', state: SOLID, strength: 60,
-    colors: ['#5a1a1a', '#6b2020', '#4d1616'], conduct: 0.2, behavior: 'laser', glowAmount: 0.3,
+    colors: ['#5a1a1a', '#6b2020', '#4d1616'], conduct: 0.2, behavior: 'laser', glowAmount: 0.3, light: '#ff3b30',
     desc: 'Fires beams of light out of every exposed face.',
     hint: 'Pump a Ruby with a Spark.',
   },
@@ -589,8 +589,8 @@ export const EXPANSION_ELEMENTS = [
   },
   {
     key: 'MIRROR', name: 'Mirror', sym: 'Mi', cat: 'solid', state: SOLID, strength: 25,
-    colors: ['#d9e4ec', '#e6eef4', '#cfdbe4'], conduct: 0.1, reflect: 1, acidProof: true,
-    desc: 'Reflects light perfectly.',
+    colors: ['#d9e4ec', '#e6eef4', '#cfdbe4'], conduct: 0.1, reflect: 1, colorless: true, acidProof: true,
+    desc: 'Reflects all the light that hits it, without warming up or changing its colour.',
     hint: 'Coat Glass with Silver.',
   },
   {

@@ -1,7 +1,7 @@
 # Sandbox Crafter
 
 A falling-sand physics sandbox crossed with an element-crafting game. You start
-with four elements (**Sand, Water, Fire and Dirt**) and discover the other 536
+with four elements (**Sand, Water, Fire and Dirt**) and discover the other 554
 by making things happen in the simulation: pour water on dirt, bake mud, crush
 wood under pressure, run electricity through water, split uranium with
 neutrons, blast a diamond with plasma. Every new element you make is added to
@@ -10,6 +10,9 @@ your palette.
 All 118 elements of the periodic table are in there, along with ores, lab
 chemicals, gems, alloys, food, creatures, weather and a few legends, and
 most of the recipes are real reactions: see [What's in the table](#whats-in-the-table).
+There are also machines to build with: switches, buttons, clocks and sensors
+driving doors, lamps, laser emitters, heaters and more (see
+[Machines and circuits](#machines-and-circuits)).
 
 The physics is modelled on [The Powder Toy](https://powdertoy.co.uk/).
 
@@ -127,7 +130,16 @@ Each frame (60 per second):
    can pass through matter. Each one flies in a straight line and, in every
    cell it enters, passes through, bounces, is absorbed, or triggers a rule:
    - Light passes through glass, water and crystals, bounces off mirrors and
-     metal, and heats whatever absorbs it. Ruby amplifies it.
+     metal, and heats whatever absorbs it. Ruby amplifies it (in red).
+   - Light that bounces off something takes on its colour: off gold it turns
+     gold, off copper orange. The Mirror element reflects it unchanged.
+   - Bounces follow the slope of the surface, read from the reflecting cells
+     around the hit, so a diagonal line of mirror turns a beam through a
+     right angle.
+   - A mirror reflects all the light that reaches it, with no heat or
+     pressure. So does any metal with glass (or another clear solid, such as
+     quartz or ice) in front of it: light that reaches it through the glass
+     always bounces, while bare metal soaks up some of it and warms.
    - Neutrons pass through most things, are soaked up by lead, boron and
      wall, and are slowed by graphite, heavy water and plastic. Slow neutrons
      split uranium three times as readily as fast ones.
@@ -182,6 +194,51 @@ pile runs away depends on its size and what surrounds it:
 
 These are checked by tests in `test/radiation.test.js`.
 
+### Machines and circuits
+
+The **Machines** group has controls, which you switch on, and machines, which
+run on power:
+
+| Control | On while... |
+| ------- | ----------- |
+| Switch | you've flipped it on (paint Spark on it; paint again to flip it off) |
+| Button | for a second and a half after you paint Spark on it |
+| Clock | a moment each second: it sends one pulse a second |
+| Pressure Plate | anything rests on it: sand, water, a creature, a block |
+| Photocell | light shines on it (it turns light into current, not heat) |
+| Thermostat | it's hotter than 60 °C |
+
+| Machine | While powered it... |
+| ------- | ------------------- |
+| Door | opens (vanishes), and shuts again when the power stops, shoving loose things out of the doorway |
+| Lamp, Red / Green / Blue Lamp | lights up: a pixel you can switch |
+| Laser Emitter | fires a red laser beam out of every open face |
+| Heater / Cooler | heats itself to 1200 °C / chills itself to −150 °C |
+| Fan | blows air out of every open face (mount it on a wall to aim it) |
+| Dispenser | pours out more of the first powder, liquid, gas or creature that touched it |
+| Drain | swallows the powders, liquids and gases touching it |
+
+A control that's on powers any machine touching it and sends current into
+wires (metal, copper and other conductors) touching it; a wire carrying current
+powers every machine along it, as does a battery. Power fills a whole connected
+block of the same machine, so a big door opens as one and a wall of lamps
+lights together; leave a gap between lamps you want to control separately.
+Machines stay on for a third of a second after the power stops, so they run
+steadily on a wire's pulses. The **Beam Splitter** is a half-silvered
+mirror that reflects half the light and passes the rest.
+
+Some things to build:
+
+- **A door on a switch**: Switch → copper wire → Door. Flip the switch to open
+  the door and flip it again to close it.
+- **A tripwire**: a Laser Emitter aimed at a Photocell with a Lamp or Door
+  touching it. Step into the beam and the lamp goes out, or the door shuts.
+- **A light show**: a Clock wired to a row of lamps, and mirror lines at 45°
+  steering a laser around the screen, colouring it as it bounces off gold or
+  copper.
+
+These are checked by tests in `test/machines.test.js`.
+
 ## What's in the table
 
 The 400 elements added in the latest expansion lean on real chemistry and
@@ -207,6 +264,10 @@ history wherever it can be played:
 - **Materials and gadgets**: bronze, brass, solder, stainless steel, nitinol,
   aerogel, graphene, teflon, paper, rubber; light bulbs, LEDs,
   electromagnets, nichrome heaters, potato batteries.
+- **Machines**, made the way the real parts are: a clock from quartz and a
+  battery, a photocell from selenium on copper (the first light meters), a
+  thermostat from mercury and a switch, a cooler from bismuth and tellurium
+  (the Peltier material in car fridges), a heater from nichrome on porcelain.
 - **Food and life**: bread, cheese, chocolate that melts at 34 °C, popcorn,
   jam; yeast, bacteria, penicillin; fish, frogs, birds, bees, ants, termites,
   spiders, squid, tardigrades, and a phoenix.
@@ -227,9 +288,11 @@ src/sim/elements-periodic.js   the rest of the periodic table and its ores
 src/sim/elements-chemistry.js  acids, lab chemicals, pigments, rocks and gems
 src/sim/elements-world.js      alloys, materials, gadgets, plants, food,
                                creatures, weather, space and more particles
+src/sim/elements-machines.js   switches, sensors, doors, lamps and other machines
 src/sim/world.js               the grid simulation: movement, heat, reactions
 src/sim/behaviors.js           special behaviours (fire, plants, black holes...)
 src/sim/particles.js           the flying-particle layer
+src/sim/machines.js            power, controls, doors and the other machines
 src/sim/air.js                 the pressure / wind grid
 src/render/renderer.js         draws the world, glow, particles, heat and pressure views
 src/game/                      input, UI, saved progress, starting scene
@@ -265,10 +328,12 @@ debris falling, strong shells holding air while wood leaks, a pumped vessel
 bursting once the pressure passes its strength, and a charge sealed in steel
 blowing the shell apart. The radiation tests cover light, neutron
 shielding, reactor criticality, the plutonium blast, magnets and decay. The
-tools tests cover brush shapes, boxes and particle impacts. The mechanics
+tools tests cover brush shapes, boxes and particle impacts. The machine tests
+cover coloured reflections, mirrors of metal behind glass, beams turned by
+diagonal mirrors, beam splitters, and every control and machine. The mechanics
 tests cover X-rays, gamma rays, ultraviolet and microwaves, gadgets
 on a battery, creatures, growing plants, meteors, hot ice, tin pest, gallium,
-and the superheavy decay chain. The recipe tests run all 929 production rules
+and the superheavy decay chain. The recipe tests run all 947 production rules
 in the real simulation.
 
 Regenerate the table below after changing recipes with
@@ -815,5 +880,23 @@ Regenerate the table below after changing recipes with
 | 538 | Pion | Proton + Proton |
 | 539 | Higgs Boson | Muon + Muon |
 | 540 | Tachyon | Dark Matter + Neutrino |
+| 541 | Switch | Brass + Plastic |
+| 542 | Button | Switch + Rubber |
+| 543 | Clock | Quartz + Battery |
+| 544 | Pressure Plate | Button + Steel |
+| 545 | Photocell | Selenium + Copper |
+| 546 | Thermostat | Switch + Mercury |
+| 547 | Door | Steel + Electromagnet |
+| 548 | Lamp | LED + Plastic |
+| 549 | Red Lamp | Lamp + Ruby |
+| 550 | Green Lamp | Lamp + Emerald |
+| 551 | Blue Lamp | Lamp + Sapphire |
+| 552 | Laser Emitter | Laser + Switch |
+| 553 | Heater | Nichrome + Porcelain |
+| 554 | Cooler | Bismuth + Tellurium |
+| 555 | Fan | Electromagnet + Magnet |
+| 556 | Dispenser | Clone + Switch |
+| 557 | Drain | Void + Switch |
+| 558 | Beam Splitter | Mirror + Quartz |
 
 </details>

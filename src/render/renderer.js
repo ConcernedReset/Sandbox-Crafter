@@ -12,6 +12,15 @@ const SHADES = 8;
 const pack = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 
+// The colour of light an element gives off, or tints light bouncing off it:
+// its `light` colour, or its own colour turned up to full brightness.
+function lightOf(d) {
+  if (d.light) return hex(d.light);
+  const c = hex(d.colors[0]);
+  const m = Math.max(1, ...c);
+  return c.map((v) => Math.round((v * 255) / m * 0.75 + 255 * 0.25));
+}
+
 // Build a 256-entry colour ramp from [position, '#rrggbb'] stops.
 function ramp(stops) {
   const out = new Uint8Array(256 * 3);
@@ -47,13 +56,14 @@ function heatIndex(T) {
 
 const MODE = {
   PLAIN: 0, GAS: 1, FIRE: 2, PLASMA: 3, SPARK: 4, LIGHTNING: 5, CLONE: 6, VOID: 7, MOLTEN: 8,
-  NEON: 9, FLASH: 10, GLITTER: 11, STAR: 12, STRANGE: 13, PULSE: 14, BLINK: 15,
+  NEON: 9, FLASH: 10, GLITTER: 11, STAR: 12, STRANGE: 13, PULSE: 14, BLINK: 15, LAMP: 16, MACHINE: 17,
 };
 
 // Elements can ask for a drawing style by name with their `render` field.
 const RENDER = {
   molten: MODE.MOLTEN, neon: MODE.NEON, flash: MODE.FLASH, glitter: MODE.GLITTER, star: MODE.STAR,
   strange: MODE.STRANGE, pulse: MODE.PULSE, blink: MODE.BLINK, plasma: MODE.PLASMA,
+  lamp: MODE.LAMP, machine: MODE.MACHINE,
 };
 
 export class Renderer {
@@ -94,7 +104,12 @@ export class Renderer {
     this.projRGB = new Uint8Array(NUM * 3);
     this.exciteRGB = new Uint8Array(NUM * 3);
     this.flameRGB = new Int16Array(NUM * 3).fill(-1);
+    this.lightRGB = new Uint8Array(NUM * 3);
+    this.lightColor = new Uint32Array(NUM);
     for (const d of DEFS) {
+      const light = lightOf(d);
+      this.lightRGB.set(light, d.id * 3);
+      this.lightColor[d.id] = pack(...light);
       this.alpha[d.id] = d.alpha;
       this.glowAmt[d.id] = d.glowAmount;
       if (d.excite) this.exciteRGB.set(d.excite.rgb, d.id * 3);
@@ -114,6 +129,7 @@ export class Renderer {
       if (d.state === State.GAS) m = MODE.GAS;
       if (d.glow) m = MODE.MOLTEN;
       if (d.excite) m = MODE.NEON;
+      if (d.machine) m = MODE.MACHINE;
       if (d.render) m = RENDER[d.render];
       this.mode[d.id] = m;
     }
@@ -198,8 +214,8 @@ export class Renderer {
   }
 
   paint() {
-    const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB } = this;
-    const { w, h, type, temp, life, ctype, shade, loose } = world;
+    const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
+    const { w, h, type, temp, life, ctype, shade, loose, doorTimer } = world;
     const air = world.air;
     const cols = air.cols;
     const glow = this.glowAcc;
@@ -218,8 +234,14 @@ export class Renderer {
         let r, g, b;
 
         if (t === 0) {
-          if (!pressureView) { pixels[i] = bg; continue; }
-          r = bgR; g = bgG; b = bgB;
+          if (doorTimer[i] !== 0 && !heatView) {
+            // An open doorway: a faint ghost of the door.
+            const q = (ID.DOOR * SHADES + (x + y) % 3) * 3;
+            r = bgR + (palRGB[q] - bgR) * 0.25; g = bgG + (palRGB[q + 1] - bgG) * 0.25; b = bgB + (palRGB[q + 2] - bgB) * 0.25;
+          } else {
+            if (!pressureView) { pixels[i] = bg; continue; }
+            r = bgR; g = bgG; b = bgB;
+          }
         } else if (heatView) {
           count++;
           const k = heatIndex(temp[i]) * 3;
@@ -281,6 +303,26 @@ export class Renderer {
             case MODE.FLASH:
               if (life[i] > 0) { r = 125; g = 255; b = 138; emit = 1.2; }
               break;
+            case MODE.LAMP: // a pixel that lights up while powered
+              if (life[i] > 0) {
+                const q = t * 3, f = 0.92 + 0.08 * (s & 1);
+                r = lightRGB[q] * f; g = lightRGB[q + 1] * f; b = lightRGB[q + 2] * f;
+                emit = 0.6;
+              }
+              break;
+            case MODE.MACHINE: { // controls and machines show a light while on
+              const c = ctype[i];
+              if (c && t === ID.DISPENSER) { // tinted by what it pours
+                const q = (c * SHADES + s) * 3;
+                r = r * 0.6 + palRGB[q] * 0.4; g = g * 0.6 + palRGB[q + 1] * 0.4; b = b * 0.6 + palRGB[q + 2] * 0.4;
+              }
+              if (life[i] > 0) {
+                const q = t * 3;
+                r = r * 0.4 + lightRGB[q] * 0.6; g = g * 0.4 + lightRGB[q + 1] * 0.6; b = b * 0.4 + lightRGB[q + 2] * 0.6;
+                emit = 0.3;
+              }
+              break;
+            }
             case MODE.GLITTER: {
               const a = Math.min(1, life[i] / 30);
               r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
@@ -407,20 +449,22 @@ export class Renderer {
   }
 
   // Photons, electrons and friends: bright single pixels with a little glow.
+  // Light that has bounced off something is drawn in that thing's colour.
   paintProjectiles(heatView) {
-    const { world, pixels, projColor, projRGB } = this;
-    const { px, py, ptype, pn, w } = world;
+    const { world, pixels, projColor, projRGB, lightColor, lightRGB } = this;
+    const { px, py, ptype, ptint, pn, w } = world;
     const glow = this.glowAcc;
     const cols = world.air.cols;
     const white = pack(255, 255, 255);
     for (let k = 0; k < pn; k++) {
       const x = px[k] | 0, y = py[k] | 0;
-      const t = ptype[k];
-      pixels[y * w + x] = heatView ? white : projColor[t];
+      const t = ptype[k], tint = ptint[k];
+      const rgb = tint ? lightRGB : projRGB, q = (tint || t) * 3;
+      pixels[y * w + x] = heatView ? white : tint ? lightColor[tint] : projColor[t];
       const gi = (((y / CELL) | 0) * cols + ((x / CELL) | 0)) * 3;
-      glow[gi] += projRGB[t * 3] * 0.7;
-      glow[gi + 1] += projRGB[t * 3 + 1] * 0.7;
-      glow[gi + 2] += projRGB[t * 3 + 2] * 0.7;
+      glow[gi] += rgb[q] * 0.7;
+      glow[gi + 1] += rgb[q + 1] * 0.7;
+      glow[gi + 2] += rgb[q + 2] * 0.7;
     }
   }
 }

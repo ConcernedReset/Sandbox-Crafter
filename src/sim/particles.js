@@ -5,16 +5,22 @@
 // its velocity and, for each new cell it enters, either passes through,
 // bounces, is absorbed, or triggers a rule from PARTICLE_HITS.
 //
+// Light takes on the colour of what it bounces off: `ptint` holds the element
+// whose colour a photon now carries (0 for its own). Metal with glass (or any
+// clear solid) in front of it is a perfect mirror, and like the Mirror element
+// it bounces every photon without warming up.
+//
 // Mixed into World.prototype; `initParticles` sets up the storage.
 
 import { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL } from './elements.js';
 import { MAX_TEMP } from './constants.js';
-import { CONDUCTOR, GASLIKE } from './lookups.js';
+import { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING } from './lookups.js';
 
 const PASS = 0, DEAD = 1, BOUNCE = 2;
 const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
 const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO, HYDROGEN } = ID;
+const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
 
 export function initParticles(world) {
   world.pCap = CAPACITY;
@@ -24,6 +30,7 @@ export function initParticles(world) {
   world.pvy = new Float32Array(CAPACITY);
   world.ptype = new Uint16Array(CAPACITY);
   world.plife = new Int16Array(CAPACITY);
+  world.ptint = new Uint16Array(CAPACITY);
   world.pn = 0;
   world.pmap = new Int32Array(world.w * world.h); // index + 1 of a particle in each cell
   const airCells = world.air.W * world.air.H;
@@ -35,7 +42,8 @@ export function initParticles(world) {
 
 export const Particles = {
   // Launch a particle. Without a velocity it flies off in a random direction.
-  spawnProjectile(t, x, y, vx, vy) {
+  // `tint` is the element whose colour light is drawn in (0 for its own).
+  spawnProjectile(t, x, y, vx, vy, tint = 0) {
     if (this.pn >= this.pCap) return -1;
     const d = DEFS[t];
     if (vx === undefined) {
@@ -50,6 +58,7 @@ export const Particles = {
     this.pvy[k] = vy;
     this.ptype[k] = t;
     this.plife[k] = d.lifeMin + ((this.rand() * (d.lifeMax - d.lifeMin + 1)) | 0);
+    this.ptint[k] = tint;
     return k;
   },
 
@@ -66,6 +75,7 @@ export const Particles = {
     this.pvy[k] = this.pvy[last];
     this.ptype[k] = this.ptype[last];
     this.plife[k] = this.plife[last];
+    this.ptint[k] = this.ptint[last];
   },
 
   // Spread each magnet's pull over the nearby air cells.
@@ -166,11 +176,20 @@ export const Particles = {
       if (this.rand() < chance) return this.applyHit(k, r, j, ix, iy, lx, ly);
     }
     if (e.detector) { this.detect(j, ix, iy); return PASS; }
+    // A photocell turns light into current instead of heat.
+    if (LIGHT_SENSOR[u] && (d.pmode === PMODE.photon || d.pmode === PMODE.uv)) { this.lightUp(j); return DEAD; }
 
     switch (d.pmode) {
       case PMODE.photon:
-        if (e.transparent || (GASLIKE[u] && !e.opaque)) return PASS;
-        if (e.reflect > 0 && this.rand() < e.reflect) { this.bounce(k, ix, iy, lx, ly); return BOUNCE; }
+        if (GASLIKE[u] && !e.opaque) return PASS;
+        // Light bouncing off something takes on its colour; a true mirror
+        // (and a half-silvered one) reflects it unchanged.
+        if (e.reflect > 0 && (this.rand() < e.reflect || this.backed(lx, ly))) {
+          this.bounce(k, ix, iy, lx, ly);
+          if (!e.colorless) this.ptint[k] = u;
+          return BOUNCE;
+        }
+        if (e.transparent) return PASS;
         return this.impact(j, lx, ly, d);
       case PMODE.electron:
         if (CONDUCTOR[u]) {
@@ -229,14 +248,18 @@ export const Particles = {
         return this.impact(j, lx, ly, d);
       case PMODE.uv:
         // Like light, except ordinary glass blocks it (quartz doesn't).
-        if ((e.transparent && !e.uvBlock) || (GASLIKE[u] && !e.opaque)) return PASS;
-        if (e.reflect > 0 && this.rand() < e.reflect) { this.bounce(k, ix, iy, lx, ly); return BOUNCE; }
+        if (GASLIKE[u] && !e.opaque) return PASS;
+        if (e.reflect > 0 && (this.rand() < e.reflect || this.backed(lx, ly))) {
+          this.bounce(k, ix, iy, lx, ly);
+          return BOUNCE;
+        }
+        if (e.transparent && !e.uvBlock) return PASS;
         return this.impact(j, lx, ly, d);
       case PMODE.microwave:
         // Metal reflects them and arcs; anything wet soaks them up and heats.
         if (CONDUCTOR[u]) {
           if (this.life[j] === 0 && this.rand() < 0.3) this.sparkAt(j);
-          this.bounce(k, ix, iy, lx, ly);
+          this.bounce(k, ix, iy, lx, ly, CONDUCTOR);
           return BOUNCE;
         }
         if (e.indestructible) return DEAD;
@@ -248,6 +271,12 @@ export const Particles = {
       default:
         return PASS; // neutrinos, muons and other ghosts
     }
+  },
+
+  // Did the light reach the metal through glass (or another clear solid)?
+  // Then the metal is a mirror, and reflects all of it.
+  backed(lx, ly) {
+    return MIRROR_BACKING[this.type[ly * this.w + lx]] === 1;
   },
 
   // A particle slams into cell j, dumping its energy as heat there and as a
@@ -262,6 +291,8 @@ export const Particles = {
 
   applyHit(k, r, j, ix, iy, lx, ly) {
     if (r.fission) { this.fission(j, this.type[j], ix, iy); return DEAD; }
+    // A crystal that copies light (ruby) gives it its own colour.
+    const tint = DEFS[this.type[j]].light !== null ? this.type[j] : this.ptint[k];
     // Whatever else the hit does, a particle that stops here still lands a blow.
     if (!r.keep) this.impact(j, lx, ly, DEFS[this.ptype[k]]);
     if (r.recover) this.life[j] = r.recover;
@@ -272,8 +303,9 @@ export const Particles = {
     if (r.tTo >= 0) this.convert(j, r.tTo, false, r.tRule);
     for (const e of r.emit) {
       if (r.copy) {
+        this.ptint[k] = tint;
         this.spawnProjectile(e.id, this.px[k] + this.rand() * 0.5, this.py[k] + this.rand() * 0.5,
-          this.pvx[k], this.pvy[k]);
+          this.pvx[k], this.pvy[k], tint);
       } else {
         this.emitAt(e.id, ix, iy);
       }
@@ -308,19 +340,55 @@ export const Particles = {
     }
   },
 
-  // Reflect off the side of the cell we just ran into.
-  bounce(k, ix, iy, lx, ly) {
+  // Reflect off the surface we just ran into. Its slope is read from the
+  // reflecting cells around the hit (like The Powder Toy's surface normals),
+  // so a diagonal line of mirror turns a beam through a right angle. Where
+  // the shape gives no clear answer (a lone pixel), bounce straight off the
+  // side of the cell instead.
+  bounce(k, ix, iy, lx, ly, surface = REFLECTS) {
+    const { w, h, type } = this;
+    let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const y = iy + dy;
+      if (y < 0 || y >= h) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const x = ix + dx;
+        if (x < 0 || x >= w || !surface[type[y * w + x]]) continue;
+        n++; sx += dx; sy += dy; sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+      }
+    }
+    const vx = this.pvx[k], vy = this.pvy[k];
+    const mx = sx / n, my = sy / n;
+    const cxx = sxx / n - mx * mx, cyy = syy / n - my * my, cxy = sxy / n - mx * my;
+    let nx = 0, ny = 0;
+    if (Math.hypot(cxx - cyy, 2 * cxy) > 0.2 * (cxx + cyy)) {
+      // The surface runs along the long axis of the reflecting cells.
+      const th = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
+      nx = -Math.sin(th);
+      ny = Math.cos(th);
+    } else if (mx * mx + my * my > 0.1) {
+      // A corner: face away from the middle of the reflecting cells.
+      const m = Math.hypot(mx, my);
+      nx = -mx / m;
+      ny = -my / m;
+    }
+    let dot = nx * vx + ny * vy;
+    if (dot > 0) { nx = -nx; ny = -ny; dot = -dot; }
+    if (dot < -0.25 * Math.hypot(vx, vy)) {
+      this.pvx[k] = vx - 2 * dot * nx;
+      this.pvy[k] = vy - 2 * dot * ny;
+      return;
+    }
     const hitX = ix !== lx, hitY = iy !== ly;
     if (hitX && hitY) {
-      const bx = DEFS[this.type[ly * this.w + ix]].reflect > 0;
-      const by = DEFS[this.type[iy * this.w + lx]].reflect > 0;
-      if (bx && !by) this.pvx[k] = -this.pvx[k];
-      else if (by && !bx) this.pvy[k] = -this.pvy[k];
-      else { this.pvx[k] = -this.pvx[k]; this.pvy[k] = -this.pvy[k]; }
+      const bx = surface[type[ly * w + ix]], by = surface[type[iy * w + lx]];
+      if (bx && !by) this.pvx[k] = -vx;
+      else if (by && !bx) this.pvy[k] = -vy;
+      else { this.pvx[k] = -vx; this.pvy[k] = -vy; }
     } else if (hitX) {
-      this.pvx[k] = -this.pvx[k];
+      this.pvx[k] = -vx;
     } else {
-      this.pvy[k] = -this.pvy[k];
+      this.pvy[k] = -vy;
     }
   },
 

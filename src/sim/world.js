@@ -7,8 +7,9 @@
 //   3. heat conducts between touching particles and leaks into open air
 //   4. the air pressure grid steps forward
 //
-// Element behaviours live in behaviors.js and the flying-particle layer in
-// particles.js; both are mixed into World below.
+// Element behaviours live in behaviors.js, the flying-particle layer in
+// particles.js and machines (doors, lamps, switches) in machines.js; all
+// three are mixed into World below.
 //
 // Solids have a strength. When the air pressure around an exposed solid
 // particle beats it (and heat weakens it), the particle is torn loose and
@@ -20,9 +21,10 @@
 import { Air, CELL } from './air.js';
 import { DEFS, ID, NUM, State, AMBIENT, REACT } from './elements.js';
 import { MAX_TEMP, MIN_TEMP, GRAVITY } from './constants.js';
-import { COND, AIR_COOL, CONDUCTOR, AIRTIGHT } from './lookups.js';
+import { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE } from './lookups.js';
 import { Behaviors } from './behaviors.js';
 import { Particles, initParticles } from './particles.js';
+import { Machines, initMachines } from './machines.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -58,6 +60,7 @@ export class World {
     this.blockedMoving = false;
     this.brushShape = 'circle';
     initParticles(this);
+    initMachines(this);
   }
 
   rand() {
@@ -95,6 +98,8 @@ export class World {
     this.loose.fill(0);
     this.air.clear();
     this.pn = 0;
+    this.doorTimer.fill(0);
+    this.doorList.length = 0;
   }
 
   initLife(i, t) {
@@ -257,6 +262,7 @@ export class World {
     for (let a = 0; a < next.length; a++) if (air.solid[a] >= SEAL_COUNT) next[a] = 1;
     air.next = air.blocked;
     air.blocked = next;
+    this.stepDoors();
     this.computeField();
     this.stepProjectiles();
     this.conductHeat();
@@ -685,7 +691,12 @@ export class World {
     }
     area((i) => {
       const u = this.type[i];
-      if (t === SPARK && CONDUCTOR[u] && this.life[i] === 0) { this.sparkAt(i); return; }
+      if (t === SPARK) {
+        // Spark painted onto a wire, a switch or a machine (or an open door).
+        if (CONDUCTOR[u]) { if (this.life[i] === 0) this.sparkAt(i); return; }
+        if (PRESSABLE[u]) { this.press(i); return; }
+        if (POWERED[u] || (u === 0 && this.doorTimer[i] !== 0)) { this.powerCell(i); return; }
+      }
       if (u === 0 && (density >= 1 || this.rand() < density)) this.spawn(i, t);
     });
   }
@@ -696,6 +707,7 @@ export class World {
     const cells = [];
     area((i) => {
       if (this.type[i]) this.clearCell(i);
+      this.doorTimer[i] = 0; // an erased doorway doesn't shut again
       mask[i] = 1;
       cells.push(i);
     });
@@ -744,4 +756,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles);
+Object.assign(World.prototype, Behaviors, Particles, Machines);

@@ -1,6 +1,6 @@
 // Every element, reaction and recipe in the game is defined in this file and
-// in elements-expansion.js, elements-periodic.js, elements-chemistry.js and
-// elements-world.js. The simulation, the palette and the recipe book
+// in elements-expansion.js, elements-periodic.js, elements-chemistry.js,
+// elements-world.js and elements-machines.js. The simulation, the palette and the recipe book
 // are all generated from these tables, so a recipe that exists here is
 // guaranteed to be something the simulation can actually do (see
 // test/recipes.test.js).
@@ -14,6 +14,7 @@ import {
 } from './elements-periodic.js';
 import { CHEMISTRY_ELEMENTS, CHEMISTRY_REACTIONS, CHEMISTRY_HITS } from './elements-chemistry.js';
 import { WORLD_ELEMENTS, WORLD_REACTIONS, WORLD_HITS, WORLD_PAIRS } from './elements-world.js';
+import { MACHINE_ELEMENTS, MACHINE_REACTIONS } from './elements-machines.js';
 
 export { State, AMBIENT };
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
@@ -34,6 +35,7 @@ export const CATEGORIES = [
   { key: 'chemical', name: 'Chemicals' },
   { key: 'material', name: 'Materials' },
   { key: 'device', name: 'Devices' },
+  { key: 'machine', name: 'Machines' },
   { key: 'food', name: 'Food' },
   { key: 'creature', name: 'Creatures' },
   { key: 'nuclear', name: 'Radioactive' },
@@ -74,12 +76,16 @@ export const CATEGORIES = [
 //   decay       { chance, to, spawn } random decay, like a half-life
 //   fission     what a neutron does when it splits this element
 //   transparent / opaque / reflect   how light treats it
+//   light       the colour of light it gives off or tints reflected light
+//               (defaults to its own colour, brightened)
+//   colorless   reflects light without tinting it (a true mirror)
 //   nAbsorb     chance per cell of swallowing a neutron; moderator slows them
 // Other:
 //   lifeEnd     { to, alt, altChance } what it becomes when its life runs out
 //   produce     { el, chance } drops this element into an empty neighbour
 //   grow        { into, chance, surface } spreads into these neighbours
 //   high: melt(t)  metals remember what they were inside Molten Metal
+//   machine     the kind of machine or control (see machines.js)
 export const ELEMENT_LIST = [
   { key: 'EMPTY', name: 'Empty', sym: '', cat: null, state: State.EMPTY, colors: ['#000000'] },
 
@@ -401,6 +407,7 @@ export const ELEMENT_LIST = [
   ...PERIODIC_ELEMENTS,
   ...CHEMISTRY_ELEMENTS,
   ...WORLD_ELEMENTS,
+  ...MACHINE_ELEMENTS,
 
   // ---- always available ---------------------------------------------------
   {
@@ -442,6 +449,7 @@ export const REACTIONS = [
   ...PERIODIC_REACTIONS,
   ...CHEMISTRY_REACTIONS,
   ...WORLD_REACTIONS,
+  ...MACHINE_REACTIONS,
 ];
 
 // Rules that come from custom behaviours rather than the tables above. They
@@ -580,6 +588,9 @@ function normalize(e, i) {
     excite: null,
     flame: e.flame ?? null,
     render: e.render ?? null,
+    light: e.light ?? null,
+    colorless: !!e.colorless,
+    machine: e.machine ?? null,
     // gadgets and creatures
     magnet: e.magnet ?? 1,
     batteryRate: e.batteryRate ?? 1,
@@ -599,6 +610,7 @@ function normalize(e, i) {
   };
   // Anything that glows when excited counts down its glow like Neon does.
   if (e.excite && d.behavior === null) d.behavior = 'neon';
+  if (e.machine) d.behavior = 'machine';
   // Liquids, gases and loose energy can be pushed aside by heavier things.
   d.displaceable = !d.projectile
     && (e.state === LIQUID || e.state === GAS || (e.state === ENERGY && !d.fixed));

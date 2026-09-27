@@ -2,7 +2,7 @@
 
 import { DEFS, ID, NUM, State } from './elements.js';
 
-const { GAS, ENERGY } = State;
+const { SOLID, GAS, ENERGY } = State;
 
 export const COND = new Float32Array(NUM);
 export const AIR_COOL = new Float32Array(NUM);
@@ -14,6 +14,14 @@ export const GASLIKE = new Uint8Array(NUM);
 // an unbroken line of them across it is sealed, so a shell of stone or metal
 // holds pressure until it tears.
 export const AIRTIGHT = new Uint8Array(NUM);
+// Machines (see machines.js): every machine and control, the ones that run on
+// power, the ones you press with a spark, and the ones that sense light.
+export const MACHINE = new Uint8Array(NUM);
+export const POWERED = new Uint8Array(NUM);
+export const PRESSABLE = new Uint8Array(NUM);
+export const LIGHT_SENSOR = new Uint8Array(NUM);
+// Clear solids: metal with one of these in front of it is a perfect mirror.
+export const MIRROR_BACKING = new Uint8Array(NUM);
 
 for (const d of DEFS) {
   COND[d.id] = d.conduct;
@@ -23,6 +31,20 @@ for (const d of DEFS) {
     && ![ID.WALL, ID.CLONE, ID.VOID, ID.SPARK, ID.LIGHTNING].includes(d.id) ? 1 : 0;
   GASLIKE[d.id] = d.state === GAS || (d.state === ENERGY && !d.fixed) ? 1 : 0;
   AIRTIGHT[d.id] = d.strength >= 25 && d.explode === 0 ? 1 : 0;
+  const m = d.machine;
+  MACHINE[d.id] = m ? 1 : 0;
+  POWERED[d.id] = ['door', 'lamp', 'laser', 'heater', 'cooler', 'fan', 'dispenser', 'drain'].includes(m) ? 1 : 0;
+  PRESSABLE[d.id] = m === 'switch' || m === 'button' ? 1 : 0;
+  LIGHT_SENSOR[d.id] = m === 'photocell' ? 1 : 0;
+  MIRROR_BACKING[d.id] = d.transparent && d.state === SOLID ? 1 : 0;
+}
+
+// What a dispenser remembers and pours out: anything a clone would copy,
+// except solid blocks (creatures aside), wires and other machines.
+export const DISPENSABLE = new Uint8Array(NUM);
+for (const d of DEFS) {
+  DISPENSABLE[d.id] = CLONEABLE[d.id] && !CONDUCTOR[d.id] && !MACHINE[d.id]
+    && (d.state !== SOLID || d.behavior === 'critter') ? 1 : 0;
 }
 
 const setOf = (keys) => {

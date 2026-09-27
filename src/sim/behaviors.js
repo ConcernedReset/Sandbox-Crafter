@@ -4,13 +4,15 @@
 
 import { DEFS, ID, NUM, State, REACT, SPECIAL } from './elements.js';
 import { MAX_TEMP } from './constants.js';
-import { CONDUCTOR, CLONEABLE, ORGANIC, TRANSMUTABLE, SPEW } from './lookups.js';
+import {
+  CONDUCTOR, CLONEABLE, ORGANIC, TRANSMUTABLE, SPEW, POWERED, PRESSABLE,
+} from './lookups.js';
 
 const { SOLID, POWDER, LIQUID, GAS } = State;
 const {
   WALL, FIRE, SMOKE, WATER, SNOW, PLANT, WOOD, SPARK, LIGHTNING, VOID, DIRT, MUD, GRASS, SEED,
   GLITTER, PHOTON, NEUTRON, ANTIMATTER, BLACK_HOLE, STRANGE_MATTER, DARK_MATTER, GOLD,
-  VIRUS, LYE, ELECTRON,
+  VIRUS, LYE, ELECTRON, LASER,
 } = ID;
 
 const SPARK_COOLDOWN = 6;
@@ -52,7 +54,8 @@ export const Behaviors = {
           if (!d.conductor) this.life[i]--;
         }
         return name === 'geiger';
-      case 'laser': return this.updateLaser(x, y);
+      case 'laser': this.fireBeam(x, y, LASER, 0.2); return true;
+      case 'machine': return this.updateMachine(i, x, y, d);
       case 'magnet':
         this.magnetCount[this.air.at(x, y)] += d.magnet;
         this.magnetTotal++;
@@ -98,13 +101,16 @@ export const Behaviors = {
     return -1;
   },
 
-  // Send a spark into every idle conductor touching (x, y).
+  // Send a spark into every idle conductor touching (x, y), and power any
+  // machine touching it.
   sparkNeighbors(x, y) {
     for (let k = 0; k < 4; k++) {
       const nx = x + DX4[k], ny = y + DY4[k];
       if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
       const j = ny * this.w + nx;
-      if (CONDUCTOR[this.type[j]] && this.life[j] === 0) this.sparkAt(j);
+      const u = this.type[j];
+      if (CONDUCTOR[u]) { if (this.life[j] === 0) this.sparkAt(j); }
+      else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j);
     }
   },
 
@@ -177,9 +183,13 @@ export const Behaviors = {
           if ((dx === 0 && dy === 0) || nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
           const j = ny * w + nx;
           const u = type[j];
-          if (CONDUCTOR[u] && this.life[j] === 0) this.sparkAt(j);
+          if (CONDUCTOR[u]) { if (this.life[j] === 0) this.sparkAt(j); }
           else if (DEFS[u].explode > 0) this.ignite(j, nx, ny);
-          else if (DEFS[u].excite !== null && !CONDUCTOR[u]) { // neon, argon, sodium vapour... light up
+          // Current powers machines (and open doorways) beside the wire. A
+          // loose spark, not one running along a wire, flips a switch.
+          else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j);
+          else if (PRESSABLE[u]) { if (this.ctype[i] === 0) this.press(j); }
+          else if (DEFS[u].excite !== null) { // neon, argon, sodium vapour... light up
             this.life[j] = 20;
             if (this.rand() < 0.05) this.emitAt(DEFS[u].excite.emit, nx, ny);
           }
@@ -211,9 +221,12 @@ export const Behaviors = {
       const nx = x + DX4[k], ny = y + DY4[k];
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
       const j = ny * w + nx;
-      if (CONDUCTOR[type[j]] && this.life[j] === 0) {
+      const u = type[j];
+      if (CONDUCTOR[u] && this.life[j] === 0) {
         this.sparkAt(j);
         this.record(SPARK, SPECIAL['battery-spark']);
+      } else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) {
+        this.powerCell(j);
       }
     }
     return true;
@@ -476,18 +489,6 @@ export const Behaviors = {
   detect(j, x, y) {
     this.life[j] = 10;
     this.sparkNeighbors(x, y);
-  },
-
-  updateLaser(x, y) {
-    for (let k = 0; k < 4; k++) {
-      const nx = x + DX4[k], ny = y + DY4[k];
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
-      const u = this.type[ny * this.w + nx];
-      if ((u === 0 || DEFS[u].state === GAS) && this.rand() < 0.2) {
-        this.spawnProjectile(PHOTON, nx + 0.5, ny + 0.5, DX4[k] * 3, DY4[k] * 3);
-      }
-    }
-    return true;
   },
 
   // Ferrofluid is pulled up the magnetic field towards magnets.
