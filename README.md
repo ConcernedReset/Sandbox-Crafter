@@ -139,6 +139,10 @@ Each frame (60 per second):
      metal, and heats whatever absorbs it. Ruby amplifies it (in red).
    - Light that bounces off something takes on its colour: off gold it turns
      gold, off copper orange. The Mirror element reflects it unchanged.
+   - Light shining through something clear takes on its colour too: blue
+     through water, green through emerald. Gases don't colour it, and a clear
+     material doesn't recolour light that a mirror, a laser or a ruby has
+     already coloured, so a red laser stays red through a window.
    - Bounces follow the slope of the surface, read from the reflecting cells
      around the hit, so a diagonal line of mirror turns a beam through a
      right angle.
@@ -336,7 +340,7 @@ blowing the shell apart. The radiation tests cover light, neutron
 shielding, reactor criticality, the plutonium blast, magnets and decay. The
 tools tests cover brush shapes, boxes and particle impacts, and the camera
 tests cover zooming and panning. The machine tests
-cover coloured reflections, mirrors of metal behind glass, beams turned by
+cover coloured reflections and coloured glass, mirrors of metal behind glass, beams turned by
 diagonal mirrors, beam splitters, and every control and machine. The mechanics
 tests cover X-rays, gamma rays, ultraviolet and microwaves, gadgets
 on a battery, creatures, growing plants, meteors, hot ice, tin pest, gallium,

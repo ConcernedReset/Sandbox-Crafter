@@ -5,7 +5,9 @@
 // its velocity and, for each new cell it enters, either passes through,
 // bounces, is absorbed, or triggers a rule from PARTICLE_HITS.
 //
-// Light takes on the colour of what it bounces off: `ptint` holds the element
+// Light takes on the colour of what it bounces off or shines through (glass,
+// water, gems; not gases), though a clear material doesn't recolour light a
+// mirror or laser has already coloured: `ptint` holds the element
 // whose colour a photon now carries (0 for its own). Metal with glass (or any
 // clear solid) in front of it is a perfect mirror, and like the Mirror element
 // it bounces every photon without warming up.
@@ -21,6 +23,9 @@ const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
 const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO, HYDROGEN } = ID;
 const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
+// Photon tints that a clear material recolours: plain light, and light
+// already coloured by another clear material.
+const FILTERED = Uint8Array.from(DEFS, (d) => (d.id === 0 || (d.transparent && d.light === null) ? 1 : 0));
 
 export function initParticles(world) {
   world.pCap = CAPACITY;
@@ -189,7 +194,12 @@ export const Particles = {
           if (!e.colorless) this.ptint[k] = u;
           return BOUNCE;
         }
-        if (e.transparent) return PASS;
+        // Light shining through glass, water or a gem comes out its colour,
+        // unless a mirror, a laser or a ruby coloured it: those colours win.
+        if (e.transparent) {
+          if (!e.colorless && FILTERED[this.ptint[k]]) this.ptint[k] = u;
+          return PASS;
+        }
         return this.impact(j, lx, ly, d);
       case PMODE.electron:
         if (CONDUCTOR[u]) {

@@ -32,6 +32,19 @@ test('light takes the colour of the metal it bounces off', () => {
   assert.ok(back.every((t) => t === ID.GOLD), 'every reflected photon is gold');
 });
 
+test('light takes the colour of what it shines through', () => {
+  for (const t of [ID.WATER, ID.EMERALD, ID.GLASS]) {
+    const w = new World(80, 20, 3);
+    fillRect(w, 40, 0, 44, 19, t);
+    if (t === ID.WATER) fillRect(w, 0, 0, 79, 19, ID.WATER); // a pool that can't spread out
+    for (let k = 0; k < 16; k++) w.spawnProjectile(ID.PHOTON, 5.5, 2 + k + 0.5, 3, 0);
+    run(w, 20);
+    let tinted = 0;
+    for (let k = 0; k < w.pn; k++) if (w.px[k] > 50 && w.ptint[k] === t) tinted++;
+    assert.equal(tinted, 16, `${tinted} of 16 photons came out coloured by element ${t}`);
+  }
+});
+
 test('metal behind glass is a perfect mirror: every photon bounces, with no heat or pressure', () => {
   const bare = shine((w) => fillRect(w, 43, 0, 46, 19, ID.COPPER));
   assert.ok(bare.back.length < 16 && heatIn(bare.w, ID.COPPER) > 0, 'bare copper soaks up some light');
