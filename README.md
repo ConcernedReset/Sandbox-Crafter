@@ -90,11 +90,14 @@ The strip between the status line and the recipe tree changes the rules:
   sand falls onto it from every side and gases gather round it. Solid blocks
   stay put but still pull.
 - **Convection.** The air gets a temperature of its own. Hot things warm the
-  air beside them; the warm air swells (pushing outwards), rises against the
-  arrow, cools as it goes and gives its heat back to the room, and cooler air
-  flows back in underneath. So a hot block sits in a slow loop of moving air
-  that gradually cools it, and smoke and steam ride the currents. The Heat
-  view shows the warm air, and pointing at a cell shows its air temperature.
+  air beside them; the warm air swells (pushing outwards) and rises against
+  the arrow, spreads out, cools, sinks back down at the sides and is drawn
+  back in at the base. So a hot block sits in a loop of moving air that
+  gradually cools it, and smoke and steam ride round with it (in a closed
+  box especially; in the open some of the plume escapes off the top of the
+  map). The Heat and Cool tools warm and chill the air too, even over empty
+  space: a warm bubble rises, a cold pocket sinks. The Heat view shows the
+  air's temperature, and pointing at a cell shows it too.
 - **Reset** puts everything back: down, strength 1, both off. The settings are
   remembered in your browser.
 
@@ -165,8 +168,9 @@ Each frame (60 per second):
    Particles next to empty cells trade heat with that air instead of with the
    room; the air warms three times as fast as they cool, swells as it warms
    (and shrinks as it cools), is pushed against gravity in proportion to how
-   warm it is, is carried along by the wind, and slowly loses its heat to the
-   room. The loop this makes is the convection current.
+   much warmer it is than the air around it (so air that has cooled below its
+   surroundings sinks), is carried along by the wind, and loses its heat to
+   the room. The loop this makes is the convection current.
 
    Strong solids are airtight too. Anything with a strength of 25 or more
    that isn't itself explosive (glass, stone, metals, gems...) seals any air
@@ -461,7 +465,9 @@ straight-down path exactly. The Newtonian tests check the FFT field against
 a direct sum, that nothing is built while it's off, that mass pulls sand in
 and a White Hole pushes, and that light bends. The convection tests cover a
 rising plume, the plume turning with the arrow, air flowing in at its base,
-the hot block cooling, and a sealed fire still going out. The recipe tests
+the hot block cooling, a full loop in a closed box (markers carried up come
+back down to the base), the Heat and Cool tools warming and chilling the
+air, and a sealed fire still going out. The recipe tests
 run all 1198 production rules in the real simulation.
 
 Regenerate the table below after changing recipes with

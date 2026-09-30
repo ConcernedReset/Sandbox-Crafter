@@ -112,7 +112,10 @@ else; `test/build.test.js` checks the bundle runs.
 - **Convection** is off by default and then touches nothing: `conductHeat`
   keeps the old leak to room temperature. On, `warmAir` trades heat with the
   air of each empty neighbour, and `Air.stepHeat` does buoyancy, carrying,
-  blurring and cooling. Its constants are at the top of `air.js`.
+  blurring and cooling. Buoyancy compares each block with the average of the
+  air around it (`localMean`, a box blur), not with room temperature: that is
+  what makes cooled air sink and the loop close. `heatArea` (the Heat and
+  Cool tools) also changes the air. Constants are at the top of `air.js`.
 - **Balance numbers live in tests.** If you retune physics (pressure, particle
   impact heat, reactor behaviour), expect the pressure, radiation and
   mechanics tests to need their thresholds revisited. Some are ratios that

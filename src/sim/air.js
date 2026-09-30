@@ -12,9 +12,11 @@
 //
 // With convection on (`heat`), each block also has an air temperature.
 // Particles trade heat with it (world.js, warmAir); air that warms swells,
-// raising its pressure, and air that cools shrinks; warm air is pushed
-// against gravity; the flow carries the heat along; and the air slowly gives
-// its heat back to the room. The border ring stays at room temperature.
+// raising its pressure, and air that cools shrinks; air warmer than the air
+// around it is pushed against gravity and cooler air sinks, so a plume rises
+// over something hot, spreads, comes down at the sides and is drawn back in
+// at the base; the flow carries the heat along; and the air gives its heat
+// back to the room. The border ring stays at room temperature.
 
 import { AMBIENT } from './constants.js';
 
@@ -22,15 +24,17 @@ export const CELL = 4;
 
 // Convection. A degree lost by a particle warms its block's air by
 // AIR_SHARE degrees (air holds little heat), and each degree the air gains
-// raises its pressure by EXPAND. Warm air is pushed against gravity by
-// BUOYANCY per degree per g per frame, and gives AIR_TEMP_LOSS of its excess
-// heat back to the room a frame. HEAT_SMOOTH blurs it a little, like the
+// raises its pressure by EXPAND. Air is pushed against gravity by BUOYANCY
+// per degree it is warmer than the air within MEAN_RADIUS blocks, per g, per
+// frame (cooler air is pushed with it), and gives AIR_TEMP_LOSS of its
+// excess heat back to the room a frame. HEAT_SMOOTH blurs it a little, like the
 // pressure.
 export const AIR_SHARE = 3;
-export const EXPAND = 0.004;
-const BUOYANCY = 0.00004;
-const AIR_TEMP_LOSS = 0.004;
+export const EXPAND = 0.008;
+const BUOYANCY = 0.0001;
+const AIR_TEMP_LOSS = 0.01;
 const HEAT_SMOOTH = 0.1;
+const MEAN_RADIUS = 14;
 
 const PRESSURE_STEP = 0.3;
 const VELOCITY_STEP = 0.4;
@@ -132,21 +136,61 @@ export class Air {
     if (this.heat) this.stepHeat(gravity.gx, gravity.gy);
   }
 
+  // The average temperature of the open air within MEAN_RADIUS blocks of
+  // each block (a box blur done with running sums, sealed blocks left out).
+  localMean() {
+    const { W, H, t, blocked } = this;
+    const n = W * H;
+    if (!this.mean) {
+      this.mean = new Float32Array(n);
+      this.rowSum = new Float32Array(n);
+      this.rowCount = new Float32Array(n);
+    }
+    const { mean, rowSum, rowCount } = this;
+    const R = MEAN_RADIUS;
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      let s = 0, c = 0;
+      for (let x = 0; x < Math.min(R, W); x++) if (!blocked[o + x]) { s += t[o + x]; c++; }
+      for (let x = 0; x < W; x++) {
+        const add = x + R, drop = x - R - 1;
+        if (add < W && !blocked[o + add]) { s += t[o + add]; c++; }
+        if (drop >= 0 && !blocked[o + drop]) { s -= t[o + drop]; c--; }
+        rowSum[o + x] = s;
+        rowCount[o + x] = c;
+      }
+    }
+    for (let x = 0; x < W; x++) {
+      let s = 0, c = 0;
+      for (let y = 0; y < Math.min(R, H); y++) { s += rowSum[y * W + x]; c += rowCount[y * W + x]; }
+      for (let y = 0; y < H; y++) {
+        const add = y + R, drop = y - R - 1;
+        if (add < H) { s += rowSum[add * W + x]; c += rowCount[add * W + x]; }
+        if (drop >= 0) { s -= rowSum[drop * W + x]; c -= rowCount[drop * W + x]; }
+        mean[y * W + x] = c > 0 ? s / c : AMBIENT;
+      }
+    }
+    return mean;
+  }
+
   // Convection: buoyancy, then the flow carrying the heat, then blurring and
   // cooling. (gx, gy) is the pull of gravity per block, in g.
   stepHeat(gx, gy) {
     const { W, H, t, vx, vy, p, blocked, scratch } = this;
 
-    // 1. Warm air is pushed against gravity; cold air sinks with it.
+    // 1. Air warmer than the air around it on average is pushed against
+    // gravity, and cooler air sinks: so air that has risen off something hot
+    // and cooled comes back down, and the loop closes.
+    const mean = this.localMean();
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
         if (blocked[i]) continue;
         if (!blocked[i + 1]) {
-          const e = (t[i] + t[i + 1]) * 0.5 - AMBIENT;
+          const e = (t[i] + t[i + 1] - mean[i] - mean[i + 1]) * 0.5;
           vx[i] -= BUOYANCY * e * (gx[i] + gx[i + 1]) * 0.5;
         }
         if (!blocked[i + W]) {
-          const e = (t[i] + t[i + W]) * 0.5 - AMBIENT;
+          const e = (t[i] + t[i + W] - mean[i] - mean[i + W]) * 0.5;
           vy[i] -= BUOYANCY * e * (gy[i] + gy[i + W]) * 0.5;
         }
       }

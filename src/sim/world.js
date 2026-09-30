@@ -1039,9 +1039,24 @@ export class World {
     for (const i of cells) mask[i] = 0;
   }
 
+  // With convection on, the air under the brush warms or cools too (each
+  // cell covered moves its air block a sixteenth of the way, so a block the
+  // brush covers completely changes by `amount`), and swells or shrinks.
   heatArea(area, amount) {
-    area((i) => {
-      if (!this.type[i] || this.type[i] === WALL) return;
+    const air = this.air;
+    const share = amount / (CELL * CELL);
+    area((i, x, y) => {
+      const t = this.type[i];
+      if (t === WALL) return;
+      if (air.heat) {
+        const a = air.at(x, y);
+        if (!air.blocked[a]) {
+          const was = air.t[a], now = Math.min(MAX_TEMP, Math.max(MIN_TEMP, was + share));
+          air.t[a] = now;
+          air.p[a] += (now - was) * EXPAND;
+        }
+      }
+      if (!t) return;
       const T = this.temp[i] + amount;
       this.temp[i] = T > MAX_TEMP ? MAX_TEMP : T < MIN_TEMP ? MIN_TEMP : T;
     });
