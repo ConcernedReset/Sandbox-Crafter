@@ -15,8 +15,9 @@
 // Mixed into World.prototype; `initParticles` sets up the storage.
 
 import { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL } from './elements.js';
-import { MAX_TEMP } from './constants.js';
+import { MAX_TEMP, KICK_CHANCE, KICK_EMIT, KICK_DECAY } from './constants.js';
 import { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING } from './lookups.js';
+import { LENS } from './gravity.js';
 
 const PASS = 0, DEAD = 1, BOUNCE = 2;
 const CAPACITY = 12000;
@@ -26,6 +27,9 @@ const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
 // Photon tints that a clear material recolours: plain light, and light
 // already coloured by another clear material.
 const FILTERED = Uint8Array.from(DEFS, (d) => (d.id === 0 || (d.transparent && d.light === null) ? 1 : 0));
+// Particles that can disturb a stable radioactive atom (light can't).
+const HARD = new Uint8Array(Math.max(...Object.values(PMODE)) + 1);
+for (const m of ['neutron', 'proton', 'electron', 'positron', 'alpha', 'ion', 'gamma']) HARD[PMODE[m]] = 1;
 
 export function initParticles(world) {
   world.pCap = CAPACITY;
@@ -137,6 +141,20 @@ export const Particles = {
       }
     }
 
+    // Newtonian gravity bends every flying particle's path; its speed holds.
+    const g = this.gravity;
+    if (g.newtonian) {
+      const a = this.air.at(this.px[k] | 0, this.py[k] | 0);
+      const fx = g.fx[a], fy = g.fy[a];
+      if (fx !== 0 || fy !== 0) {
+        const vx = this.pvx[k], vy = this.pvy[k];
+        const nx = vx + fx * LENS, ny = vy + fy * LENS;
+        const f = Math.hypot(vx, vy) / (Math.hypot(nx, ny) || 1);
+        this.pvx[k] = nx * f;
+        this.pvy[k] = ny * f;
+      }
+    }
+
     let x = this.px[k], y = this.py[k];
     const vx = this.pvx[k], vy = this.pvy[k];
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(vx), Math.abs(vy))));
@@ -179,6 +197,13 @@ export const Particles = {
       // Slow neutrons split atoms far more readily than fast ones.
       if (r.fission && this.pvx[k] * this.pvx[k] + this.pvy[k] * this.pvy[k] < 2) chance *= 3;
       if (this.rand() < chance) return this.applyHit(k, r, j, ix, iy, lx, ly);
+    }
+    // Hard radiation can be swallowed by a stable radioactive atom it passes,
+    // stirring it up. Each kick uses up the particle, so kicks alone never
+    // run away; fissile atoms answer neutrons by splitting instead.
+    if (e.stable && e.active && e.fission === null && HARD[d.pmode] && this.rand() < KICK_CHANCE) {
+      this.kick(j, ix, iy, e);
+      return DEAD;
     }
     if (e.detector) { this.detect(j, ix, iy); return PASS; }
     // A photocell turns light into current instead of heat.
@@ -330,6 +355,17 @@ export const Particles = {
       }
     }
     return r.keep ? PASS : DEAD;
+  },
+
+  // A particle disturbs a stable radioactive atom (element def `e`, in cell
+  // j): it may throw off particles of its own, warm up, or decay.
+  kick(j, x, y, e) {
+    if (e.emits !== null) {
+      for (const m of e.emits) if (this.rand() < m.chance * KICK_EMIT) this.emitAt(m.id, x, y);
+    }
+    if (e.selfHeat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + e.selfHeat * KICK_EMIT);
+    const o = e.decay;
+    if (o !== null && this.rand() < Math.min(0.9, o.chance * KICK_DECAY)) this.decayCell(j, x, y, o);
   },
 
   // A neutron splits the atom in cell j.

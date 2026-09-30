@@ -127,37 +127,43 @@ export const WORLD_ELEMENTS = [
   }),
   material('LEAD_CRYSTAL', 'Lead Crystal', 'LCr', SOLID, ['#e8f4fc', '#dceef8', '#f4fcff'], {
     strength: 25, density: 3.1, transparent: true, uvBlock: true, sparkle: true,
+    high: { temp: 1000, to: 'MOLTEN_GLASS', chance: 0.02 },
     desc: 'Glass with lead in it, which makes it heavy, sparkly, and ring when tapped.',
     hint: 'Melt Lead into Glass.',
   }),
   material('STAINED_GLASS', 'Stained Glass', 'SGl', SOLID, ['#d83a3a', '#3a8ad8', '#3ab86a', '#e8c83a', '#9a4ad8'], {
+    high: { temp: 1400, to: 'MOLTEN_GLASS', chance: 0.02 },
     strength: 25, density: 2.5, transparent: true, uvBlock: true,
     desc: 'Glass coloured with metal oxides. Medieval windows get their blues from cobalt and their greens from copper.',
     hint: 'Melt Copper into Glass.',
   }),
   material('URANIUM_GLASS', 'Uranium Glass', 'UGl', SOLID, ['#c8f070', '#bce464', '#d4fc7c'], {
     strength: 25, density: 2.6, transparent: true, emits: [{ p: 'ELECTRON', chance: 0.0002 }],
+    high: { temp: 1400, to: 'MOLTEN_GLASS', chance: 0.02 },
     excite: { color: '#6aff5a' },
     desc: 'Vaseline-yellow glass that glows vivid green under ultraviolet. It\'s very slightly radioactive, and people collect it.',
     hint: 'Melt Yellowcake into Glass.',
   }),
   material('CRANBERRY_GLASS', 'Cranberry Glass', 'CGl', SOLID, ['#c81a4a', '#b81442', '#d42456'], {
+    high: { temp: 1400, to: 'MOLTEN_GLASS', chance: 0.02 },
     strength: 25, density: 2.6, transparent: true, uvBlock: true,
     desc: 'Gold dissolved in glass as specks too small to see turns it ruby red. The Romans\' Lycurgus Cup, which changes colour in the light, works the same way.',
     hint: 'Melt Gold into Glass.',
   }),
   material('FIBERGLASS', 'Fiberglass', 'FbG', SOLID, ['#e8e0c8', '#dcd4bc', '#f4ecd4'], {
     strength: 60, density: 1.8, acidProof: true, conduct: 0.04,
+    flammable: 0.01, ignite: 450, burn: { to: 'GLASS', toChance: 0.5, smoke: 0.5 },
     desc: 'Glass fibres set in plastic resin: light, strong and rot-proof. Boats, surfboards and wind-turbine blades.',
     hint: 'Weave Glass into Plastic.',
   }),
   material('REINFORCED_CONCRETE', 'Reinforced Concrete', 'RCc', SOLID, ['#a3a39e', '#999994', '#6a6e72'], {
     strength: 150, density: 2.5, conduct: 0.15, nAbsorb: 0.15,
+    pressure: { above: 140, to: 'GRAVEL', alt: 'STEEL', altChance: 0.2, chance: 0.01 },
     desc: 'Concrete poured around steel bars. Concrete resists crushing, steel resists stretching, and together they hold up the modern world.',
     hint: 'Pour Wet Concrete around Steel.',
   }),
   material('ROMAN_CONCRETE', 'Roman Concrete', 'RoC', SOLID, ['#b8b0a0', '#aca494', '#c4bcac'], {
-    strength: 90, density: 2.3, conduct: 0.1,
+    strength: 90, density: 2.3, conduct: 0.1, pressure: { above: 80, to: 'GRAVEL', chance: 0.01 },
     desc: 'Volcanic ash and lime. Roman harbour walls have stood in the sea for 2000 years, growing stronger as seawater grows new crystals inside them.',
     hint: 'Mix Pumice into Slaked Lime.',
   }),
@@ -167,6 +173,7 @@ export const WORLD_ELEMENTS = [
     hint: 'Mix Mud with Grass for straw.',
   }),
   material('PLASTER', 'Plaster', 'Pls', SOLID, ['#f2f0ea', '#e8e6e0', '#faf8f2'], {
+    high: { temp: 150, to: 'PLASTER_OF_PARIS', chance: 0.02 },
     strength: 20, density: 1.5, conduct: 0.05,
     desc: 'Set plaster, for casts, walls and sculptures.',
     hint: 'Let Wet Plaster set.',
@@ -182,6 +189,7 @@ export const WORLD_ELEMENTS = [
     hint: 'Mix Tar with Gravel.',
   }),
   material('GLUE', 'Glue', 'Glu', LIQUID, ['#f4f2ea', '#eae8e0'], {
+    flammable: 0.02, ignite: 300, burn: { smoke: 0.5 },
     density: 1.1, spread: 1, viscosity: 0.8, sticky: true,
     desc: 'Sticky glue, like the hide glue made by boiling bones for thousands of years.',
     hint: 'Steam Bones.',
@@ -198,15 +206,18 @@ export const WORLD_ELEMENTS = [
   }),
   material('GOO', 'Goo', 'Goo', LIQUID, ['#e8e4d8', '#dedace'], {
     density: 1.0, spread: 1, viscosity: 0.9, sticky: true,
-    desc: 'What\'s left of styrofoam once acetone lets the air out: a spoonful of sticky plastic.',
+    flammable: 0.05, ignite: 350, burn: { smoke: 0.9 },
+    desc: 'Sticky melted plastic: what\'s left of styrofoam once acetone lets the air out, or plastic that got too hot.',
     hint: 'Pour Acetone on Styrofoam.',
   }),
   material('TEFLON', 'Teflon', 'PTFE', SOLID, ['#f6f6f4', '#eeeeec', '#fcfcfa'], {
+    pressure: { above: 40, to: 'MICROPLASTIC', chance: 0.01 },
     strength: 30, density: 2.2, conduct: 0.05, acidProof: true,
     desc: 'Almost nothing sticks to it or dissolves it. It was found by accident in 1938 when a cylinder of gas turned into a white powder.',
     hint: 'Let Fluorine attack Plastic.',
   }),
   material('SILICONE', 'Silicone', 'Slc', SOLID, ['#d8e0e8', '#ccd4dc', '#e4ecf4'], {
+    flammable: 0.01, ignite: 450, burn: { to: 'SAND', toChance: 0.5, smoke: 0.3 },
     strength: 20, density: 1.1, conduct: 0.05, acidProof: true,
     desc: 'Rubbery silicon polymer that shrugs off heat: oven gloves, bakeware and bathroom sealant.',
     hint: 'Combine Silicon with Oil.',
@@ -229,17 +240,19 @@ export const WORLD_ELEMENTS = [
     hint: 'Melt Wax.',
   }),
   material('CANDLE', 'Candle', 'Cdl', SOLID, ['#f8f0e0', '#f0e8d8', '#fff8ea'], {
-    strength: 5, density: 0.9, flammable: 0.3, ignite: 250, burn: { fireTemp: 900, fireLife: [300, 500] },
+    strength: 5, density: 0.9, flammable: 0.3, ignite: 250, burn: { smoke: 0.2, fireTemp: 900, fireLife: [300, 500] },
     desc: 'Wax with a cotton wick. Lit, it burns for a long time with a small steady flame.',
     hint: 'Put a Cotton wick in Wax.',
   }),
   material('INK', 'Ink', 'Ink', LIQUID, ['#101018', '#181820', '#0c0c12'], {
+    high: { temp: 100, to: 'STEAM', alt: 'SOOT', altChance: 0.4, chance: 0.05 },
     density: 1.05, spread: 5,
     desc: 'India ink: lampblack stirred into hide glue, the recipe used for 2000 years.',
     hint: 'Stir Soot into Glue.',
   }),
   material('PULP', 'Pulp', 'Plp', LIQUID, ['#e8e0d0', '#dcd4c4'], {
     density: 1.1, spread: 1, viscosity: 0.8, pressure: { above: 10, to: 'PAPER', chance: 0.02 },
+    high: { temp: 100, to: 'PAPER', alt: 'STEAM', altChance: 0.5, chance: 0.02 },
     desc: 'Wood cooked down to a mush of fibres. Press the water out and you have paper.',
     hint: 'Cook Wood in Lye.',
   }),
@@ -301,6 +314,7 @@ export const WORLD_ELEMENTS = [
     hint: 'Tip Wood with Red Phosphorus.',
   }),
   material('SPONGE', 'Sponge', 'Spg', SOLID, ['#f0d860', '#e4cc54', '#fce46c'], {
+    flammable: 0.2, ignite: 300, burn: { smoke: 0.8 },
     strength: 5, density: 0.2,
     desc: 'Foam full of open holes that suck up water.',
     hint: 'Plastic foamed with Bubbles.',
@@ -312,10 +326,12 @@ export const WORLD_ELEMENTS = [
   }),
   material('AEROGEL', 'Aerogel', 'Agl', SOLID, ['#c8dcf0', '#bcd0e8', '#d4e8fc'], {
     strength: 3, density: 0.01, conduct: 0.001, airCool: 0.00005, transparent: true,
+    pressure: { above: 5, to: 'SAND', chance: 0.02 },
     desc: '"Frozen smoke": a glass foam that is 99.8% air, the lightest solid ever made. A sliver can shield a hand from a blowtorch.',
     hint: 'Dry out a Sand gel in hot Alcohol.',
   }),
   material('CARBON_FIBER', 'Carbon Fiber', 'CFb', SOLID, ['#2a2a2e', '#343438', '#202024', '#3e3e44'], {
+    flammable: 0.002, ignite: 700, burn: { smoke: 0.3, fireLife: [100, 200] },
     strength: 180, density: 1.6, conduct: 0.4, conductor: true,
     desc: 'Threads of carbon set in plastic: stronger than steel at a fifth of the weight. Racing cars and aircraft are built from it.',
     hint: 'Weave Graphite into Plastic.',
@@ -326,13 +342,15 @@ export const WORLD_ELEMENTS = [
     hint: 'Peel Graphite with Glue, the sticky-tape way.',
   }),
   material('FULLERENE', 'Fullerene', 'C60', POWDER, ['#3a2a3a', '#443444', '#302030'], {
+    high: { temp: 1500, to: 'GRAPHITE', chance: 0.01 },
     density: 1.7,
     desc: 'Buckyballs: sixty carbon atoms in the shape of a football, found in 1985 by blasting graphite with a laser. Named after the architect of geodesic domes.',
     hint: 'Blast Graphite with a Laser.',
   }),
   material('STEEL_WOOL', 'Steel Wool', 'SWl', SOLID, ['#8a9096', '#80868c', '#949aa0'], {
     strength: 10, density: 1, conduct: 0.3, conductor: true, sparkHeat: 150,
-    flammable: 0.3, ignite: 400, flame: '#ffd080', burn: { fireTemp: 1500, fireLife: [10, 20], flare: true },
+    flammable: 0.3, ignite: 400, flame: '#ffd080',
+    burn: { to: 'RUST', toChance: 0.4, fireTemp: 1500, fireLife: [10, 20], flare: true },
     desc: 'Steel in hair-thin strands. Touch a battery to it and the current makes it burn in a shower of sparks.',
     hint: 'Spin Steel like Cotton.',
   }),
@@ -352,6 +370,7 @@ export const WORLD_ELEMENTS = [
     key: 'LIGHT_BULB', name: 'Light Bulb', sym: 'Blb', cat: 'device', state: SOLID, strength: 20,
     colors: ['#f8f4e0', '#fff8e8', '#ece8d0'], density: 2.5, conduct: 0.3, conductor: true, sparkHeat: 60,
     airCool: 0.02, hotEmit: { temp: 400, chance: 0.2 },
+    pressure: { above: 20, to: 'GLASS', alt: 'TUNGSTEN', altChance: 0.3, chance: 0.02 },
     desc: 'A tungsten filament in a glass bulb. Run a current through it and it glows, shining light.',
     hint: 'Put Tungsten inside Glass.',
   },
@@ -380,13 +399,14 @@ export const WORLD_ELEMENTS = [
   {
     key: 'POTATO_BATTERY', name: 'Potato Battery', sym: 'PBt', cat: 'device', state: SOLID, strength: 5,
     colors: ['#c8a060', '#bc9454', '#d4ac6c', '#8a9096'], density: 1.1, behavior: 'battery', batteryRate: 0.05,
-    desc: 'A potato with zinc stuck in it: a weak battery. The energy comes from the zinc dissolving, not from the potato.',
+    decay: { chance: 0.0003, to: 'POTATO' },
+    desc: 'A potato with zinc stuck in it: a weak battery. The energy comes from the zinc dissolving, not from the potato, so once the zinc is gone it\'s just a potato again.',
     hint: 'Stick Zinc into a Potato.',
   },
   {
     key: 'RTG', name: 'RTG', sym: 'RTG', cat: 'device', state: SOLID, strength: 100,
     colors: ['#5a5e64', '#4a4e54', '#e86a3a'], density: 8, conduct: 0.4, behavior: 'battery', batteryRate: 0.2,
-    emits: [{ p: 'ALPHA', chance: 0.001 }], glowAmount: 0.3,
+    emits: [{ p: 'ALPHA', chance: 0.001 }], glowAmount: 0.3, pressure: { above: 90, to: 'PLUTONIUM', chance: 0.01 },
     desc: 'A radioisotope generator: plutonium\'s heat turned straight into electricity. Voyager 1 has been running on them since 1977.',
     hint: 'Wrap Plutonium in Germanium thermocouples.',
   },
@@ -401,14 +421,14 @@ export const WORLD_ELEMENTS = [
   {
     key: 'SPARKLER', name: 'Sparkler', sym: 'Spk', cat: 'explosive', state: SOLID, strength: 10,
     colors: ['#8a8e94', '#6a6e74', '#9a9ea4'], density: 2, flammable: 0.3, ignite: 300, flame: '#fff0c0',
-    burn: { fireTemp: 1500, fireLife: [300, 500], flare: true },
+    burn: { smoke: 0.3, fireTemp: 1500, fireLife: [300, 500], flare: true },
     desc: 'Iron filings in a slow-burning coat on a wire. Each spark is a flake of iron burning white-hot in the air.',
     hint: 'Coat a Fuse with iron (Metal).',
   },
   {
     key: 'FLARE', name: 'Road Flare', sym: 'RFl', cat: 'explosive', state: SOLID, strength: 10,
     colors: ['#c83a3a', '#b83434', '#d44444'], density: 1.5, flammable: 0.3, ignite: 250, flame: '#ff2a2a',
-    burn: { fireTemp: 1600, fireLife: [400, 600], flare: true },
+    burn: { smoke: 0.4, fireTemp: 1600, fireLife: [400, 600], flare: true },
     desc: 'Strontium burning a brilliant red for a quarter of an hour.',
     hint: 'Pack Strontium around a Fuse.',
   },
@@ -439,8 +459,8 @@ export const WORLD_ELEMENTS = [
     hint: 'Fungus teaming up with Algae.',
   }),
   life('SEASHELL', 'Seashell', 'Sea', POWDER, ['#f4e8dc', '#e8d8c8', '#f8f0e4', '#e0c8b0'], {
-    density: 2.4, pressure: { above: 20, to: 'CHALK', chance: 0.01 },
-    desc: 'The empty house of a sea snail, built from limestone pulled out of the water.',
+    density: 2.4, pressure: { above: 20, to: 'CHALK', chance: 0.01 }, high: { temp: 825, to: 'QUICKLIME', chance: 0.02 },
+    desc: 'The empty house of a sea snail, built from limestone pulled out of the water. Acid dissolves it, and roasting turns it into lime.',
     hint: 'What a Snail leaves behind.',
   }),
   life('YEAST', 'Yeast', 'Yst', POWDER, ['#e8d8b0', '#dccca4', '#f4e4bc'], {
@@ -460,7 +480,7 @@ export const WORLD_ELEMENTS = [
   }),
   life('SLIME_MOLD', 'Slime Mold', 'SMd', SOLID, ['#f0d830', '#e4cc24', '#fce43c'], {
     strength: 2, grow: { into: ['BREAD', 'SUGAR', 'FLOUR', 'FRUIT', 'DOUGH', 'CHEESE'], chance: 0.01 },
-    behavior: 'grow',
+    behavior: 'grow', flammable: 0.05, ignite: 200, burn: { ash: 0.4 },
     desc: 'A brainless yellow blob that spreads towards food. Scientists laid oat flakes where Tokyo\'s stations are, and it grew a network much like the real railway.',
     hint: 'Fungus meets Slime.',
   }),
@@ -522,7 +542,7 @@ export const WORLD_ELEMENTS = [
     hint: 'Fruit buried in Dirt.',
   }),
   food('FRIES', 'Fries', 'Fry', POWDER, ['#f0c850', '#e4bc44', '#fcd45c'], {
-    density: 0.8, flammable: 0.02, ignite: 350,
+    density: 0.8, flammable: 0.02, ignite: 350, burn: { to: 'CHARCOAL', toChance: 0.3, smoke: 0.5 },
     desc: 'Potato fried in hot oil. Belgium and France both claim them.',
     hint: 'Fry Potato in hot Oil.',
   }),
@@ -548,6 +568,7 @@ export const WORLD_ELEMENTS = [
     hint: 'Let Caramel cool.',
   }),
   food('MINT_CANDY', 'Mint Candy', 'Mnt', POWDER, ['#fcfcfc', '#f4f8f4', '#e8f8ec'], {
+    high: { temp: 150, to: 'CARAMEL', chance: 0.02 },
     density: 1.6,
     desc: 'Chalky mints covered in microscopic pits where bubbles can form, which is why they set off fizzy drinks.',
     hint: 'Flavour Candy with a Plant (mint).',
@@ -558,16 +579,19 @@ export const WORLD_ELEMENTS = [
     hint: 'Spin Caramel into a Cloud.',
   }),
   food('SYRUP', 'Syrup', 'Syr', LIQUID, ['#d8a040', '#cc9434', '#e4ac4c'], {
+    high: { temp: 115, to: 'CARAMEL', alt: 'STEAM', altChance: 0.4, chance: 0.02 },
     density: 1.35, spread: 1, viscosity: 0.85, sticky: true,
     desc: 'Sugar dissolved in water, thick and sticky.',
     hint: 'Dissolve Sugar in Water.',
   }),
   food('HONEY', 'Honey', 'Hny', LIQUID, ['#e8a020', '#dc9418', '#f4ac2c'], {
+    high: { temp: 160, to: 'CARAMEL', chance: 0.02 },
     density: 1.4, spread: 1, viscosity: 0.93, sticky: true,
     desc: 'Flower nectar concentrated by bees. It never spoils: honey from Egyptian tombs was still edible.',
     hint: 'Let a Bee visit a Flower.',
   }),
   food('JAM', 'Jam', 'Jam', LIQUID, ['#b81a3a', '#a81432', '#c82444'], {
+    high: { temp: 160, to: 'CARAMEL', chance: 0.02 },
     density: 1.3, spread: 1, viscosity: 0.9, sticky: true,
     desc: 'Fruit boiled with sugar until the pectin in the fruit sets it.',
     hint: 'Boil Fruit with Sugar.',
@@ -589,6 +613,7 @@ export const WORLD_ELEMENTS = [
   }),
   food('MILK', 'Milk', 'Mlk', LIQUID, ['#fafaf6', '#f4f4f0', '#ffffff'], {
     density: 1.03, spread: 6, wet: true, pressure: { above: 5, to: 'BUTTER', chance: 0.01 },
+    high: { temp: 100, to: 'STEAM', alt: 'CURDS', altChance: 0.3, chance: 0.05 },
     desc: 'Fat and protein floating in water, from a cow or (as here) from soaked seeds. Vinegar curdles it, and churning makes butter.',
     hint: 'Soak Seeds in Water, like oat milk.',
   }),
@@ -598,7 +623,7 @@ export const WORLD_ELEMENTS = [
     hint: 'Curdle Milk with Vinegar.',
   }),
   food('CHEESE', 'Cheese', 'Chs', SOLID, ['#f0c850', '#e4bc44', '#fcd45c'], {
-    strength: 6, density: 1.1, flammable: 0.02, ignite: 350,
+    strength: 6, density: 1.1, flammable: 0.02, ignite: 350, burn: { smoke: 0.5 },
     desc: 'Curds pressed and aged. There are well over a thousand kinds.',
     hint: 'Press Curds together.',
   }),
@@ -609,7 +634,8 @@ export const WORLD_ELEMENTS = [
   }),
   food('YOGURT', 'Yogurt', 'Ygt', LIQUID, ['#f8f8f0', '#f0f0e8'], {
     density: 1.05, spread: 1, viscosity: 0.8, wet: true,
-    desc: 'Milk thickened and soured by bacteria eating its sugar.',
+    pressure: { above: 10, to: 'CHEESE', chance: 0.02 },
+    desc: 'Milk thickened and soured by bacteria eating its sugar. Strain it under pressure and it becomes a soft cheese.',
     hint: 'Let Bacteria loose in Milk.',
   }),
   food('ICE_CREAM', 'Ice Cream', 'IcC', POWDER, ['#fce8e0', '#f8f0d8', '#e8f4e0', '#f4e0f0'], {
@@ -629,6 +655,7 @@ export const WORLD_ELEMENTS = [
     hint: 'Cook an Egg.',
   }),
   food('NAKED_EGG', 'Naked Egg', 'NEg', POWDER, ['#f4ecd8', '#eee4cc'], {
+    high: { temp: 70, to: 'FRIED_EGG', chance: 0.05 },
     density: 1.03, wet: true,
     desc: 'An egg left in vinegar: the acid dissolves the shell and leaves a bouncy, see-through egg held together by its membrane.',
     hint: 'Soak an Egg in Vinegar.',
@@ -645,6 +672,7 @@ export const WORLD_ELEMENTS = [
     hint: 'Cook Meat.',
   }),
   food('BLOOD', 'Blood', 'Bld', LIQUID, ['#8a0a14', '#7a0810', '#9a0e18'], {
+    high: { temp: 100, to: 'STEAM', alt: 'ASH', altChance: 0.3, chance: 0.05 },
     density: 1.06, spread: 4, wet: true,
     desc: 'Red because of iron. It makes hydrogen peroxide foam, and luminol glows wherever it has been.',
     hint: 'Squeeze Meat.',
@@ -661,7 +689,9 @@ export const WORLD_ELEMENTS = [
   }),
   food('WINE', 'Wine', 'Win', LIQUID, ['#6a1030', '#5c0c28', '#781438'], {
     density: 0.99, spread: 6, wet: true,
-    desc: 'Fermented fruit juice. Left open, bacteria sour it: "vinegar" is French for sour wine.',
+    high: { temp: 80, to: 'ALCOHOL', alt: 'STEAM', altChance: 0.5, chance: 0.02 },
+    low: { temp: -5, to: 'ICE', alt: 'ALCOHOL', altChance: 0.3, chance: 0.02 },
+    desc: 'Fermented fruit juice. Left open, bacteria sour it: "vinegar" is French for sour wine. Warm it and the alcohol boils off first; freeze it and the ice leaves the alcohol behind.',
     hint: 'Let Yeast loose on Fruit.',
   }),
   food('SODA_WATER', 'Soda Water', 'Sda', LIQUID, ['#e8f4fa', '#dcecf4'], {
@@ -681,6 +711,7 @@ export const WORLD_ELEMENTS = [
   }),
 
   food('TOFU', 'Tofu', 'Tfu', SOLID, ['#f8f4e8', '#f0ece0', '#fffcf0'], {
+    flammable: 0.02, ignite: 300, burn: { to: 'CHARCOAL', toChance: 0.3, smoke: 0.5 },
     strength: 4, density: 1.1,
     desc: 'Soy milk curdled with nigari, a salt left over from making sea salt, then pressed into blocks.',
     hint: 'Curdle Milk with Salt.',
@@ -775,10 +806,11 @@ export const WORLD_ELEMENTS = [
     hint: 'Spill Sugar on Dirt.',
   }),
   critter('TERMITE', 'Termite', 'Trt', ['#e8d0a8', '#dcc49c', '#f4dcb4'], {
-    moves: 'walk', speed: 0.3, breed: 0.1, eats: [{ food: 'WOOD' }, { food: 'PAPER' }, { food: 'CARDBOARD' }],
+    moves: 'walk', speed: 0.3, breed: 0.1,
+    eats: [{ food: 'WOOD', becomes: 'SAWDUST' }, { food: 'PAPER' }, { food: 'CARDBOARD' }],
   }, {
     life: [2000, 3000],
-    desc: 'Eats wood, with help from microbes in its gut that digest cellulose. Despite the look, termites aren\'t ants at all: they\'re a kind of cockroach.',
+    desc: 'Eats wood, with help from microbes in its gut that digest cellulose, and leaves sawdust behind. Despite the look, termites aren\'t ants at all: they\'re a kind of cockroach.',
     hint: 'An Ant that develops a taste for Wood.',
   }),
   critter('SPIDER', 'Spider', 'Spd', ['#2a2a2a', '#3a3434', '#1e1e1e'], {
@@ -805,24 +837,24 @@ export const WORLD_ELEMENTS = [
     hint: 'An Ant that takes to Flowers.',
   }),
   critter('BUTTERFLY', 'Butterfly', 'Bfy', ['#f08a2a', '#2a2a2a', '#6ab0f0', '#f0e04a'], {
-    moves: 'fly', speed: 0.3, breed: 0.02, eats: [{ food: 'FLOWER', becomes: 'FLOWER' }],
+    moves: 'fly', speed: 0.3, breed: 0.02, eats: [{ food: 'FLOWER', becomes: 'FLOWER', drops: 'FRUIT' }],
   }, {
     life: [1500, 2500],
-    desc: 'A caterpillar that dissolved itself inside a chrysalis and rebuilt itself with wings.',
+    desc: 'A caterpillar that dissolved itself inside a chrysalis and rebuilt itself with wings. The flowers it visits are pollinated and set fruit.',
     hint: 'A Worm (think caterpillar) on a Flower.',
   }),
   critter('FIREFLY', 'Firefly', 'Ffy', ['#6a6a3a', '#5e5e30'], {
-    moves: 'fly', speed: 0.3,
+    moves: 'fly', speed: 0.3, eats: [{ food: 'SNAIL', becomes: 'SEASHELL' }],
   }, {
     life: [2000, 3000], render: 'blink', glowAmount: 0.1,
-    desc: 'A beetle whose tail makes cold light, blinking in patterns to find a mate. In some forests thousands flash in sync.',
+    desc: 'A beetle whose tail makes cold light, blinking in patterns to find a mate. In some forests thousands flash in sync. Firefly larvae hunt snails and leave the empty shells.',
     hint: 'A Bee that picks up a glow from Phosphor.',
   }),
   critter('TARDIGRADE', 'Tardigrade', 'Tdg', ['#d8c8a8', '#ccbc9c', '#e4d4b4'], {
     moves: 'walk', speed: 0.05, breed: 0.05, tough: true,
     eats: [{ food: 'MOSS' }, { food: 'ALGAE' }, { food: 'LICHEN' }],
   }, {
-    life: [3000, 3900],
+    life: [3000, 3900], low: { temp: -20, to: 'TUN', chance: 0.05 },
     desc: 'A half-millimetre "water bear" that survives boiling, near absolute zero, radiation and open space by drying into a barrel and waiting it out.',
     hint: 'Water trickling through Lichen.',
   }),
@@ -873,6 +905,7 @@ export const WORLD_ELEMENTS = [
   {
     key: 'QUICKSAND', name: 'Quicksand', sym: 'QSd', cat: 'liquid', state: LIQUID,
     colors: ['#c8a868', '#bc9c5c', '#d4b474'], density: 1.9, spread: 1, viscosity: 0.9,
+    high: { temp: 100, to: 'SAND', chance: 0.02 },
     desc: 'Sand so soaked it can\'t bear weight. You\'d sink in, but you\'re lighter than it, so you\'d never go all the way under.',
     hint: 'Mix Sand with Clay.',
   },
@@ -925,8 +958,9 @@ export const WORLD_ELEMENTS = [
     key: 'QUARK_GLUON_PLASMA', name: 'Quark-Gluon Plasma', sym: 'QGP', cat: 'special', state: ENERGY,
     colors: ['#ff4aff', '#4affff', '#ffff4a'], temp: 9999, holdTemp: true, density: 0.02,
     life: [30, 60], behavior: 'decay', render: 'strange', glowAmount: 2,
+    lifeEnd: { to: 'HYDROGEN', alt: 'HELIUM', altChance: 0.25 },
     emits: [{ p: 'PROTON', chance: 0.05 }, { p: 'NEUTRON', chance: 0.05 }, { p: 'PION', chance: 0.05 }],
-    desc: 'Matter so hot that protons and neutrons melt into a soup of quarks and gluons, as the whole universe was a millionth of a second after the Big Bang.',
+    desc: 'Matter so hot that protons and neutrons melt into a soup of quarks and gluons, as the whole universe was a millionth of a second after the Big Bang. As it cools it freezes into hydrogen and helium, in the same three-to-one mix the Big Bang made.',
     hint: 'Melt Neutronium in Plasma.',
   },
   {
@@ -940,8 +974,9 @@ export const WORLD_ELEMENTS = [
   {
     key: 'ICE_NINE', name: 'Ice-Nine', sym: 'Ic9', cat: 'special', state: SOLID, strength: 30,
     colors: ['#c8f0ff', '#bce8fc', '#d4f8ff'], temp: 22, transparent: true,
+    high: { temp: 46, to: 'WATER', chance: 0.05 },
     grow: { into: ['WATER', 'SALT_WATER', 'ICE'], chance: 0.3 }, behavior: 'grow',
-    desc: 'Kurt Vonnegut\'s fictional ice that stays frozen at room temperature. One seed crystal turns any water it touches into more of itself.',
+    desc: 'Kurt Vonnegut\'s fictional ice that stays frozen at room temperature: it melts at 45.8 °C. One seed crystal turns any water it touches into more of itself.',
     hint: 'Ice corrupted by Strange Matter.',
   },
   {

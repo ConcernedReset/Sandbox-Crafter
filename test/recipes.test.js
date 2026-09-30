@@ -51,13 +51,19 @@ function setUp(rule) {
       fill(home(a), a);
       hooks.push(() => w.pressurize(midX, midY, 30, 2));
       break;
-    case 'burn':
-      // Fuel in one half, fresh flames lit in the empty half next to it.
+    case 'burn': {
+      // Fuel in one half, fresh flames lit in the empty half next to it (or
+      // sparks, for explosives a flame won't set off). Flames need air, so
+      // the box is open on the side away from the fuel.
       fill(home(a), a);
+      const edge = isGas(a) ? box.y1 + 1 : box.y0 - 1;
+      for (let x = box.x0; x <= box.x1; x++) w.clearCell(edge * w.w + x);
+      const lighter = DEFS[a].flammable > 0 ? ID.FIRE : ID.SPARK;
       hooks.push((f) => {
-        if (f % 15 === 0) w.paint(midX, isGas(a) ? midY + 2 : midY - 1, 3, ID.FIRE);
+        if (f % 15 === 0) w.paint(midX, isGas(a) ? midY + 2 : midY - 1, 3, lighter);
       });
       break;
+    }
     case 'time':
       if (a === ID.PLANT) {
         // Plant growing thick: a seed of plant at the bottom of a pool.
@@ -69,6 +75,11 @@ function setUp(rule) {
       } else {
         fill(home(a), a);
       }
+      break;
+    case 'decay':
+      // Radioactive elements stay put until disturbed: squeeze them.
+      fill(home(a), a);
+      hooks.push(() => w.pressurize(midX, midY, 30, 2));
       break;
     case 'contact': {
       const special = CONTACT_SETUPS[`${DEFS[a].key}+${DEFS[b].key}`];
@@ -130,9 +141,9 @@ const CONTACT_SETUPS = {
     fillRect(w, box.x0, box.y1 - 8, box.x1, box.y1, ID.DIAMOND);
     return (f) => { if (f % 10 === 0) w.paint(25, box.y1 - 10, 4, ID.PLASMA); };
   },
-  'METAL+PLASMA': (w, box) => {
-    fillRect(w, box.x0, box.y1 - 8, box.x1, box.y1, ID.METAL);
-    return (f) => { if (f % 10 === 0) w.paint(25, box.y1 - 10, 4, ID.PLASMA); };
+  'GREY_GOO+LIGHTNING': (w, box) => {
+    fillRect(w, box.x0, box.y1 - 5, box.x1, box.y1, ID.GREY_GOO);
+    w.spawn(box.y0 * w.w + 25, ID.LIGHTNING);
   },
   'PLASMA+GLASS': (w, box) => {
     fillRect(w, box.x0, box.y1 - 8, box.x1, box.y1, ID.GLASS);

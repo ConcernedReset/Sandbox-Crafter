@@ -17,8 +17,8 @@ export const EXPANSION_ELEMENTS = [
     key: 'OXYGEN', name: 'Oxygen', sym: 'O', cat: 'gas', state: GAS,
     colors: ['#bcd7ff', '#c8defc'], alpha: 0.25, density: 0.07, rise: 0.35, sink: 0.15, airDrag: 0.4,
     flammable: 0.4, burn: { fireTemp: 1300, fireLife: [10, 20] },
-    low: { temp: -183, to: 'LOX', chance: 0.1 },
-    desc: 'Feeds fire, so flames flare up wherever it is. Liquefies at −183 °C.',
+    low: { temp: -185, to: 'LOX', chance: 0.1 },
+    desc: 'Feeds fire, so flames flare up wherever it is. Liquefies at −183 °C, and slowly rusts iron.',
     hint: 'Running electricity through Water gives off more than one gas.',
   },
   {
@@ -38,7 +38,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'CARBON_DIOXIDE', name: 'Carbon Dioxide', sym: 'CO2', cat: 'gas', state: GAS,
     colors: ['#d0d0d0', '#c4c4c4'], alpha: 0.25, density: 0.15, rise: 0.05, sink: 0.35, airDrag: 0.35,
-    low: { temp: -78, to: 'DRY_ICE', chance: 0.05 },
+    low: { temp: -80, to: 'DRY_ICE', chance: 0.05 },
     desc: 'Heavy gas that pools on the ground and puts out fires.',
     hint: 'Smoke burns away completely when there is extra Oxygen. Acid fizzes on Limestone too.',
   },
@@ -47,7 +47,7 @@ export const EXPANSION_ELEMENTS = [
     colors: ['#eef3f7', '#e3eaf0', '#f5f8fa'], temp: -80, conduct: 0.2, airCool: 0.0004,
     high: { temp: -78, to: 'CARBON_DIOXIDE', chance: 0.01 },
     desc: 'Frozen carbon dioxide. Turns straight into gas without melting.',
-    hint: 'Chill Carbon Dioxide to −78 °C.',
+    hint: 'Chill Carbon Dioxide below −78 °C.',
   },
   {
     key: 'LOX', name: 'Liquid Oxygen', sym: 'Lx', cat: 'liquid', state: LIQUID,
@@ -100,12 +100,13 @@ export const EXPANSION_ELEMENTS = [
     colors: ['#c7743e', '#b86a37', '#d27f48'], density: 8.96, conduct: 0.95, conductor: true,
     reflect: 0.5, high: melt(1085),
     desc: 'Excellent conductor. Turns green in water.',
-    hint: 'Smelt a sulfur ore: add Sulfur to Lava.',
+    hint: 'Smelt its ore: roast Chalcopyrite past 900 °C.',
   },
   {
     key: 'VERDIGRIS', name: 'Verdigris', sym: 'Vd', cat: 'powder', state: POWDER,
     colors: ['#4fb39a', '#45a58d', '#5ac1a6'], density: 1.9, conduct: 0.1,
-    desc: 'Green crust that grows on wet copper.',
+    high: { temp: 300, to: 'COPPER', chance: 0.01 },
+    desc: 'Green crust that grows on wet copper. Roasting breaks it down and leaves copper behind.',
     hint: 'Leave Copper in Water.',
   },
   {
@@ -132,7 +133,8 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'CONCRETE', name: 'Concrete', sym: 'Cc', cat: 'solid', state: SOLID, strength: 70,
     colors: ['#a3a39e', '#999994', '#adada8'], density: 2.4, conduct: 0.1, nAbsorb: 0.15,
-    desc: 'Strong building material that also blocks some radiation.',
+    pressure: { above: 60, to: 'GRAVEL', chance: 0.01 },
+    desc: 'Strong building material that also blocks some radiation. Crushed, it\'s recycled as gravel.',
     hint: 'Wait for Wet Concrete to set.',
   },
 
@@ -155,9 +157,9 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'PLASTIC', name: 'Plastic', sym: 'Pc', cat: 'solid', state: SOLID, strength: 18,
     colors: ['#e9edf2', '#dfe4ea', '#f2f4f7'], conduct: 0.05, acidProof: true, moderator: true,
-    pressure: { above: 30, to: 'MICROPLASTIC', chance: 0.01 },
+    pressure: { above: 30, to: 'MICROPLASTIC', chance: 0.01 }, high: { temp: 200, to: 'GOO', chance: 0.02 },
     flammable: 0.02, ignite: 350, burn: { smoke: 0.9, fireLife: [40, 80] },
-    desc: 'Acid-proof and insulating. Burns with thick smoke.',
+    desc: 'Acid-proof and insulating. It melts into goo at about 200 °C, and burns with thick smoke.',
     hint: 'Compress Propane.',
   },
 
@@ -165,7 +167,8 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'SODIUM', name: 'Sodium', sym: 'Na', cat: 'metal', state: POWDER,
     colors: ['#dfe2e6', '#d3d7dc', '#e8eaed'], density: 0.97, conduct: 0.5,
-    desc: 'Soft metal that floats on water, then explodes.',
+    flammable: 0.08, ignite: 125, flame: '#ffc81a', burn: { smoke: 0.5, fireTemp: 900, fireLife: [20, 40] },
+    desc: 'Soft metal that floats on water, then explodes. Heated, it burns with the yellow of old streetlights.',
     hint: 'Split Salt with electricity.',
   },
   {
@@ -189,8 +192,8 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'BUBBLES', name: 'Bubbles', sym: 'Bu', cat: 'gas', state: GAS,
     colors: ['#eaf6ff', '#ffffff', '#f1e8ff'], alpha: 0.45, density: 0.03, rise: 0.55, sink: 0.1,
-    airDrag: 0.5, life: [120, 300], behavior: 'decay',
-    desc: 'Soap bubbles. They float up and pop.',
+    airDrag: 0.5, life: [120, 300], behavior: 'decay', low: { temp: -10, to: 'SNOW', chance: 0.05 },
+    desc: 'Soap bubbles. They float up and pop, or in a hard frost freeze and shatter into flakes.',
     hint: 'Mix Soap into Water.',
   },
   {
@@ -203,7 +206,8 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'POTASSIUM', name: 'Potassium', sym: 'K', cat: 'metal', state: POWDER,
     colors: ['#d8d3e0', '#cdc7d6'], density: 0.86, conduct: 0.5,
-    desc: 'Even more violent in water than sodium.',
+    flammable: 0.1, ignite: 100, flame: '#c890ff', burn: { smoke: 0.5, fireTemp: 900, fireLife: [20, 40] },
+    desc: 'Even more violent in water than sodium. It burns with a lilac flame.',
     hint: 'Run electricity through Ash, like Humphry Davy did.',
   },
 
@@ -252,19 +256,21 @@ export const EXPANSION_ELEMENTS = [
     key: 'STEEL', name: 'Steel', sym: 'Ss', cat: 'metal', state: SOLID, strength: 200,
     colors: ['#7d8894', '#737e8a', '#87929e'], density: 7.9, conduct: 0.5, conductor: true,
     reflect: 0.4, high: melt(1510),
-    desc: 'Iron hardened with carbon. It doesn\'t rust.',
+    desc: 'Iron hardened with carbon: far tougher, though water still rusts it, slowly.',
     hint: 'Heat Metal with Coal.',
   },
   {
     key: 'MAGNET', name: 'Magnet', sym: 'Mag', cat: 'metal', state: SOLID, strength: 120,
     colors: ['#b83a3a', '#5b5f6b', '#a83434', '#6a6e7a'], density: 7.8, conduct: 0.6, behavior: 'magnet',
-    desc: 'Bends the paths of charged particles and pulls ferrofluid.',
+    high: { temp: 770, to: 'METAL', chance: 0.02 },
+    desc: 'Bends the paths of charged particles and pulls ferrofluid. Heat it past 770 °C and it stops being a magnet.',
     hint: 'Strike Metal with Lightning.',
   },
   {
     key: 'FERROFLUID', name: 'Ferrofluid', sym: 'Ff', cat: 'liquid', state: LIQUID,
     colors: ['#1c1c22', '#24242c', '#18181d'], density: 1.3, spread: 3, viscosity: 0.3, behavior: 'ferrofluid',
-    desc: 'Oil full of iron dust. Magnets pull it towards them.',
+    flammable: 0.05, ignite: 400, burn: { to: 'RUST', toChance: 0.3, smoke: 0.4 },
+    desc: 'Oil full of iron dust. Magnets pull it towards them. The oil burns, leaving the iron behind as rust.',
     hint: 'Stir Rust into Oil.',
   },
   {
@@ -272,7 +278,7 @@ export const EXPANSION_ELEMENTS = [
     colors: ['#8d8f94', '#83858a', '#96989d'], density: 19.3, conduct: 0.5, conductor: true,
     sparkHeat: 60, hotEmit: { temp: 1800, chance: 0.08 }, high: melt(3422),
     desc: 'Melts at 3422 °C. Put a current through it and it glows like a bulb filament.',
-    hint: 'Forge Metal in Plasma.',
+    hint: 'Reduce Wolframite with hot Aluminum.',
   },
 
   // ---- explosives -----------------------------------------------------------
@@ -306,7 +312,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'C4', name: 'C4', sym: 'C4', cat: 'explosive', state: SOLID, strength: 20,
     colors: ['#e8e2c8', '#ded7bc', '#f0ead2'], conduct: 0.05,
-    ignite: 5000, explode: 26, burn: { fireTemp: 2000, fireLife: [15, 30] },
+    ignite: 5000, explode: 26, burn: { smoke: 0.5, fireTemp: 2000, fireLife: [15, 30] },
     desc: 'Plastic explosive. Fire won\'t set it off, but a spark or another blast will.',
     hint: 'Knead Plastic with Nitro.',
   },
@@ -364,7 +370,8 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'LITHIUM', name: 'Lithium', sym: 'Li', cat: 'metal', state: POWDER,
     colors: ['#e8e4dc', '#dcd8d0'], density: 0.53, conduct: 0.5,
-    desc: 'The lightest metal: it floats. Neutrons turn it into tritium.',
+    flammable: 0.05, ignite: 180, flame: '#ff2a50', burn: { smoke: 0.4, fireTemp: 900, fireLife: [20, 40] },
+    desc: 'The lightest metal: it floats. It burns crimson, and neutrons turn it into tritium.',
     hint: 'Leach Granite with Acid.',
   },
 
@@ -488,7 +495,7 @@ export const EXPANSION_ELEMENTS = [
       products: [['NUCLEAR_WASTE', 0.3], ['CESIUM', 0.06]], capture: ['PLUTONIUM', 0.12],
     },
     high: { temp: 2800, to: 'CORIUM', chance: 0.05 },
-    desc: 'Heavy and radioactive. A neutron splits it into two more neutrons and a burst of heat. Pile enough together and it runs hot.',
+    desc: 'Heavy and radioactive, but it sits still until a neutron arrives. A neutron splits it into two more neutrons and a burst of heat, so in a big enough pile one neutron starts a chain reaction.',
     hint: 'Reduce Yellowcake with Hydrogen.',
   },
   {
@@ -500,7 +507,7 @@ export const EXPANSION_ELEMENTS = [
       products: [['FALLOUT', 0.4], ['PLASMA', 0.3]], capture: ['AMERICIUM', 0.04],
     },
     high: { temp: 2500, to: 'CORIUM', chance: 0.05 },
-    desc: 'Extremely fissile. Each split releases three neutrons, so a big enough pile runs away into a nuclear explosion.',
+    desc: 'Extremely fissile. Each split releases three neutrons, so once a neutron gets into a big enough pile it runs away into a nuclear explosion.',
     hint: 'Uranium that catches a neutron without splitting.',
   },
   {
@@ -521,7 +528,8 @@ export const EXPANSION_ELEMENTS = [
     key: 'CESIUM', name: 'Cesium', sym: 'Cs', cat: 'metal', state: POWDER,
     colors: ['#e8d7a0', '#dcca92', '#f0e0ae'], density: 1.9, conduct: 0.5,
     emits: [{ p: 'PHOTON', chance: 0.0008 }], glowAmount: 0.1,
-    desc: 'Explodes in water harder than any other metal. Light knocks electrons out of it two at a time.',
+    flammable: 0.1, ignite: 120, flame: '#8a7aff', burn: { smoke: 0.4, fireTemp: 900, fireLife: [20, 40] },
+    desc: 'Explodes in water harder than any other metal, and burns blue-violet. Light knocks electrons out of it two at a time.',
     hint: 'A fragment left behind when Uranium splits.',
   },
   {
@@ -536,7 +544,7 @@ export const EXPANSION_ELEMENTS = [
     colors: ['#ff8a3d', '#ff7a2a', '#ffa050'], density: 18, temp: 2800, conduct: 0.4, airCool: 0.0002,
     spread: 1, viscosity: 0.8, glow: true, selfHeat: 0.6, emits: [{ p: 'NEUTRON', chance: 0.004 }],
     low: { temp: 1800, to: 'NUCLEAR_WASTE', chance: 0.02 },
-    desc: 'Molten reactor fuel. Keeps itself hot and burns through almost anything.',
+    desc: 'Molten reactor fuel. Burns through almost anything, and stirs into life under pressure or a stream of neutrons.',
     hint: 'Let Uranium overheat.',
   },
 
@@ -555,7 +563,7 @@ export const EXPANSION_ELEMENTS = [
     emits: [{ p: 'PHOTON', chance: 0.0015 }], glowAmount: 0.35,
     decay: { chance: 0.0015, to: 'POLONIUM', spawn: 'HELIUM' },
     desc: 'Heavy radioactive gas that seeps downward and decays into polonium.',
-    hint: 'Wait for Radium to decay.',
+    hint: 'Squeeze or bombard Radium until it decays.',
   },
   {
     key: 'HELIUM', name: 'Helium', sym: 'He', cat: 'gas', state: GAS,
@@ -570,7 +578,7 @@ export const EXPANSION_ELEMENTS = [
     emits: [{ p: 'NEUTRON', chance: 0.0015 }], glowAmount: 0.4,
     decay: { chance: 0.0006, to: 'LEAD', spawn: 'HELIUM' },
     desc: 'Intensely radioactive and hot to the touch. Paired with beryllium it pours out neutrons.',
-    hint: 'Wait for Radon to decay.',
+    hint: 'Squeeze or bombard Radon until it decays.',
   },
   {
     key: 'LEAD', name: 'Lead', sym: 'Pb', cat: 'metal', state: SOLID, strength: 60,
@@ -616,6 +624,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'GEIGER', name: 'Geiger Tube', sym: 'Gc', cat: 'solid', state: SOLID, strength: 30,
     colors: ['#5a6b5a', '#4f5f4f', '#657665'], conduct: 0.1, detector: true, behavior: 'geiger',
+    pressure: { above: 25, to: 'GLASS', alt: 'NEON', altChance: 0.5, chance: 0.02 },
     desc: 'Radiation detector. Flashes, and sparks the metal it touches, when a particle passes through.',
     hint: 'Neon with a dash of Chlorine, the gas inside real Geiger counters.',
   },
@@ -639,7 +648,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'HEAVY_WATER', name: 'Heavy Water', sym: 'D2O', cat: 'nuclear', state: LIQUID,
     colors: ['#3d6fc4', '#4577cc', '#3668bb'], density: 1.1, conduct: 0.3, spread: 7, wet: true,
-    transparent: true, moderator: true,
+    transparent: true, moderator: true, low: { temp: 3, to: 'HEAVY_ICE', chance: 0.05 },
     desc: 'Water made from deuterium. Slows neutrons down without swallowing them.',
     hint: 'Burn Deuterium.',
   },
@@ -762,7 +771,7 @@ export const EXPANSION_REACTIONS = [
   // Rocks and building.
   { a: 'MUD', b: 'SAND', chance: 0.02, aTo: 'CLAY', bTo: 'EMPTY' },
   { a: 'LAVA', b: 'STEAM', chance: 0.02, aTo: null, bTo: 'SULFUR' },
-  { a: 'LAVA', b: 'SULFUR', chance: 0.03, aTo: 'COPPER', bTo: 'EMPTY' },
+  { a: 'LAVA', b: 'SULFUR', chance: 0.03, aTo: 'CHALCOPYRITE', bTo: 'EMPTY' },
   { a: 'COPPER', b: 'WATER', chance: 0.0005, aTo: 'VERDIGRIS', bTo: null },
   { a: 'SULFUR', b: 'GRANITE', chance: 0.01, aTo: 'CINNABAR', bTo: null },
   { a: 'SALT_WATER', b: 'STONE', chance: 0.001, aTo: null, bTo: 'LIMESTONE' },
@@ -799,7 +808,6 @@ export const EXPANSION_REACTIONS = [
   { a: 'GLASS', b: 'MAGNESIUM', chance: 0.05, aTo: 'BORON', bTo: 'EMPTY', minTemp: 500 },
   { a: 'METAL', b: 'COAL', chance: 0.05, aTo: 'STEEL', bTo: 'EMPTY', minTemp: 900 },
   { a: 'METAL', b: 'LIGHTNING', chance: 0.5, aTo: 'MAGNET', bTo: null },
-  { a: 'METAL', b: 'PLASMA', chance: 0.1, aTo: 'TUNGSTEN', bTo: null },
   { a: 'ALUMINUM', b: 'RUST', chance: 0.02, aTo: 'THERMITE', bTo: 'THERMITE' },
   { a: 'LEAD', b: 'ACID', chance: 0.01, aTo: 'SILVER', bTo: 'EMPTY' },
   { a: 'SILVER', b: 'GLASS', chance: 0.03, aTo: 'EMPTY', bTo: 'MIRROR' },

@@ -42,7 +42,8 @@ test('lead stops neutrons that stone lets through', () => {
   assert.ok(shoot(ID.STONE) > shoot(ID.LEAD) * 5, 'far more neutrons get through stone than lead');
 });
 
-// A 20x20 uranium pile with rods of something between the columns.
+// A 20x20 uranium pile with rods of something between the columns, started
+// with a sprinkle of neutrons (uranium left alone just sits there).
 function reactor(rod) {
   const w = new World(400, 240, 7);
   for (let y = 220; y < 240; y++) {
@@ -51,7 +52,11 @@ function reactor(rod) {
     }
   }
   const before = types(w, ID.URANIUM);
-  run(w, 900);
+  run(w, 900, (f) => {
+    if (f < 60 && f % 3 === 0) {
+      for (let k = 0; k < 4; k++) w.spawnProjectile(ID.NEUTRON, 190 + w.rand() * 24, 220 + w.rand() * 20);
+    }
+  });
   return 1 - types(w, ID.URANIUM) / before; // fraction burned
 }
 
@@ -64,19 +69,23 @@ test('graphite moderates a uranium pile into a chain reaction; boron shuts it do
   assert.ok(boron < 0.05, `boron-controlled pile burned ${boron}`);
 });
 
-test('a large ball of plutonium explodes; a pinch of it does not', () => {
-  const pile = (size) => {
+test('a large ball of plutonium sits still until a neutron sets it off; a pinch of it fizzles', () => {
+  const pile = (size, spark) => {
     const w = new World(400, 240, 99);
     const x0 = 200 - (size >> 1);
     for (let y = 240 - size; y < 240; y++) {
       for (let x = x0; x < x0 + size; x++) w.spawn(y * 400 + x, ID.PLUTONIUM);
     }
-    run(w, 300);
+    run(w, 300, (f) => {
+      // A few neutrons fired into the middle of the pile.
+      if (spark && f === 10) for (let k = 0; k < 6; k++) w.spawnProjectile(ID.NEUTRON, 200.5, 240 - size / 2);
+    });
     return { left: types(w, ID.PLUTONIUM) / (size * size), fallout: types(w, ID.FALLOUT) };
   };
-  const big = pile(16), small = pile(4);
+  const still = pile(16, false), big = pile(16, true), small = pile(4, true);
+  assert.ok(still.left > 0.98 && still.fallout <= 2, `16x16 pile left alone: ${JSON.stringify(still)}`);
   assert.ok(big.left < 0.6 && big.fallout > 20, `16x16 pile: ${JSON.stringify(big)}`);
-  // A stray neutron may split or transmute an atom or two, but nothing runs away.
+  // The neutrons may split or transmute an atom or two, but nothing runs away.
   assert.ok(small.left >= 0.75 && small.fallout <= 4, `4x4 pinch: ${JSON.stringify(small)}`);
 });
 
@@ -103,12 +112,39 @@ test('a magnet curves an electron beam', () => {
   assert.ok(Math.abs(bent - 30.5) > 3, `with a magnet the beam ends at y=${bent}`);
 });
 
-test('radium decays down the chain into radon, polonium and finally lead', () => {
+test('squeezed radium decays down the chain into radon, polonium and finally lead', () => {
   const w = makeWorld(40, 40);
   const box = wallBox(w, 0, 0, 39, 39);
   fillRect(w, box.x0, 30, box.x1, box.y1, ID.RADIUM);
-  run(w, 12000);
+  run(w, 12000, () => w.pressurize(20, 15, 4, 1));
   assert.ok(w.seen[ID.RADON] && w.seen[ID.HELIUM] && w.seen[ID.POLONIUM] && w.seen[ID.LEAD]);
+});
+
+// A bed of polonium in a sealed box; returns how much of it decayed.
+function polonium(frames, each) {
+  const w = makeWorld(40, 40);
+  const box = wallBox(w, 0, 0, 39, 39);
+  fillRect(w, box.x0, 26, box.x1, box.y1, ID.POLONIUM);
+  const before = types(w, ID.POLONIUM);
+  run(w, frames, (f) => each?.(w, f));
+  return before - types(w, ID.POLONIUM);
+}
+
+test('radioactive elements sit almost perfectly still when left alone', () => {
+  const decayed = polonium(1200);
+  assert.ok(decayed <= 6, `${decayed} decayed on their own`);
+});
+
+test('pressure wakes a radioactive pile up', () => {
+  const decayed = polonium(600, (w) => w.pressurize(20, 12, 8, 2));
+  assert.ok(decayed > 50, `${decayed} decayed under pressure`);
+});
+
+test('a burst of neutrons sets radioactive atoms off', () => {
+  const decayed = polonium(300, (w, f) => {
+    if (f < 60) for (let k = 0; k < 4; k++) w.spawnProjectile(ID.NEUTRON, 2.5 + k * 9, 20.5, 0.3, 2);
+  });
+  assert.ok(decayed > 10, `${decayed} decayed after the neutrons went through`);
 });
 
 test('antimatter annihilates what it touches but stays sealed in by wall', () => {

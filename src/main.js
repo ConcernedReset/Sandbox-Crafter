@@ -4,11 +4,14 @@
 import { World } from './sim/world.js';
 import { DEFS, ID } from './sim/elements.js';
 import { Renderer } from './render/renderer.js';
+import { TreeView } from './render/tree-view.js';
 import { Input, MAX_BRUSH } from './game/input.js';
 import { Camera } from './game/camera.js';
 import { Progress } from './game/progress.js';
 import { loadDemoScene } from './game/scene.js';
 import { UI, toolColor } from './game/ui.js';
+import { buildTree, focusTree } from './game/tree.js';
+import { PhysicsPanel } from './game/physics-panel.js';
 
 const WIDTH = 400;
 const HEIGHT = 240;
@@ -29,6 +32,7 @@ const game = {
     this.selection = sel;
     ui.renderPalette();
     ui.renderInspect();
+    followSelection(sel);
   },
   setBrush(r) {
     this.brush = Math.max(0, Math.min(MAX_BRUSH, r));
@@ -46,22 +50,90 @@ input.onHover = (pos) => { hover = pos; };
 
 loadDemoScene(world);
 ui.setBrush(game.brush);
+new PhysicsPanel(world);
+
+// ---- recipe tree ------------------------------------------------------------
+
+const treeView = new TreeView($('tree'));
+let focusId = null; // the element the tree is narrowed to, if any
+
+// Rebuild the tree from the player's progress; `flash` lists new discoveries.
+// While an element is singled out, only its part of the tree is shown.
+function refreshTree(flash = []) {
+  const whole = buildTree({
+    known: (id) => progress.freePlay || progress.has(id),
+    revealed: (id) => progress.revealed.has(DEFS[id].key),
+  });
+  const part = focusId === null ? null : focusTree(whole, focusId);
+  if (part === null) focusId = null;
+  treeView.setTree(part ?? whole, flash);
+  treeView.select(focusId);
+  const known = focusId !== null && (progress.freePlay || progress.has(focusId));
+  $('tree-focus').hidden = focusId === null;
+  $('tree-focus').textContent = focusId === null ? '' : known ? DEFS[focusId].name : '?';
+  $('tree-back').hidden = focusId === null;
+}
+
+// Single out one element: the recipes behind it and everything it makes.
+function focusOn(id) {
+  focusId = id;
+  refreshTree();
+  treeView.frame(id);
+}
+
+// Back to the whole tree, with the element that was singled out in the middle.
+function unfocus() {
+  if (focusId === null) return;
+  const was = focusId;
+  focusId = null;
+  refreshTree();
+  treeView.centerOn(was);
+}
+
+// Clicking a node singles it out, shows how it's made, and picks a discovered
+// element up to paint with. Clicking empty space goes back to the whole tree.
+treeView.onPick = (node) => {
+  if (!node) {
+    ui.hideCard();
+    unfocus();
+    return;
+  }
+  if (node.known && progress.usable(node.id)) game.select({ kind: 'element', id: node.id });
+  ui.showCard(node.id);
+  if (node.id !== focusId) focusOn(node.id);
+};
+ui.onReveal = () => refreshTree();
+
+// Picking an element from the palette singles it out in the tree, and moves
+// an open card along to it.
+function followSelection(sel) {
+  if (sel.kind !== 'element') return;
+  if (ui.cardId !== null && ui.cardId !== sel.id) ui.showCard(sel.id);
+  if (focusId !== sel.id) focusOn(sel.id);
+}
+$('tree-back').addEventListener('click', () => { ui.hideCard(); unfocus(); });
+$('tree-zoom-in').addEventListener('click', () => treeView.zoomBy(1));
+$('tree-zoom-out').addEventListener('click', () => treeView.zoomBy(-1));
+$('tree-fit').addEventListener('click', () => treeView.fit());
+new ResizeObserver(() => treeView.resize()).observe($('tree'));
+refreshTree();
 
 // ---- discoveries ----------------------------------------------------------
 
 function collectDiscoveries() {
   if (!world.discoveries.length) return;
-  let changed = false;
+  const found = [];
   for (const { id, rule } of world.discoveries) {
     if (progress.discover(id)) {
       ui.celebrate(id, rule);
-      changed = true;
+      found.push(id);
     }
   }
   world.discoveries.length = 0;
-  if (changed) {
+  if (found.length) {
     if (!progress.tipDismissed) dismissTip();
     ui.refresh();
+    refreshTree(found);
   }
 }
 
@@ -169,6 +241,7 @@ $('menu-freeplay').addEventListener('change', (e) => {
     game.selection = { kind: 'element', id: ID.SAND };
   }
   ui.refresh();
+  refreshTree();
 });
 $('menu-reset').addEventListener('click', () => { $('menu-confirm').hidden = false; });
 $('menu-reset-no').addEventListener('click', () => { $('menu-confirm').hidden = true; });
@@ -177,7 +250,11 @@ $('menu-reset-yes').addEventListener('click', () => {
   world.seen.fill(0);
   $('menu-freeplay').checked = false;
   game.selection = { kind: 'element', id: ID.SAND };
+  ui.hideCard();
   ui.refresh();
+  focusId = null;
+  refreshTree();
+  treeView.home();
   setMenu(false);
 });
 
@@ -201,7 +278,10 @@ document.addEventListener('keydown', (e) => {
       camera.pan(d[0] * camera.vw * 0.1, d[1] * camera.vh * 0.1);
       break;
     }
-    case 'Escape': setMenu(false); break;
+    case 'Escape':
+      if (!menu.hidden) setMenu(false);
+      else if (focusId !== null) { ui.hideCard(); unfocus(); }
+      break;
     default: break;
   }
 });
@@ -247,6 +327,7 @@ function frame(now) {
   updateZoomControls();
   renderer.draw(brushOutline());
   if (camera.zoom > 1) renderer.drawMinimap(minimap);
+  treeView.draw(now);
   ui.renderHud(world, hover);
 
   frames++;

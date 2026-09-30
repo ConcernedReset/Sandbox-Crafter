@@ -15,7 +15,7 @@
     <h1 class="wordmark">Sandbox <span>Crafter</span></h1>
 
     <div class="meter" id="meter" title="Elements discovered">
-      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">558</span> elements</div>
+      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">567</span> elements</div>
       <div class="meter-cells" id="meter-cells" aria-hidden="true"></div>
     </div>
 
@@ -101,18 +101,56 @@
         <div class="hud-cell" id="hud-cell">Point at a particle to inspect it</div>
         <div class="hud-stats" id="hud-stats"></div>
       </div>
+      <section class="physics" aria-labelledby="physics-title">
+        <h2 class="physics-title" id="physics-title">Physics</h2>
+        <div class="physics-gravity">
+          <span class="physics-label" id="grav-label">Gravity</span>
+          <button type="button" class="dial" id="grav-dial" role="slider" aria-labelledby="grav-label"
+            aria-valuemin="0" aria-valuemax="359" aria-valuenow="0" aria-valuetext="Down"
+            title="Drag to turn gravity (Shift snaps to 45°). Arrow keys turn it 15°, double-click resets it.">
+            <svg viewBox="-20 -20 40 40" aria-hidden="true">
+              <path class="dial-ticks" d="M0 -18v3M0 15v3M-18 0h3M15 0h3"/>
+              <g id="grav-arrow"><path class="dial-arrow" d="M-2 -12h4v12h5L0 13-7 0h5z"/></g>
+            </svg>
+          </button>
+          <output id="grav-angle" for="grav-dial">Down</output>
+        </div>
+        <label class="physics-strength">Strength
+          <input type="text" id="grav-strength" inputmode="decimal" autocomplete="off" spellcheck="false" value="1" aria-describedby="grav-strength-hint">
+          <span aria-hidden="true">×</span>
+          <span class="sr-only" id="grav-strength-hint">Times normal gravity, from 0 to 10</span>
+        </label>
+        <label class="physics-toggle"><input type="checkbox" id="grav-newton"> Newtonian gravity</label>
+        <label class="physics-toggle"><input type="checkbox" id="convection"> Convection</label>
+        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, both boxes off">Reset</button>
+      </section>
+      <section class="tree" aria-labelledby="tree-title">
+        <canvas id="tree" aria-label="Recipe tree. Drag to move it, Ctrl-scroll or pinch to zoom, click an element to see how it's made."></canvas>
+        <div class="tree-head">
+          <h2 class="tree-title" id="tree-title">Recipe tree</h2>
+          <span class="tree-focus" id="tree-focus" hidden></span>
+          <span class="badge" id="tree-count" hidden></span>
+          <button type="button" class="tree-back" id="tree-back" hidden title="Show the whole tree (Esc)">Whole tree</button>
+        </div>
+        <p class="tree-help">Drag to move · Ctrl-scroll to zoom · click an element to single it out</p>
+        <div class="tree-card" id="tree-card" hidden aria-live="polite"></div>
+        <div class="zoom" role="group" aria-label="Recipe tree zoom">
+          <button type="button" id="tree-zoom-out" title="Zoom out">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7h10v2H3z"/></svg>
+            <span class="sr-only">Zoom out</span>
+          </button>
+          <button type="button" id="tree-fit" title="Fit the whole tree">Fit</button>
+          <button type="button" id="tree-zoom-in" title="Zoom in">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3h2v4h4v2H9v4H7V9H3V7h4z"/></svg>
+            <span class="sr-only">Zoom in</span>
+          </button>
+        </div>
+      </section>
       <div class="inspect" id="inspect" aria-live="polite"></div>
     </section>
 
-    <aside class="panel">
-      <div class="tabs" role="tablist">
-        <button type="button" role="tab" id="tab-elements" aria-selected="true" aria-controls="panel-elements">Elements</button>
-        <button type="button" role="tab" id="tab-recipes" aria-selected="false" aria-controls="panel-recipes">
-          Recipe book <span class="badge" id="recipe-badge" hidden>0</span>
-        </button>
-      </div>
-
-      <div class="panel-body" id="panel-elements" role="tabpanel" aria-labelledby="tab-elements">
+    <aside class="panel" aria-label="Elements">
+      <div class="panel-body" id="panel-elements">
         <div class="tools" id="tools"></div>
         <div class="brush">
           <label for="brush">Brush</label>
@@ -134,10 +172,6 @@
           <input type="search" id="search" placeholder="Find an element" autocomplete="off" spellcheck="false">
         </div>
         <div class="palette" id="palette"></div>
-      </div>
-
-      <div class="panel-body" id="panel-recipes" role="tabpanel" aria-labelledby="tab-recipes" hidden>
-        <div id="recipes"></div>
       </div>
     </aside>
   </main>

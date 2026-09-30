@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
+import { SNUFF_AT } from '../src/sim/behaviors.js';
 import { makeWorld, fillRect, wallBox, countOf, meanY, run } from './helpers.js';
 
 test('sand falls and piles up on the floor', () => {
@@ -117,6 +118,52 @@ test('fire burns wood away and leaves ash and smoke', () => {
   });
   assert.ok(countOf(w, ID.WOOD) < 100, 'most of the wood burned');
   assert.ok(ash > 0 && w.seen[ID.SMOKE], 'left ash and smoke');
+});
+
+test('a fire in a sealed box uses up the air and goes out, leaving most of the fuel', () => {
+  const w = makeWorld(60, 50);
+  const box = wallBox(w, 10, 10, 49, 49);
+  fillRect(w, box.x0, 40, box.x1, box.y1, ID.WOOD);
+  const wood = countOf(w, ID.WOOD);
+  fillRect(w, box.x0, 38, box.x1, 39, ID.FIRE);
+  let lowest = 0;
+  run(w, 1500, () => { lowest = Math.min(lowest, w.pressureAt(30, 30)); });
+  assert.ok(lowest < SNUFF_AT, `the air inside was used up (lowest ${lowest.toFixed(1)})`);
+  assert.equal(countOf(w, ID.FIRE), 0, 'the fire went out');
+  assert.ok(countOf(w, ID.WOOD) > wood * 0.5, `${countOf(w, ID.WOOD)} of ${wood} wood left`);
+});
+
+test('nothing catches fire in thin air, and hot fuel lights once air gets back in', () => {
+  const w = makeWorld(60, 40);
+  const box = wallBox(w, 10, 10, 49, 39);
+  fillRect(w, box.x0, 30, box.x1, box.y1, ID.WOOD);
+  const wood = countOf(w, ID.WOOD);
+  const keepHot = () => { for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.WOOD) w.temp[i] = 600; };
+  const thin = () => {
+    for (let y = box.y0; y <= box.y1; y++) for (let x = box.x0; x <= box.x1; x++) w.air.p[w.air.at(x, y)] = SNUFF_AT - 5;
+  };
+  run(w, 200, () => { thin(); keepHot(); });
+  assert.equal(countOf(w, ID.FIRE), 0, 'hot wood did not light without air');
+  assert.equal(countOf(w, ID.WOOD), wood, 'and none of it burned');
+  for (let x = 10; x <= 49; x++) w.clearCell(10 * w.w + x); // take the lid off
+  let lit = false;
+  run(w, 400, () => { keepHot(); if (countOf(w, ID.FIRE) > 0) lit = true; });
+  assert.ok(lit, 'the wood caught once air came back');
+});
+
+test('sand smothers flames', () => {
+  const fire = (sand) => {
+    const w = makeWorld(40, 40);
+    fillRect(w, 10, 30, 29, 39, ID.COAL);
+    run(w, 20, (f) => { if (f % 5 === 0) fillRect(w, 10, 29, 29, 29, ID.FIRE); });
+    if (sand) fillRect(w, 10, 20, 29, 27, ID.SAND);
+    let flames = 0;
+    run(w, 200, (f) => { if (f > 100) flames += countOf(w, ID.FIRE); });
+    return flames;
+  };
+  // Buried embers would smoulder on; sand touching them puts them out.
+  const open = fire(false), covered = fire(true);
+  assert.ok(covered < open / 20, `flames under sand ${covered}, uncovered ${open}`);
 });
 
 test('a thin film of water settles instead of skittering back and forth', () => {

@@ -69,8 +69,11 @@ export const Machines = {
         on = this.tick % CLOCK_PERIOD < 2;
         break;
       case 'plate': {
-        // Anything resting on top, except gas, flames and more plate.
-        const u = y > 0 ? this.type[i - this.w] : 0;
+        // Anything resting on top (against the gravity arrow), except gas,
+        // flames and more plate.
+        const { downX, downY } = this.gravity;
+        const ax = x - downX, ay = y - downY;
+        const u = this.inBounds(ax, ay) ? this.type[ay * this.w + ax] : 0;
         const s = DEFS[u].state;
         on = u !== 0 && u !== this.type[i] && s !== GAS && s !== ENERGY;
         break;

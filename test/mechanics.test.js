@@ -201,12 +201,14 @@ test('tin crumbles in the cold, and gallium melts at hand temperature and ruins 
   assert.ok(countOf(can, ID.BRITTLE_ALUMINUM) > 5, 'the aluminium crumbled');
 });
 
-test('oganesson decays down the chain of superheavy elements, throwing off alpha particles', () => {
+test('squeezed oganesson decays down the chain of superheavy elements, throwing off alpha particles', () => {
   const w = makeWorld(40, 30);
-  fillRect(w, 15, 20, 24, 29, ID.OGANESSON);
+  const box = wallBox(w, 0, 0, 39, 29);
+  fillRect(w, 15, 19, 24, box.y1, ID.OGANESSON);
   const seen = new Set();
   let alphas = 0;
   run(w, 3000, () => {
+    w.pressurize(20, 8, 4, 1);
     for (let i = 0; i < w.type.length; i++) if (w.type[i]) seen.add(w.type[i]);
     for (let k = 0; k < w.pn; k++) if (w.ptype[k] === ID.ALPHA) alphas++;
   });

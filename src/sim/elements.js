@@ -1,6 +1,7 @@
 // Every element, reaction and recipe in the game is defined in this file and
 // in elements-expansion.js, elements-periodic.js, elements-chemistry.js,
-// elements-world.js and elements-machines.js. The simulation, the palette and the recipe book
+// elements-world.js, elements-machines.js and elements-more.js. The
+// simulation, the palette and the recipe tree
 // are all generated from these tables, so a recipe that exists here is
 // guaranteed to be something the simulation can actually do (see
 // test/recipes.test.js).
@@ -15,6 +16,7 @@ import {
 import { CHEMISTRY_ELEMENTS, CHEMISTRY_REACTIONS, CHEMISTRY_HITS } from './elements-chemistry.js';
 import { WORLD_ELEMENTS, WORLD_REACTIONS, WORLD_HITS, WORLD_PAIRS } from './elements-world.js';
 import { MACHINE_ELEMENTS, MACHINE_REACTIONS } from './elements-machines.js';
+import { MORE_ELEMENTS, MORE_REACTIONS, MORE_HITS } from './elements-more.js';
 
 export { State, AMBIENT };
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
@@ -143,8 +145,9 @@ export const ELEMENT_LIST = [
     colors: ['#5a3d27', '#533823', '#61432b', '#4d3420'], density: 1.3, conduct: 0.2, wet: true,
     spread: 1, viscosity: 0.85,
     high: { temp: 150, to: 'BRICK', chance: 0.04 },
+    low: { temp: -5, to: 'PERMAFROST', chance: 0.02 },
     pressure: { above: 15, to: 'SHALE', chance: 0.01 },
-    desc: 'Thick, slow sludge that sinks under water.',
+    desc: 'Thick, slow sludge that sinks under water. It freezes solid into permafrost.',
     hint: 'Dirt gets messy when it gets wet.',
   },
   {
@@ -303,8 +306,8 @@ export const ELEMENT_LIST = [
     key: 'METHANE', name: 'Methane', sym: 'Me', cat: 'gas', state: GAS,
     colors: ['#9fc2a0', '#93b694'], alpha: 0.3, density: 0.04, conduct: 0.05, rise: 0.55, sink: 0.05, flame: '#5a8aff',
     airDrag: 0.4, flammable: 1, ignite: 540, burn: { fireTemp: 1000, fireLife: [10, 25] },
-    explode: 3,
-    desc: 'Swamp gas. Pops when lit.',
+    explode: 3, low: { temp: -163, to: 'LIQUID_METHANE', chance: 0.05 },
+    desc: 'Swamp gas. Pops when lit, and liquefies below −162 °C.',
     hint: 'Plants rotting in Mud give off gas.',
   },
   {
@@ -342,8 +345,8 @@ export const ELEMENT_LIST = [
     key: 'ACID', name: 'Acid', sym: 'Ad', cat: 'liquid', state: LIQUID,
     colors: ['#8be04e', '#7fd443', '#96ea59'], density: 1.05, conduct: 0.3, spread: 4,
     acidProof: true, transparent: true, behavior: 'acid',
-    desc: 'Eats through almost everything except glass and diamond.',
-    hint: 'Hydrogen reacts with Salt.',
+    desc: 'Hydrochloric acid. Eats through almost everything except glass and diamond, and fizzes out hydrogen on metals.',
+    hint: 'Burn Hydrogen in hot Chlorine, or let Chlorine dissolve in Water.',
   },
   {
     key: 'CLOUD', name: 'Cloud', sym: 'Cld', cat: 'gas', state: GAS,
@@ -408,6 +411,7 @@ export const ELEMENT_LIST = [
   ...CHEMISTRY_ELEMENTS,
   ...WORLD_ELEMENTS,
   ...MACHINE_ELEMENTS,
+  ...MORE_ELEMENTS,
 
   // ---- always available ---------------------------------------------------
   {
@@ -437,7 +441,6 @@ export const REACTIONS = [
   { a: 'METAL', b: 'WATER', chance: 0.0005, aTo: 'RUST', bTo: null },
   { a: 'METAL', b: 'SALT_WATER', chance: 0.01, aTo: 'BATTERY', bTo: 'EMPTY' },
   { a: 'STEAM', b: 'SMOKE', chance: 0.05, aTo: 'CLOUD', bTo: 'CLOUD' },
-  { a: 'SALT', b: 'HYDROGEN', chance: 0.05, aTo: 'ACID', bTo: 'EMPTY' },
   { a: 'COAL', b: 'SALT', chance: 0.01, aTo: 'GUNPOWDER', bTo: 'GUNPOWDER' },
   { a: 'RUST', b: 'GUNPOWDER', chance: 0.02, aTo: 'THERMITE', bTo: 'THERMITE' },
   { a: 'OIL', b: 'ACID', chance: 0.05, aTo: 'NITRO', bTo: 'EMPTY' },
@@ -450,6 +453,7 @@ export const REACTIONS = [
   ...CHEMISTRY_REACTIONS,
   ...WORLD_REACTIONS,
   ...MACHINE_REACTIONS,
+  ...MORE_REACTIONS,
 ];
 
 // Rules that come from custom behaviours rather than the tables above. They
@@ -583,6 +587,8 @@ function normalize(e, i) {
     uvBlock: !!e.uvBlock,
     xrayOpaque: !!e.xrayOpaque,
     wet: !!e.wet,
+    // Radioactive elements are stable until pressure or particles disturb them.
+    stable: e.cat === 'nuclear',
     expire: null,
     // glowing and colour
     excite: null,
@@ -694,7 +700,7 @@ ELEMENT_LIST.forEach((e, i) => {
     if (d.burn.smoke > 0) d.burn.smokeRule = addRule('burn', [i], ID.SMOKE);
   }
   if (e.emits) d.emits = e.emits.map((m) => ({ id: id(m.p), chance: m.chance }));
-  if (e.decay) d.decay = compileOutcome(e.decay, [i], 'time');
+  if (e.decay) d.decay = compileOutcome(e.decay, [i], d.stable ? 'decay' : 'time');
   if (e.lifeEnd) d.lifeEnd = compileOutcome(e.lifeEnd, [i], 'time');
   if (e.produce) {
     d.produce = { id: id(e.produce.el), chance: e.produce.chance, rule: addRule('time', [i], id(e.produce.el)) };
@@ -816,7 +822,7 @@ for (const r of REACTIONS) {
 
 // Particle hits: HIT[particle * NUM + target].
 export const HIT = new Array(NUM * NUM).fill(null);
-for (const h of [...PARTICLE_HITS, ...PERIODIC_HITS, ...CHEMISTRY_HITS, ...WORLD_HITS]) {
+for (const h of [...PARTICLE_HITS, ...PERIODIC_HITS, ...CHEMISTRY_HITS, ...WORLD_HITS, ...MORE_HITS]) {
   const p = id(h.p), t = id(h.t);
   if (!DEFS[p].projectile) throw new Error(`${h.p} is not a particle`);
   if (HIT[p * NUM + t] !== null) throw new Error(`Two hit rules for ${h.p} on ${h.t}`);
@@ -871,6 +877,7 @@ const KIND_LABEL = {
   pressure: (a) => `${a} + Pressure`,
   burn: (a) => `${a} + Fire`,
   time: (a) => `${a} + Time`,
+  decay: (a) => `${a} + Decay`,
   contact: (a, b) => `${a} + ${b}`,
 };
 

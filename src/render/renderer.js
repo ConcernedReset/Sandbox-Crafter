@@ -5,7 +5,7 @@
 // A camera ({ x, y, vw, vh } in cells) picks the part of the world shown, so
 // zooming in just scales up a smaller piece of the same image.
 
-import { DEFS, ID, NUM, State } from '../sim/elements.js';
+import { DEFS, ID, NUM, State, AMBIENT } from '../sim/elements.js';
 import { CELL } from '../sim/air.js';
 
 const BG = [10, 12, 16];
@@ -250,6 +250,7 @@ export class Renderer {
     const bg = pack(bgR, bgG, bgB);
     const heatView = view === 'heat';
     const pressureView = view === 'pressure';
+    const airHeat = heatView && air.heat; // show the air's own temperature
     let count = 0;
 
     for (let y = 0; y < h; y++) {
@@ -265,6 +266,16 @@ export class Renderer {
             const q = (ID.DOOR * SHADES + (x + y) % 3) * 3;
             r = bgR + (palRGB[q] - bgR) * 0.25; g = bgG + (palRGB[q + 1] - bgG) * 0.25; b = bgB + (palRGB[q + 2] - bgB) * 0.25;
           } else {
+            if (airHeat) {
+              // With convection on, the heat view shows warm and cold air, dimmed.
+              const at = air.t[air.at(x, y)];
+              if (at > AMBIENT + 2 || at < AMBIENT - 2) {
+                const k = heatIndex(at) * 3;
+                pixels[i] = pack((bgR + (HEAT[k] - bgR) * 0.45) | 0, (bgG + (HEAT[k + 1] - bgG) * 0.45) | 0,
+                  (bgB + (HEAT[k + 2] - bgB) * 0.45) | 0);
+                continue;
+              }
+            }
             if (!pressureView) { pixels[i] = bg; continue; }
             r = bgR; g = bgG; b = bgB;
           }

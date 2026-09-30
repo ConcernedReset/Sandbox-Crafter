@@ -18,13 +18,16 @@
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
-import { Air, CELL } from './air.js';
+import { Air, CELL, AIR_SHARE, EXPAND } from './air.js';
 import { DEFS, ID, NUM, State, AMBIENT, REACT } from './elements.js';
-import { MAX_TEMP, MIN_TEMP, GRAVITY } from './constants.js';
-import { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE } from './lookups.js';
-import { Behaviors } from './behaviors.js';
+import {
+  MAX_TEMP, MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY,
+} from './constants.js';
+import { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS } from './lookups.js';
+import { Behaviors, SNUFF_AT } from './behaviors.js';
 import { Particles, initParticles } from './particles.js';
 import { Machines, initMachines } from './machines.js';
+import { Gravity, DX8, DY8 } from './gravity.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -32,6 +35,10 @@ const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
 // An air block is sealed once this many of its 16 cells are airtight solid:
 // any unbroken line of strong solid across it.
 const SEAL_COUNT = 4;
+
+// With no gravity, gases spread evenly: as likely to step either way.
+const ZERO_G_RISE = 0.3;
+const ZERO_G_SINK = 0.3 / 0.7;
 
 export { MAX_TEMP, MIN_TEMP };
 
@@ -53,6 +60,7 @@ export class World {
     this.clock = new Uint32Array(n); // tick on which the cell was last updated
     this.tick = 1;
     this.air = new Air(Math.ceil(width / CELL), Math.ceil(height / CELL));
+    this.gravity = new Gravity(this.air);
     this.seed = (seed >>> 0) || 1;
     this.seen = new Uint8Array(NUM);
     this.discoveries = [];
@@ -171,29 +179,34 @@ export class World {
     this.clock[j] = this.tick;
   }
 
+  // Set cell i alight. Returns true if the cell changed. Fire needs air:
+  // explosives carry their own, and fuels that burn into something other
+  // than flame (thermite) don't need it.
   ignite(i, x, y) {
     const t = this.type[i];
     const d = DEFS[t];
     const b = d.burn;
-    if (!b) return;
+    if (!b) return false;
     if (b.launch) { // fireworks take off instead of burning
       if (this.ctype[i] !== 1) {
         this.ctype[i] = 1;
         this.life[i] = 25 + ((this.rand() * 25) | 0);
       }
-      return;
+      return true;
     }
+    if (!d.explode && b.to === FIRE && this.air.p[this.air.at(x, y)] < SNUFF_AT) return false;
     if (d.explode) this.blast(x, y, d.explode);
-    if (b.ash > 0 && this.rand() < b.ash) { this.convert(i, ASH, false, b.ashRule); return; }
+    if (b.ash > 0 && this.rand() < b.ash) { this.convert(i, ASH, false, b.ashRule); return true; }
     if (b.to !== FIRE && this.rand() < b.toChance) {
       this.convert(i, b.to, false, b.toRule);
       if (b.temp) this.temp[i] = b.temp;
-      return;
+      return true;
     }
     this.convert(i, FIRE, false, -1);
     this.ctype[i] = t; // remember the fuel so the fire knows whether to leave smoke
     this.temp[i] = b.fireTemp;
     this.life[i] = b.fireLifeMin + ((this.rand() * (b.fireLifeMax - b.fireLifeMin + 1)) | 0);
+    return true;
   }
 
   // An explosion: a pressure spike in the air grid plus a direct shove
@@ -202,6 +215,8 @@ export class World {
     this.air.addPressure(this.air.at(x, y), strength);
     const r = Math.min(8, 2 + Math.round(Math.sqrt(strength)));
     const { w, h, type } = this;
+    const { downX, downY } = this.gravity;
+    const px = downY, py = -downX; // across the gravity arrow
     for (let dy = -r; dy <= r; dy++) {
       const ny = y + dy;
       if (ny < 0 || ny >= h) continue;
@@ -216,12 +231,15 @@ export class World {
         if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = Math.min(MAX_TEMP, e.ignite + 1);
         const s = e.state;
         if (s !== POWDER && s !== LIQUID && s !== GAS && !this.loose[j]) continue;
-        // Push outward; things below the blast bounce off the ground and
-        // get thrown up, which digs a crater.
+        // Push outward; things below the blast (along the gravity arrow)
+        // bounce off the ground and get thrown up, which digs a crater.
         const dist = Math.sqrt(d2);
         const f = (strength * 0.7) / dist;
-        this.vx[j] += (dx / dist) * f;
-        this.vy[j] += (dy < 0 ? dy / dist : -0.5 * dy / dist) * f - f * 0.4;
+        const across = dx * px + dy * py, along = dx * downX + dy * downY;
+        const pushAcross = (across / dist) * f;
+        const pushAlong = (along < 0 ? along / dist : -0.5 * along / dist) * f - f * 0.4;
+        this.vx[j] += pushAcross * px + pushAlong * downX;
+        this.vy[j] += pushAcross * py + pushAlong * downY;
       }
     }
   }
@@ -234,17 +252,28 @@ export class World {
     return ny * this.w + nx;
   }
 
+  // Settings from the Physics panel: { angle, strength, newtonian }.
+  setGravity(opts) {
+    this.gravity.set(opts);
+  }
+
   // ---- main loop ----------------------------------------------------------
 
   step() {
     const { w, h, type, clock, air, loose } = this;
     const tick = ++this.tick;
+    this.stepGravity();
     // Particles read last frame's complete blocked map while this frame's is built.
     const next = air.next;
     next.fill(0);
     air.solid.fill(0);
-    for (let y = h - 1; y >= 0; y--) {
-      const leftToRight = ((tick + y) & 1) === 0;
+    // Rows and columns run from the end gravity pulls towards, so a column
+    // of grains falls together.
+    const g = this.gravity;
+    const fromBottom = g.scanRows === 0 ? (tick & 1) === 0 : g.scanRows > 0;
+    for (let n = 0; n < h; n++) {
+      const y = fromBottom ? h - 1 - n : n;
+      const leftToRight = g.scanCols === 0 ? ((tick + y) & 1) === 0 : g.scanCols < 0;
       const row = y * w;
       for (let k = 0; k < w; k++) {
         const x = leftToRight ? k : w - 1 - k;
@@ -266,7 +295,26 @@ export class World {
     this.computeField();
     this.stepProjectiles();
     this.conductHeat();
-    air.step();
+    air.step(this.gravity);
+  }
+
+  // Newtonian gravity: weigh each air block and solve the pull every other
+  // frame (and straight away after it's switched on). Nothing runs while
+  // it's off.
+  stepGravity() {
+    const g = this.gravity;
+    if (!g.newtonian || (!g.stale && (this.tick & 1) === 1)) return;
+    const { mass, cols } = g.solver;
+    mass.fill(0);
+    const { w, h, type } = this;
+    for (let y = 0; y < h; y++) {
+      const row = ((y / CELL) | 0) * cols, base = y * w;
+      for (let x = 0; x < w; x++) {
+        const t = type[base + x];
+        if (t !== 0) mass[row + ((x / CELL) | 0)] += MASS[t];
+      }
+    }
+    g.solve();
   }
 
   update(i, x, y, t) {
@@ -306,6 +354,7 @@ export class World {
       const limit = was ? DEFS[was].high.temp - 40 : lo.temp;
       if (T <= limit && this.rand() < lo.chance) {
         if (was) this.convert(i, was, true, -1);
+        else if (lo.alt >= 0 && this.rand() < lo.altChance) this.convert(i, lo.alt, true, lo.altRule);
         else this.convert(i, lo.to, true, lo.rule);
         return;
       }
@@ -313,13 +362,12 @@ export class World {
     const pr = d.pressure;
     if (pr !== null && this.pressureOn(x, y, d) >= pr.above && this.rand() < pr.chance) {
       if (pr.ignite) this.ignite(i, x, y);
+      else if (pr.alt >= 0 && this.rand() < pr.altChance) this.convert(i, pr.alt, true, pr.altRule);
       else this.convert(i, pr.to, true, pr.rule);
       return;
     }
-    if (d.burn !== null && T >= d.ignite && this.rand() < d.igniteChance) {
-      this.ignite(i, x, y);
-      return;
-    }
+    // Hot fuel with no air to burn in still falls and flows.
+    if (d.burn !== null && T >= d.ignite && this.rand() < d.igniteChance && this.ignite(i, x, y)) return;
 
     if (d.reactive) {
       const j = this.randomNeighbor(x, y);
@@ -391,11 +439,19 @@ export class World {
 
   // Radioactivity (warmth, particles thrown off, random decay), glowing-hot
   // filaments, hot crystals sparking, and flowers dropping fruit. Returns true
-  // if i decayed.
+  // if i decayed. Radioactive elements barely stir until something disturbs
+  // them: pressure here, or a passing particle (kick, in particles.js).
   radiate(i, x, y, d) {
-    if (d.selfHeat !== 0) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + d.selfHeat);
-    if (d.emits !== null) {
-      for (const m of d.emits) if (this.rand() < m.chance) this.emitAt(m.id, x, y);
+    // In still air a radioactive element throws nothing off, and only warms
+    // and decays at a trickle.
+    let a = 1, trickle = 1;
+    if (d.stable) {
+      a = this.activity(x, y, d);
+      trickle = a + REST;
+    }
+    if (d.selfHeat !== 0) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + d.selfHeat * trickle);
+    if (d.emits !== null && a > 0) {
+      for (const m of d.emits) if (this.rand() < m.chance * a) this.emitAt(m.id, x, y);
     }
     if (d.hotEmit !== null && this.temp[i] >= d.hotEmit.temp && this.rand() < d.hotEmit.chance) {
       this.emitAt(PHOTON, x, y);
@@ -404,20 +460,36 @@ export class World {
     if (d.hotSpark !== null && this.temp[i] >= d.hotSpark.temp && this.rand() < d.hotSpark.chance) {
       this.sparkNeighbors(x, y);
     }
-    if (d.decay !== null && this.rand() < d.decay.chance) {
-      const o = d.decay;
-      if (o.spawn >= 0 && this.spawnNear(x, y, o.spawn) >= 0) this.record(o.spawn, o.spawnRule);
-      if (o.alt >= 0 && this.rand() < o.altChance) this.convert(i, o.alt, true, o.altRule);
-      else this.convert(i, o.to, true, o.rule);
+    if (d.decay !== null && this.rand() < d.decay.chance * trickle) {
+      this.decayCell(i, x, y, d.decay);
       return true;
     }
     if (d.produce !== null && this.rand() < d.produce.chance) {
       const p = d.produce;
-      const j = y + 1 < this.h && this.type[i + this.w] === 0 ? i + this.w : -1;
+      const { downX, downY } = this.gravity; // fruit drops below
+      const bx = x + downX, by = y + downY;
+      const j = this.inBounds(bx, by) && this.type[by * this.w + bx] === 0 ? by * this.w + bx : -1;
       if (j >= 0) this.spawn(j, p.id);
       if (j >= 0 || this.spawnNear(x, y, p.id) >= 0) this.record(p.id, p.rule);
     }
     return false;
+  }
+
+  // How stirred up a stable radioactive element is by the pressure on it
+  // (squeezing or suction), as a multiple of its listed rates: 0 in still air.
+  activity(x, y, d) {
+    const p = this.pressureOn(x, y, d, true);
+    if (p <= PRESSURE_WAKE) return 0;
+    const a = (p - PRESSURE_WAKE) / PRESSURE_FULL;
+    return a < MAX_ACTIVITY ? a : MAX_ACTIVITY;
+  }
+
+  // An atom decays: it may shed something beside it (helium, an alpha
+  // particle), then becomes what it decays into.
+  decayCell(i, x, y, o) {
+    if (o.spawn >= 0 && this.spawnNear(x, y, o.spawn) >= 0) this.record(o.spawn, o.spawnRule);
+    if (o.alt >= 0 && this.rand() < o.altChance) this.convert(i, o.alt, true, o.altRule);
+    else this.convert(i, o.to, true, o.rule);
   }
 
   // Apply a contact reaction between i (at x, y) and its neighbour j.
@@ -443,9 +515,14 @@ export class World {
   }
 
   // ---- movement -----------------------------------------------------------
+  //
+  // "Down" is wherever gravity pulls (see gravity.js): the pull and its
+  // direction come from the air block's entry in the gravity table. With the
+  // arrow straight down at strength 1 every formula below reduces exactly to
+  // plain falling.
 
-  // Can a particle of def `d` move into cell j? dy is the vertical direction
-  // of the move (+1 down, -1 up, 0 sideways).
+  // Can a particle of def `d` move into cell j? dy is the direction of the
+  // move along gravity (+1 with it, -1 against it, 0 across).
   canEnter(d, j, dy) {
     const u = this.type[j];
     if (u === 0) return true;
@@ -467,8 +544,9 @@ export class World {
     return true;
   }
 
-  // Move along (vx, vy) one cell at a time, stopping at the first obstacle.
-  // Returns the particle's new index. Sets this.blockedMoving if it hit something.
+  // Move along (vx, vy) one cell at a time, stopping at the first obstacle,
+  // with gravity straight down. Returns the particle's new index. Sets
+  // this.blockedMoving if it hit something.
   travel(i, x, y, vx, vy, d) {
     const ax = vx < 0 ? -vx : vx, ay = vy < 0 ? -vy : vy;
     const n = Math.ceil(ax > ay ? ax : ay);
@@ -488,13 +566,36 @@ export class World {
     return cur;
   }
 
-  // Wind pushes the particle along, drag slows it down, gravity pulls it.
-  pushByAir(i, x, y, d, gravity) {
-    const a = this.air.at(x, y);
+  // The same, where (ux, uy) is which way is down: what the particle can
+  // sink or rise through depends on whether a step goes with gravity or
+  // against it.
+  travelAlong(i, x, y, vx, vy, d, ux, uy) {
+    const ax = vx < 0 ? -vx : vx, ay = vy < 0 ? -vy : vy;
+    const n = Math.ceil(ax > ay ? ax : ay);
+    const rx = this.rand(), ry = this.rand();
+    let cur = i, cx = x, cy = y;
+    this.blockedMoving = false;
+    for (let s = 1; s <= n; s++) {
+      const nx = x + Math.floor((vx * s) / n + rx);
+      const ny = y + Math.floor((vy * s) / n + ry);
+      if (nx === cx && ny === cy) continue;
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) { this.blockedMoving = true; break; }
+      const j = ny * this.w + nx;
+      const along = (nx - cx) * ux + (ny - cy) * uy;
+      if (!this.canEnter(d, j, along > 0.3 ? 1 : along < -0.3 ? -1 : 0)) { this.blockedMoving = true; break; }
+      this.swap(cur, j);
+      cur = j; cx = nx; cy = ny;
+    }
+    return cur;
+  }
+
+  // Wind pushes the particle along, drag slows it down, gravity pulls it:
+  // (gx, gy) is the pull in g at air block a.
+  pushByAir(i, a, d, gx, gy) {
     const k = d.airDrag;
     const drag = 1 - d.drag;
-    let vx = this.vx[i] * drag + this.air.cvx(a) * k;
-    let vy = this.vy[i] * drag + this.air.cvy(a) * k + gravity;
+    let vx = this.vx[i] * drag + this.air.cvx(a) * k + gx * GRAVITY;
+    let vy = this.vy[i] * drag + this.air.cvy(a) * k + gy * GRAVITY;
     const m = d.maxSpeed;
     if (vx > m) vx = m; else if (vx < -m) vx = -m;
     if (vy > m) vy = m; else if (vy < -m) vy = -m;
@@ -502,8 +603,198 @@ export class World {
     this.vy[i] = vy;
   }
 
+  // Which way a particle in air block a falls this frame: a ring direction,
+  // or -1 when there's no gravity or it's too weak to pull it a cell.
+  downAt(a) {
+    const g = this.gravity;
+    let k = g.dirA[a];
+    if (k < 0) return -1;
+    const m = g.mag[a];
+    if (m < 1 && this.rand() >= m) return -1;
+    const mix = g.mix[a];
+    if (mix > 0 && this.rand() < mix) k = g.dirB[a];
+    return k;
+  }
+
+  // Stop cell i's motion along gravity and keep `keep` of the rest, as a
+  // grain does when it lands.
+  stopAlong(i, ux, uy, keep) {
+    const vx = this.vx[i], vy = this.vy[i];
+    const along = vx * ux + vy * uy;
+    this.vx[i] = (vx - along * ux) * keep;
+    this.vy[i] = (vy - along * uy) * keep;
+  }
+
   movePowder(i, x, y, d) {
-    this.pushByAir(i, x, y, d, GRAVITY);
+    const g = this.gravity;
+    if (g.straight) { this.movePowderDown(i, x, y, d); return; }
+    const a = this.air.at(x, y);
+    this.pushByAir(i, a, d, g.gx[a], g.gy[a]);
+    if (d.fallRate < 1 && this.rand() > d.fallRate) return;
+    const ux = g.ux[a], uy = g.uy[a];
+    const k = this.downAt(a);
+    let vx = this.vx[i], vy = this.vy[i];
+    // A slow grain still drops a cell a frame.
+    if (k >= 0) {
+      const along = vx * ux + vy * uy;
+      if (along < 1 && along > -0.5) { vx = vx - along * ux + ux; vy = vy - along * uy + uy; }
+    }
+    const j = this.travelAlong(i, x, y, vx, vy, d, ux, uy);
+    if (j !== i) {
+      if (this.blockedMoving) this.stopAlong(j, ux, uy, 0.5);
+      return;
+    }
+    if (k < 0) { // not falling this frame, just drifting
+      if (this.blockedMoving) this.stopAlong(i, ux, uy, 0.5);
+      return;
+    }
+    // Blocked straight away: slide off diagonally, like a grain on a slope.
+    if (this.inBounds(x + DX8[k], y + DY8[k])) {
+      let s = this.rand() < 0.5 ? 1 : 7;
+      for (let n = 0; n < 2; n++, s = 8 - s) {
+        const r = (k + s) & 7;
+        const nx = x + DX8[r], ny = y + DY8[r];
+        if (!this.inBounds(nx, ny)) continue;
+        const jj = ny * this.w + nx;
+        if (this.canEnter(d, jj, 1)) {
+          this.swap(i, jj);
+          this.vx[jj] = 0.5 * ux;
+          this.vy[jj] = 0.5 * uy;
+          return;
+        }
+      }
+    }
+    this.stopAlong(i, ux, uy, 0.5);
+  }
+
+  moveLiquid(i, x, y, d) {
+    const g = this.gravity;
+    if (g.straight) { this.moveLiquidDown(i, x, y, d); return; }
+    const a = this.air.at(x, y);
+    this.pushByAir(i, a, d, g.gx[a], g.gy[a]);
+    const ux = g.ux[a], uy = g.uy[a];
+    const k = this.downAt(a);
+    const pvx = this.vx[i], pvy = this.vy[i];
+    let vx = pvx, vy = pvy;
+    if (k >= 0) {
+      const along = vx * ux + vy * uy;
+      if (along < 1 && along > -0.5) { vx = vx - along * ux + ux; vy = vy - along * uy + uy; }
+    }
+    const j = this.travelAlong(i, x, y, vx, vy, d, ux, uy);
+    if (j !== i) {
+      if (this.blockedMoving) this.stopAlong(j, ux, uy, 1);
+      return;
+    }
+    if (k < 0) {
+      if (this.blockedMoving) this.stopAlong(i, ux, uy, 1);
+      return;
+    }
+    const { w } = this;
+    // "Sideways" is across gravity: +1 is (px, py), a quarter turn
+    // anticlockwise from down (so right, when down is down).
+    const px = uy, py = -ux;
+    const across = pvx * px + pvy * py;
+    const flow = across > 0.05 ? 1 : across < -0.05 ? -1 : (this.rand() < 0.5 ? -1 : 1);
+    const fx = DX8[k], fy = DY8[k];
+
+    // Diagonal down.
+    if (this.inBounds(x + fx, y + fy)) {
+      for (let n = 0, dir = flow; n < 2; n++, dir = -dir) {
+        const r = (k + (dir > 0 ? 7 : 1)) & 7;
+        const nx = x + DX8[r], ny = y + DY8[r];
+        if (!this.inBounds(nx, ny)) continue;
+        const jj = ny * w + nx;
+        if (this.canEnter(d, jj, 1)) {
+          this.swap(i, jj);
+          this.vx[jj] = dir * 0.5 * px + 0.5 * ux;
+          this.vy[jj] = dir * 0.5 * py + 0.5 * uy;
+          return;
+        }
+      }
+    }
+
+    // Flow sideways, remembering the direction so the liquid keeps going.
+    // A liquid only rushes sideways when something is pressing down on it or
+    // there is a drop to fall into; otherwise a thin film would skitter back
+    // and forth forever. Liquid stacked on liquid creeps one cell at a time
+    // so puddles still flatten out; a film on bare ground barely moves.
+    this.stopAlong(i, ux, uy, 1);
+    if (d.viscosity > 0 && this.rand() < d.viscosity) return;
+    const ax = x - fx, ay = y - fy;
+    const above = this.inBounds(ax, ay) ? DEFS[this.type[ay * w + ax]].state : 0;
+    const pushed = above === LIQUID || above === POWDER;
+    const bx = x + fx, by = y + fy;
+    const creep = this.inBounds(bx, by) && DEFS[this.type[by * w + bx]].state === LIQUID ? 0.1 : 0.01;
+    for (let n = 0, dir = flow; n < 2; n++, dir = -dir) {
+      const r = (k + (dir > 0 ? 6 : 2)) & 7;
+      const sx = DX8[r], sy = DY8[r];
+      let target = -1;
+      let drop = false;
+      for (let s = 1; s <= d.spread; s++) {
+        const nx = x + sx * s, ny = y + sy * s;
+        if (!this.inBounds(nx, ny)) break;
+        const jj = ny * w + nx;
+        if (!this.canEnter(d, jj, 0)) break;
+        target = jj;
+        const dx = nx + fx, dy = ny + fy;
+        if (this.inBounds(dx, dy) && this.canEnter(d, dy * w + dx, 1)) { drop = true; break; }
+      }
+      if (target < 0) continue;
+      if (!drop && !pushed) {
+        if (this.rand() < creep) target = (y + sy) * w + x + sx; else continue;
+      }
+      this.swap(i, target);
+      this.vx[target] = dir * 0.5 * px;
+      this.vy[target] = dir * 0.5 * py;
+      return;
+    }
+    this.vx[i] = -flow * 0.1 * px;
+    this.vy[i] = -flow * 0.1 * py;
+  }
+
+  // Gases (and drifting energy) rise against the gravity arrow and sink
+  // along it, with a random jitter across it.
+  moveGas(i, x, y, d) {
+    const g = this.gravity;
+    if (g.straight) { this.moveGasUp(i, x, y, d); return; }
+    const a = this.air.at(x, y);
+    // Newtonian gravity pulls gases too, but only through their velocity.
+    if (g.newtonian) this.pushByAir(i, a, d, g.fx[a], g.fy[a]);
+    else this.pushByAir(i, a, d, 0, 0);
+    const vx = this.vx[i], vy = this.vy[i];
+    if (d.drift < 1 && this.rand() > d.drift && vx * vx + vy * vy < 0.25) return;
+    let k = g.gasDir;
+    if (g.gasMix > 0 && this.rand() < g.gasMix) k = g.gasDirB;
+    const c = (k + 6) & 7; // across, a quarter turn from down
+    const cx = DX8[c], cy = DY8[c], fx = DX8[k], fy = DY8[k];
+    const lift = g.lift;
+    const rise = lift > 0 ? d.rise * lift : ZERO_G_RISE;
+    const sink = lift > 0 ? d.sink * lift : ZERO_G_SINK;
+    const jitter = ((this.rand() * 3) | 0) - 1;
+    const driftX = Math.floor(vx + this.rand());
+    const lean = this.rand() < rise ? -1 : this.rand() < sink ? 1 : 0;
+    const driftY = Math.floor(vy + this.rand());
+    let dx = jitter * cx + lean * fx + driftX;
+    let dy = jitter * cy + lean * fy + driftY;
+    if (dx > 3) dx = 3; else if (dx < -3) dx = -3;
+    if (dy > 3) dy = 3; else if (dy < -3) dy = -3;
+    if (dx === 0 && dy === 0) return;
+    const j = this.travelAlong(i, x, y, dx, dy, d, g.gasUx, g.gasUy);
+    if (j !== i) return;
+    const side = this.rand() < 0.5 ? -1 : 1;
+    const nx = x + side * cx, ny = y + side * cy;
+    if (this.inBounds(nx, ny) && this.canEnter(d, ny * this.w + nx, 0)) this.swap(i, ny * this.w + nx);
+  }
+
+  // ---- straight-down fast paths ------------------------------------------
+  //
+  // With the arrow straight down at normal strength or more, and Newtonian
+  // gravity off (the usual case), movement runs the plain falling-sand code
+  // below. It gives the same results as the general code above, which is
+  // about a fifth slower.
+
+  movePowderDown(i, x, y, d) {
+    this.pushByAir(i, this.air.at(x, y), d, 0, this.gravity.ugy);
     if (d.fallRate < 1 && this.rand() > d.fallRate) return;
     const vx = this.vx[i], vy = this.vy[i];
     const ty = vy < 1 && vy > -0.5 ? 1 : vy;
@@ -531,8 +822,8 @@ export class World {
     this.vy[i] = 0;
   }
 
-  moveLiquid(i, x, y, d) {
-    this.pushByAir(i, x, y, d, GRAVITY);
+  moveLiquidDown(i, x, y, d) {
+    this.pushByAir(i, this.air.at(x, y), d, 0, this.gravity.ugy);
     const vx = this.vx[i], vy = this.vy[i];
     const ty = vy < 1 && vy > -0.5 ? 1 : vy;
     const j = this.travel(i, x, y, vx, ty, d);
@@ -558,11 +849,7 @@ export class World {
       }
     }
 
-    // Flow sideways, remembering the direction so the liquid keeps going.
-    // A liquid only rushes sideways when something is pressing down on it or
-    // there is a drop to fall into; otherwise a thin film would skitter back
-    // and forth forever. Liquid stacked on liquid creeps one cell at a time
-    // so puddles still flatten out; a film on bare ground barely moves.
+    // Flow sideways (see moveLiquid).
     this.vy[i] = 0;
     if (d.viscosity > 0 && this.rand() < d.viscosity) return;
     const above = y > 0 ? DEFS[this.type[i - w]].state : 0;
@@ -590,8 +877,8 @@ export class World {
     this.vx[i] = -flow * 0.1;
   }
 
-  moveGas(i, x, y, d) {
-    this.pushByAir(i, x, y, d, 0);
+  moveGasUp(i, x, y, d) {
+    this.pushByAir(i, this.air.at(x, y), d, 0, 0);
     const vx = this.vx[i], vy = this.vy[i];
     if (d.drift < 1 && this.rand() > d.drift && vx * vx + vy * vy < 0.25) return;
     let dx = ((this.rand() * 3) | 0) - 1 + Math.floor(vx + this.rand());
@@ -609,6 +896,7 @@ export class World {
 
   conductHeat() {
     const { w, h, type, temp } = this;
+    const heat = this.air.heat;
     let count = 0;
     for (let y = 0; y < h; y++) {
       const row = y * w;
@@ -640,11 +928,45 @@ export class World {
         }
         if (x > 0 && type[i - 1] === 0) open++;
         if (y > 0 && type[i - w] === 0) open++;
-        if (open) T += (AMBIENT - T) * AIR_COOL[t] * open;
+        if (open) {
+          if (!heat) T += (AMBIENT - T) * AIR_COOL[t] * open;
+          else {
+            // Convection: heat goes into the air of each empty cell beside it.
+            const r = AIR_COOL[t];
+            if (x < w - 1 && type[i + 1] === 0) T = this.warmAir(x + 1, y, T, r);
+            if (y < h - 1 && type[i + w] === 0) T = this.warmAir(x, y + 1, T, r);
+            if (x > 0 && type[i - 1] === 0) T = this.warmAir(x - 1, y, T, r);
+            if (y > 0 && type[i - w] === 0) T = this.warmAir(x, y - 1, T, r);
+          }
+        }
         temp[i] = T;
       }
     }
     this.count = count;
+  }
+
+  // Convection: a particle trades heat with the air in the empty cell (x,
+  // y) beside it, instead of with the room. The air warms more than the
+  // particle cools (it holds little heat) and swells as it warms. Returns
+  // the particle's new temperature.
+  warmAir(x, y, T, rate) {
+    const air = this.air;
+    const a = air.at(x, y);
+    if (air.blocked[a]) return T + (AMBIENT - T) * rate; // no air of its own
+    const was = air.t[a];
+    const f = (was - T) * rate;
+    const now = T + f;
+    let t = was - f * AIR_SHARE;
+    if ((f < 0 && t > now) || (f > 0 && t < now)) t = now; // never past the particle
+    air.p[a] += (t - was) * EXPAND;
+    air.t[a] = t;
+    return now;
+  }
+
+  // Convection on or off. Off, the air forgets any heat it held.
+  setConvection(on) {
+    this.air.heat = !!on;
+    if (!on) this.air.t.fill(AMBIENT);
   }
 
   // ---- tools (used by the game and by tests) -------------------------------

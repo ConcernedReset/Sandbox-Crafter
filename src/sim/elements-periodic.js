@@ -145,7 +145,8 @@ export const PERIODIC_ELEMENTS = [
   {
     key: 'RUBIDIUM', name: 'Rubidium', sym: 'Rb', cat: 'metal', state: POWDER,
     colors: ['#e2d9c9', '#d6cdbd', '#ece3d3'], density: 1.53, conduct: 0.5,
-    desc: 'Alkali metal that bursts into flame the moment it touches water, worse than potassium. Named for the deep red lines in its spectrum.',
+    flammable: 0.1, ignite: 100, flame: '#d24aff', burn: { smoke: 0.4, fireTemp: 900, fireLife: [20, 40] },
+    desc: 'Alkali metal that bursts into flame the moment it touches water, worse than potassium, and burns red-violet. Named for the deep red lines in its spectrum.',
     hint: 'Run electricity through Lepidolite.',
   },
   {
@@ -209,7 +210,7 @@ export const PERIODIC_ELEMENTS = [
   metal('RUTHENIUM', 'Ruthenium', 'Ru', ['#b6bcc2', '#abb1b7', '#c1c7cd'], 12.4, 2334, 200, {
     acidProof: true,
     desc: 'Hard platinum-group metal named after Russia. Technetium slowly decays into it.',
-    hint: 'Wait for Technetium to decay.',
+    hint: 'Squeeze or bombard Technetium until it decays.',
   }),
   metal('RHODIUM', 'Rhodium', 'Rh', ['#dfe4e8', '#d4d9dd', '#e9eef2'], 12.4, 1964, 180, {
     reflect: 0.95, acidProof: true,
@@ -272,7 +273,8 @@ export const PERIODIC_ELEMENTS = [
   {
     key: 'BRITTLE_ALUMINUM', name: 'Brittle Aluminum', sym: 'bAl', cat: 'metal', state: POWDER,
     colors: ['#a9b2b8', '#9ea7ad', '#b4bdc3'], density: 2.5, conduct: 0.4,
-    desc: 'Aluminium ruined by gallium, which slipped between its grains. Now it crumbles at a touch.',
+    high: { temp: 660, to: 'MOLTEN_METAL', chance: 0.05, remember: 'ALUMINUM' },
+    desc: 'Aluminium ruined by gallium, which slipped between its grains. Now it crumbles at a touch, and with no skin of oxide to protect it, water eats it and gives off hydrogen.',
     hint: 'Pour Liquid Gallium onto Aluminum.',
   },
   metal('INDIUM', 'Indium', 'In', ['#c8ccd6', '#bdc1cb', '#d3d7e1'], 7.3, 157, 8, {
@@ -441,7 +443,7 @@ export const PERIODIC_ELEMENTS = [
     colors: ['#e8d8b0', '#dccca4', '#f2e2bc'], density: 2.5, selfHeat: 0.3, glowAmount: 0.4,
     emits: [{ p: 'ELECTRON', chance: 0.01 }], decay: { chance: 0.004, to: 'RADIUM' },
     desc: 'The last alkali metal and the least stable natural element: there\'s under a kilogram in the whole Earth at any moment. It would outdo cesium in water.',
-    hint: 'Wait for Actinium to decay.',
+    hint: 'Squeeze or bombard Actinium until it decays.',
   },
   {
     key: 'ASTATINE', name: 'Astatine', sym: 'At', cat: 'nuclear', state: POWDER,
@@ -462,7 +464,7 @@ export const PERIODIC_ELEMENTS = [
     colors: ['#8a9aa0', '#7e8e94', '#96a6ac'], density: 20.2, glowAmount: 0.1,
     emits: [{ p: 'ALPHA', chance: 0.0005 }], decay: { chance: 0.0002, to: 'PROTACTINIUM' },
     desc: 'The first element beyond uranium, found in 1940 and named after the next planet out, as uranium is named after Uranus.',
-    hint: 'Wait for Americium to decay.',
+    hint: 'Squeeze or bombard Americium until it decays.',
   },
   {
     key: 'AMERICIUM', name: 'Americium', sym: 'Am', cat: 'nuclear', state: POWDER,
@@ -476,7 +478,7 @@ export const PERIODIC_ELEMENTS = [
     key: 'CURIUM', name: 'Curium', sym: 'Cm', cat: 'nuclear', state: POWDER,
     colors: ['#c8b8d8', '#bcacd0', '#d4c4e4'], density: 13.5, selfHeat: 0.3, glowAmount: 0.6,
     emits: [{ p: 'ALPHA', chance: 0.004 }], decay: { chance: 0.0003, to: 'PLUTONIUM' },
-    desc: 'Named after Marie and Pierre Curie. It glows purple and keeps itself hot enough to power space probes.',
+    desc: 'Named after Marie and Pierre Curie. It glows purple, and stirred up it runs hot enough to power a space probe.',
     hint: 'Hit Plutonium with Alpha particles, as Seaborg\'s team did in 1944.',
   },
   {
@@ -490,7 +492,7 @@ export const PERIODIC_ELEMENTS = [
     key: 'CALIFORNIUM', name: 'Californium', sym: 'Cf', cat: 'nuclear', state: POWDER,
     colors: ['#d8d0b0', '#ccc4a4', '#e4dcbc'], density: 15.1, selfHeat: 0.1, glowAmount: 0.3,
     emits: [{ p: 'NEUTRON', chance: 0.004 }],
-    desc: 'Splits all by itself, spraying neutrons. A speck of it kick-starts reactors and sniffs out gold and oil underground.',
+    desc: 'Sprays neutrons at the slightest squeeze or knock. A speck of it kick-starts reactors and sniffs out gold and oil underground.',
     hint: 'Hit Curium with Alpha particles.',
   },
   {
@@ -516,65 +518,65 @@ export const PERIODIC_ELEMENTS = [
   },
   superheavy('NOBELIUM', 'Nobelium', 'No', ['#d8e0a8', '#ccd49c', '#e4ecb4'], 'FERMIUM', 0.004, {
     desc: 'Named after Alfred Nobel. Labs in three countries claimed to have found it first, and the argument lasted thirty years.',
-    hint: 'Wait for Rutherfordium to decay.',
+    hint: 'Squeeze or bombard Rutherfordium until it decays.',
   }),
   superheavy('LAWRENCIUM', 'Lawrencium', 'Lr', ['#b0c8e0', '#a4bcd4', '#bcd4ec'], 'MENDELEVIUM', 0.004, {
     desc: 'The last actinide, named after Ernest Lawrence, inventor of the cyclotron that made so many of its neighbours.',
-    hint: 'Wait for Dubnium to decay.',
+    hint: 'Squeeze or bombard Dubnium until it decays.',
   }),
   superheavy('RUTHERFORDIUM', 'Rutherfordium', 'Rf', ['#c8b8b0', '#bcaca4', '#d4c4bc'], 'NOBELIUM', 0.006, {
     desc: 'The first element past the actinides, named after Ernest Rutherford, who first split the atom.',
-    hint: 'Wait for Seaborgium to decay.',
+    hint: 'Squeeze or bombard Seaborgium until it decays.',
   }),
   superheavy('DUBNIUM', 'Dubnium', 'Db', ['#b8c0c8', '#acb4bc', '#c4ccd4'], 'LAWRENCIUM', 0.006, {
     desc: 'Named after Dubna, the Russian town whose lab raced Berkeley to make it; the "Transfermium Wars" over who got there first lasted decades.',
-    hint: 'Wait for Bohrium to decay.',
+    hint: 'Squeeze or bombard Bohrium until it decays.',
   }),
   superheavy('SEABORGIUM', 'Seaborgium', 'Sg', ['#c0c8b0', '#b4bca4', '#ccd4bc'], 'RUTHERFORDIUM', 0.008, {
     desc: 'Named after Glenn Seaborg while he was still alive, a first. He liked that his address could be written in elements: Sg, Lr, Bk, Cf, Am.',
-    hint: 'Wait for Hassium to decay.',
+    hint: 'Squeeze or bombard Hassium until it decays.',
   }),
   superheavy('BOHRIUM', 'Bohrium', 'Bh', ['#b0b8c8', '#a4acbc', '#bcc4d4'], 'DUBNIUM', 0.008, {
     desc: 'Named after Niels Bohr. Only a few dozen atoms of it have ever existed.',
-    hint: 'Wait for Meitnerium to decay.',
+    hint: 'Squeeze or bombard Meitnerium until it decays.',
   }),
   superheavy('HASSIUM', 'Hassium', 'Hs', ['#c8c0b8', '#bcb4ac', '#d4ccc4'], 'SEABORGIUM', 0.008, {
     desc: 'Named after Hesse, the German state where it was made. Chemists have studied its compounds a handful of atoms at a time.',
-    hint: 'Wait for Darmstadtium to decay.',
+    hint: 'Squeeze or bombard Darmstadtium until it decays.',
   }),
   superheavy('MEITNERIUM', 'Meitnerium', 'Mt', ['#d0b8c8', '#c4acbc', '#dcc4d4'], 'BOHRIUM', 0.01, {
     desc: 'Named after Lise Meitner, who worked out how nuclear fission works and was left out of the Nobel Prize for it.',
-    hint: 'Wait for Roentgenium to decay.',
+    hint: 'Squeeze or bombard Roentgenium until it decays.',
   }),
   superheavy('DARMSTADTIUM', 'Darmstadtium', 'Ds', ['#b8c8c0', '#acbcb4', '#c4d4cc'], 'HASSIUM', 0.01, {
     desc: 'Made in Darmstadt in 1994 by fusing nickel into lead. It lasts a few seconds at best.',
-    hint: 'Wait for Copernicium to decay.',
+    hint: 'Squeeze or bombard Copernicium until it decays.',
   }),
   superheavy('ROENTGENIUM', 'Roentgenium', 'Rg', ['#e0d0a0', '#d4c494', '#ecdcac'], 'MEITNERIUM', 0.01, {
     desc: 'Named after Wilhelm Röntgen, discoverer of X-rays. Chemically it should behave like an even heavier gold.',
-    hint: 'Wait for Nihonium to decay.',
+    hint: 'Squeeze or bombard Nihonium until it decays.',
   }),
   superheavy('COPERNICIUM', 'Copernicium', 'Cn', ['#c8d0d8', '#bcc4cc', '#d4dce4'], 'DARMSTADTIUM', 0.008, {
     state: LIQUID, spread: 4, density: 14,
     desc: 'Named after Copernicus. Relativity makes its electrons so sluggish that it may be a liquid at room temperature, like a super-heavy mercury.',
-    hint: 'Wait for Flerovium to decay.',
+    hint: 'Squeeze or bombard Flerovium until it decays.',
   }),
   superheavy('NIHONIUM', 'Nihonium', 'Nh', ['#e0b8b8', '#d4acac', '#ecc4c4'], 'ROENTGENIUM', 0.01, {
     desc: 'The first element discovered in Asia, named after Nihon, Japan. The team took nine years to catch three atoms.',
-    hint: 'Wait for Moscovium to decay.',
+    hint: 'Squeeze or bombard Moscovium until it decays.',
   }),
   superheavy('FLEROVIUM', 'Flerovium', 'Fl', ['#c0c8d0', '#b4bcc4'], 'COPERNICIUM', 0.008, {
     state: GAS, alpha: 0.5, density: 0.5, rise: 0.05, sink: 0.4, airDrag: 0.3,
     desc: 'Named after Georgy Flyorov. It may be the most volatile metal of all; experiments hint it behaves almost like a gas.',
-    hint: 'Wait for Livermorium to decay, or fire Calcium Ions at Plutonium.',
+    hint: 'Squeeze or bombard Livermorium until it decays, or fire Calcium Ions at Plutonium.',
   }),
   superheavy('MOSCOVIUM', 'Moscovium', 'Mc', ['#d0c8b0', '#c4bca4', '#dcd4bc'], 'NIHONIUM', 0.01, {
     desc: 'Named after the Moscow region. Made by firing calcium at americium, and gone within a second.',
-    hint: 'Wait for Tennessine to decay, or fire Calcium Ions at Americium.',
+    hint: 'Squeeze or bombard Tennessine until it decays, or fire Calcium Ions at Americium.',
   }),
   superheavy('LIVERMORIUM', 'Livermorium', 'Lv', ['#b8d0c8', '#acc4bc', '#c4dcd4'], 'FLEROVIUM', 0.008, {
     desc: 'Named after the Lawrence Livermore lab in California. Made by firing calcium at curium.',
-    hint: 'Wait for Oganesson to decay, or fire Calcium Ions at Curium.',
+    hint: 'Squeeze or bombard Oganesson until it decays, or fire Calcium Ions at Curium.',
   }),
   superheavy('TENNESSINE', 'Tennessine', 'Ts', ['#c8b8d0', '#bcacc4', '#d4c4dc'], 'MOSCOVIUM', 0.01, {
     desc: 'Named after Tennessee, where its berkelium target was made; the target had to be flown to Russia before it decayed.',
@@ -616,7 +618,7 @@ export const PERIODIC_ELEMENTS = [
     hint: 'Sulfur seeping through Limestone.',
   }),
   ore('PYRITE', 'Pyrite', 'Py', ['#c8b04a', '#bca43e', '#d4bc56'], 5.0, 50, {
-    reflect: 0.6,
+    reflect: 0.6, high: { temp: 600, to: 'RUST', alt: 'SULFUR_DIOXIDE', altChance: 0.5, chance: 0.02 },
     desc: 'Fool\'s gold: brassy cubes of iron sulfide. Its name means "fire stone", because it throws sparks when struck with steel.',
     hint: 'Metal that sits in Sulfur.',
   }),
@@ -654,6 +656,7 @@ export const PERIODIC_ELEMENTS = [
   }),
   ore('PERIDOT', 'Peridot', 'Pdt', ['#9ac43a', '#8cb830', '#a8d046'], 3.3, 90, {
     transparent: true, acidProof: true, pressure: { above: 40, to: 'KIMBERLITE', chance: 0.01 },
+    high: { temp: 1890, to: 'LAVA', chance: 0.02 },
     desc: 'Olive-green gem from the Earth\'s mantle, carried up by volcanoes. It turns up in meteorites too.',
     hint: 'Lava rich in Magnesium.',
   }),
@@ -722,7 +725,7 @@ export const PERIODIC_REACTIONS = [
   { a: 'FLUORINE', b: 'WATER', chance: 0.2, aTo: 'OXYGEN', bTo: 'HYDROFLUORIC_ACID', heat: 150 },
   { a: 'FLUORINE', b: 'HYDROGEN', chance: 0.5, aTo: 'HYDROFLUORIC_ACID', bTo: 'FIRE', explode: 4 },
   { a: 'FLUORINE', b: 'WOOD', chance: 0.3, aTo: 'EMPTY', bTo: 'FIRE', heat: 300 },
-  { a: 'FLUORINE', b: 'GLASS', chance: 0.05, aTo: 'EMPTY', bTo: 'SAND' },
+  { a: 'FLUORINE', b: 'GLASS', chance: 0.05, aTo: 'OXYGEN', bTo: 'EMPTY' },
   { a: 'XENON', b: 'FLUORINE', chance: 0.03, aTo: 'XENON_DIFLUORIDE', bTo: 'EMPTY' },
 
   // Non-metals.

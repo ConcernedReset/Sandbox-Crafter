@@ -26,10 +26,12 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Put an electric arc (Spark) through Nitrogen.',
   }),
   acid('NITRIC_ACID', 'Nitric Acid', 'HNO', ['#f2eeb8', '#e8e4ac'], 1.5, {
+    high: { temp: 85, to: 'NITROGEN_DIOXIDE', alt: 'STEAM', altChance: 0.5, chance: 0.02 },
     desc: 'Fuming acid that stains skin yellow and dissolves copper in a cloud of brown gas.',
     hint: 'Dissolve Nitrogen Dioxide in Water.',
   }),
   acid('AQUA_REGIA', 'Aqua Regia', 'AR', ['#e8a040', '#dc9434', '#f4ac4c'], 1.2, {
+    high: { temp: 110, to: 'CHLORINE', alt: 'NITROGEN_DIOXIDE', altChance: 0.5, chance: 0.02 },
     transparent: false,
     desc: '"Royal water", nitric and hydrochloric acid together: the only acid that dissolves gold and platinum. In 1940 a chemist dissolved two Nobel medals in it to hide them from the Nazis.',
     hint: 'Mix Nitric Acid with Acid.',
@@ -49,11 +51,13 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Burn Sulfur.',
   }),
   acid('SULFURIC_ACID', 'Sulfuric Acid', 'H2S', ['#f2eed8', '#e8e4cc'], 1.8, {
+    high: { temp: 337, to: 'SULFUR_DIOXIDE', alt: 'STEAM', altChance: 0.5, chance: 0.02 },
     spread: 3, viscosity: 0.3,
     desc: 'Thick, heavy "oil of vitriol" that is desperate for water. It chars sugar into a rising black column, and water poured into it boils.',
     hint: 'Dissolve Sulfur Dioxide in Water.',
   }),
   chem('ACID_RAIN', 'Acid Rain', 'AcR', LIQUID, ['#9cb8c8', '#90acbc'], {
+    high: { temp: 100, to: 'STEAM', chance: 0.2 }, low: { temp: 0, to: 'ICE', chance: 0.1 },
     density: 1.0, spread: 8, transparent: true, wet: true,
     desc: 'Rain soured by sulfur from smokestacks and volcanoes. It eats away marble statues and limestone.',
     hint: 'Let Sulfur Dioxide drift into a Cloud.',
@@ -63,6 +67,7 @@ export const CHEMISTRY_ELEMENTS = [
   chem('HYDROGEN_PEROXIDE', 'Hydrogen Peroxide', 'H2O2', LIQUID, ['#e8f4fb', '#dcecf5'], {
     density: 1.45, spread: 6, transparent: true, wet: true,
     decay: { chance: 0.0003, to: 'WATER', spawn: 'OXYGEN' },
+    high: { temp: 150, to: 'WATER', alt: 'OXYGEN', altChance: 0.5, chance: 0.05 },
     desc: 'Water with an extra oxygen atom it wants to lose. It slowly fizzes back into water, and a catalyst makes it foam furiously.',
     hint: 'Ozone dissolving in Water.',
   }),
@@ -77,6 +82,7 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Bubble Chlorine through Lye.',
   }),
   chem('VINEGAR', 'Vinegar', 'Vg', LIQUID, ['#e8dcb8', '#dcd0ac'], {
+    high: { temp: 100, to: 'STEAM', chance: 0.05 },
     density: 1.01, spread: 7, transparent: true, wet: true,
     desc: 'Sour, dilute acetic acid, made when bacteria feed on alcohol. It fizzes with baking soda and dissolves eggshells.',
     hint: 'Leave Alcohol open to the Oxygen.',
@@ -107,11 +113,13 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Burn Calcium.',
   }),
   chem('SLAKED_LIME', 'Slaked Lime', 'SL', POWDER, ['#f4f4ee', '#eaeae2', '#fafaf6'], {
+    high: { temp: 512, to: 'QUICKLIME', chance: 0.02 },
     density: 2.2,
     desc: 'White powder that soaks up carbon dioxide from the air and hardens back into limestone. Romans built with it.',
     hint: 'Calcium fizzing in Water, or Quicklime slaked with Water.',
   }),
   chem('LIMEWATER', 'Limewater', 'LW', LIQUID, ['#e4eef2', '#dce6ea'], {
+    high: { temp: 100, to: 'STEAM', alt: 'SLAKED_LIME', altChance: 0.3, chance: 0.1 },
     density: 1.0, spread: 8, transparent: true, wet: true,
     desc: 'Clear lime solution that turns milky the moment carbon dioxide touches it: the classic school test for CO₂.',
     hint: 'Stir Slaked Lime into Water.',
@@ -127,8 +135,8 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Mix Plaster of Paris with Water.',
   }),
   chem('BORAX', 'Borax', 'Bor', POWDER, ['#f0f4f6', '#e6eaec', '#f8fcfe'], {
-    density: 1.7,
-    desc: 'White mineral from dried-up desert lakes. It links glue molecules together into slime.',
+    density: 1.7, high: { temp: 743, to: 'MOLTEN_GLASS', chance: 0.02 },
+    desc: 'White mineral from dried-up desert lakes. It links glue molecules together into slime, and melts into a clear glass.',
     hint: 'Boron dissolving into Salt Water, as in Death Valley\'s dry lakes.',
   }),
   chem('STARCH', 'Starch', 'Stc', POWDER, ['#fbfbf6', '#f2f2ea', '#ffffff'], {
@@ -173,13 +181,13 @@ export const CHEMISTRY_ELEMENTS = [
   }),
   chem('RADIUM_PAINT', 'Radium Paint', 'RaP', LIQUID, ['#c8f0b0', '#bce4a4', '#d4fcbc'], {
     density: 1.5, spread: 1, viscosity: 0.8, glowAmount: 0.9, selfHeat: 0.01,
-    emits: [{ p: 'ALPHA', chance: 0.001 }],
-    desc: 'Radium mixed into phosphor: it glows without any light at all. The "Radium Girls" who painted watch dials with it in the 1920s were poisoned, and their lawsuits changed workplace safety law.',
+    emits: [{ p: 'ALPHA', chance: 0.001 }], decay: { chance: 0.0002, to: 'RADIUM' },
+    desc: 'Radium mixed into phosphor: it glows without any light at all. The "Radium Girls" who painted watch dials with it in the 1920s were poisoned, and their lawsuits changed workplace safety law. Its own alpha particles slowly wreck the phosphor, so the glow fades while the radium lives on.',
     hint: 'Mix Radium into Phosphor.',
   }),
   chem('COPPER_SULFATE', 'Copper Sulfate', 'CuS', POWDER, ['#2a7ad8', '#2470cc', '#3a8ae4'], {
-    density: 3.6,
-    desc: 'Brilliant blue crystals. Drop iron into it and the iron comes out coated in copper.',
+    density: 3.6, high: { temp: 200, to: 'ANHYDROUS_COPPER_SULFATE', chance: 0.01 },
+    desc: 'Brilliant blue crystals. Drop iron into it and the iron comes out coated in copper. Bake it and its water, and its blue, are driven off.',
     hint: 'Dissolve Copper in hot Sulfuric Acid.',
   }),
   chem('SILVER_CHLORIDE', 'Silver Chloride', 'AgCl', POWDER, ['#f4f4f0', '#eaeae4'], {
@@ -200,6 +208,7 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Leave an Egg to rot.',
   }),
   chem('TARNISH', 'Tarnish', 'Tsh', POWDER, ['#2a2a2e', '#343438', '#202024'], {
+    high: { temp: 800, to: 'SILVER', alt: 'SULFUR_DIOXIDE', altChance: 0.3, chance: 0.02 },
     density: 7.2,
     desc: 'Black silver sulfide, the dark film on old spoons. Baking soda and a bit of aluminium foil turn it back into silver.',
     hint: 'Rotten-egg gas (Hydrogen Sulfide) blackens Silver.',
@@ -248,6 +257,7 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Heat Wood where there\'s no air, only hot Nitrogen.',
   }),
   chem('ACTIVATED_CHARCOAL', 'Activated Charcoal', 'ACh', POWDER, ['#101012', '#18181a', '#0c0c0e'], {
+    flammable: 0.02, ignite: 400, burn: { fireTemp: 1000, fireLife: [100, 200] },
     density: 0.4,
     desc: 'Charcoal riddled with tiny pores: a spoonful has the surface area of a football pitch. It soaks up smoke, smells and stains.',
     hint: 'Steam some Charcoal.',
@@ -259,7 +269,7 @@ export const CHEMISTRY_ELEMENTS = [
   }),
   chem('CARBON_SNAKE', 'Carbon Snake', 'CSn', SOLID, ['#1a1614', '#221d1a', '#120f0d'], {
     strength: 3, density: 0.3, flammable: 0.02, ignite: 500, behavior: 'stalk',
-    stalk: { height: [10, 25], rate: 0.2 },
+    stalk: { height: [10, 25], rate: 0.2 }, pressure: { above: 5, to: 'SOOT', chance: 0.05 },
     desc: 'Sulfuric acid rips the water out of sugar, leaving a black column of carbon foam that rises out of the beaker, steaming.',
     hint: 'Pour Sulfuric Acid on Sugar.',
   }),
@@ -285,7 +295,7 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Let Fluorine react with Methane.',
   }),
   chem('WATERGLASS', 'Waterglass', 'WGl', LIQUID, ['#e0ecee', '#d6e2e4'], {
-    density: 1.4, spread: 2, viscosity: 0.6, transparent: true,
+    density: 1.4, spread: 2, viscosity: 0.6, transparent: true, high: { temp: 300, to: 'GLASS', chance: 0.01 },
     desc: 'Sodium silicate: liquid glass. It fireproofs wood, preserved eggs before fridges, and grows crystal gardens.',
     hint: 'Dissolve hot Sand in Lye.',
   }),
@@ -296,10 +306,12 @@ export const CHEMISTRY_ELEMENTS = [
   }),
   chem('GOLDEN_RAIN', 'Golden Rain', 'GRn', POWDER, ['#f8d840', '#f0cc30', '#ffe460'], {
     density: 6, fallRate: 0.3, sparkle: true, glowAmount: 0.15,
+    high: { temp: 450, to: 'LEAD', alt: 'IODINE_VAPOR', altChance: 0.5, chance: 0.02 },
     desc: 'Lead iodide: glittering golden flakes that drift down like the snow in a snow globe.',
     hint: 'Iodine on Lead.',
   }),
   chem('SILICA_GEL', 'Silica Gel', 'SiG', POWDER, ['#f0f4f8', '#e8eef4', '#f8a0c8'], {
+    high: { temp: 1600, to: 'MOLTEN_GLASS', chance: 0.02 },
     density: 0.7,
     desc: 'Glassy beads riddled with pores that soak up moisture: the "do not eat" sachets in new shoes.',
     hint: 'Set Waterglass with Acid.',
@@ -323,13 +335,13 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Iron Rust meeting Blood.',
   }),
   chem('VERMILION', 'Vermilion', 'Vrm', POWDER, ['#e0301e', '#d22818', '#ec3c28'], {
-    density: 8,
-    desc: 'The brilliant red of Chinese lacquer and medieval manuscripts: ground-up cinnabar.',
+    density: 8, high: { temp: 580, to: 'MERCURY', chance: 0.05 },
+    desc: 'The brilliant red of Chinese lacquer and medieval manuscripts: ground-up cinnabar. Roast it and, like cinnabar, it gives up its mercury.',
     hint: 'Grind Cinnabar under Pressure.',
   }),
   chem('OCHRE', 'Ochre', 'Och', POWDER, ['#c8862a', '#b87a24', '#d49234', '#a85a2a'], {
-    density: 2.5,
-    desc: 'Earth coloured by iron: the yellows and reds of cave paintings made 40,000 years ago.',
+    density: 2.5, high: { temp: 300, to: 'HEMATITE', chance: 0.01 },
+    desc: 'Earth coloured by iron: the yellows and reds of cave paintings made 40,000 years ago. Roasting turns yellow ochre red, as its iron becomes haematite.',
     hint: 'Clay stained with Rust.',
   }),
   chem('ULTRAMARINE', 'Ultramarine', 'Ult', POWDER, ['#1a3ad8', '#1432c8', '#2448e4'], {
@@ -354,12 +366,14 @@ export const CHEMISTRY_ELEMENTS = [
   }),
   chem('PERFUME', 'Perfume', 'Pfm', GAS, ['#f8d0e8', '#f0c4dc'], {
     alpha: 0.2, density: 0.05, rise: 0.4, life: [300, 600], behavior: 'decay',
+    low: { temp: 0, to: 'ALCOHOL', chance: 0.05 },
     desc: 'Flower oils dissolved in alcohol, drifting off as a sweet-smelling vapour.',
     hint: 'Soak Flowers in Alcohol.',
   }),
   chem('SUNSCREEN', 'Sunscreen', 'SPF', LIQUID, ['#fafaf2', '#f2f2ea'], {
-    density: 1.0, spread: 1, viscosity: 0.8,
-    desc: 'White lotion of titanium dioxide that soaks up ultraviolet before it reaches your skin.',
+    density: 1.0, spread: 1, viscosity: 0.8, uvBlock: true,
+    flammable: 0.05, ignite: 300, burn: { smoke: 0.6 },
+    desc: 'White lotion of titanium dioxide in oil that soaks up ultraviolet before it reaches your skin.',
     hint: 'Grind Titanium into Oil.',
   }),
 
@@ -369,15 +383,17 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'A Ruby with Titanium in it instead of chromium.',
   }),
   gem('TOPAZ', 'Topaz', 'Tpz', ['#f0b040', '#e4a434', '#f8bc4c'], 160, {
+    high: { temp: 1200, to: 'MOLTEN_GLASS', alt: 'FLUORINE', altChance: 0.3, chance: 0.02 },
     desc: 'Golden gem that needs fluorine to grow, so it forms where fluorine-rich vapour seeps through granite.',
     hint: 'Fluorine seeping through Granite.',
   }),
   gem('OPAL', 'Opal', 'Opl', ['#e8f0f8', '#7ae0e8', '#e88ad8', '#8ae88a', '#f8d86a'], 40, {
-    transparent: false, render: 'strange',
+    transparent: false, render: 'strange', high: { temp: 400, to: 'QUARTZ', chance: 0.01 },
     desc: 'Tiny silica spheres stacked in rows that split light into flashing colours. Up to a fifth of an opal is water.',
     hint: 'Quartz soaking in Water for a very long time.',
   }),
   gem('JADE', 'Jade', 'Jd', ['#3a9a5a', '#349050', '#44a864'], 120, {
+    high: { temp: 1060, to: 'MOLTEN_GLASS', chance: 0.02 },
     transparent: false,
     desc: 'Tough green stone that is harder to break than steel. Chinese carvers worked it for 7000 years, grinding it with sand because nothing could cut it.',
     hint: 'Peridot altered by Water deep underground.',
@@ -403,42 +419,50 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Copper left in Carbon Dioxide.',
   }),
   gem('CITRINE', 'Citrine', 'Ctr', ['#f0b830', '#e4ac24', '#fcc43c'], 120, {
+    high: { temp: 700, to: 'QUARTZ', chance: 0.01 },
     desc: 'Golden quartz. Most citrine in shops is amethyst that has been baked.',
     hint: 'Bake Amethyst.',
   }),
   gem('SMOKY_QUARTZ', 'Smoky Quartz', 'SQz', ['#5a4a3a', '#4e3e30', '#665644'], 55, {
+    high: { temp: 300, to: 'QUARTZ', chance: 0.01 },
     desc: 'Quartz darkened by natural radiation from the rocks around it.',
     hint: 'Irradiate Quartz with Gamma rays.',
   }),
   gem('ROSE_QUARTZ', 'Rose Quartz', 'RQz', ['#f0b8c8', '#e8acbc', '#f8c4d4'], 55, {
+    high: { temp: 575, to: 'QUARTZ', chance: 0.01 },
     desc: 'Soft pink quartz, coloured by microscopic fibres of another mineral inside it.',
     hint: 'Quartz with a trace of Manganese.',
   }),
   gem('GARNET', 'Garnet', 'Grn', ['#8a1a2a', '#7c1624', '#982030'], 130, {
+    high: { temp: 1250, to: 'LAVA', chance: 0.02 },
     desc: 'Deep red crystals that grow as slate is baked deep underground. Much sandpaper is crushed garnet.',
     hint: 'Bake Slate.',
   }),
   gem('SPINEL', 'Spinel', 'Spn', ['#d8204a', '#c81a42', '#e42a56'], 160, {
+    high: { temp: 2135, to: 'LAVA', chance: 0.02 },
     desc: 'The "Black Prince\'s Ruby" in the British crown jewels turned out to be a spinel, a different mineral altogether.',
     hint: 'Magnesium creeping into a Ruby.',
   }),
   gem('ALEXANDRITE', 'Alexandrite', 'Alx', ['#2a8a7a', '#8a2a5a', '#249070'], 170, {
+    high: { temp: 1870, to: 'LAVA', chance: 0.02 },
     desc: 'Emerald by day and ruby by lamplight: it changes colour with the light. Found in the Urals in 1834, on the future Tsar Alexander\'s birthday.',
     hint: 'Beryllium with a touch of Chromium.',
   }),
   gem('TOURMALINE', 'Tourmaline', 'Trm', ['#d83a6a', '#3ab86a', '#c8304e', '#44c478'], 120, {
-    hotSpark: { temp: 100, chance: 0.02 },
+    hotSpark: { temp: 100, chance: 0.02 }, high: { temp: 1000, to: 'LAVA', chance: 0.02 },
     desc: 'Pink-and-green "watermelon" crystals. Heat one and it builds up an electric charge: Dutch traders used warm tourmaline to pull ash out of their pipes.',
     hint: 'Boron in Granite.',
   }),
   gem('MOISSANITE', 'Moissanite', 'Moi', ['#e8f4f0', '#dcece8', '#f4fcf8'], 250, {
+    high: { temp: 2700, to: 'SILICON', alt: 'GRAPHITE', altChance: 0.5, chance: 0.02 },
     sparkle: true,
     desc: 'Silicon carbide, nearly as hard as diamond and more sparkly. Henri Moissan first found natural crystals of it in a meteor crater.',
     hint: 'Fuse Silicon with Graphite at 1800 °C.',
   }),
   gem('PEARL', 'Pearl', 'Prl', ['#f8f4f0', '#f0ece8', '#fffcf8'], 20, {
     transparent: false, acidProof: false, sparkle: true, density: 2.7,
-    desc: 'Layer upon layer of shell laid down around a grain of sand to wall it off.',
+    high: { temp: 825, to: 'QUICKLIME', chance: 0.02 },
+    desc: 'Layer upon layer of shell laid down around a grain of sand to wall it off. Vinegar dissolves it: Cleopatra is said to have drunk one to win a bet.',
     hint: 'A grain of Sand inside a Seashell.',
   }),
   gem('AMBER', 'Amber', 'Amb', ['#e8901a', '#dc8414', '#f49c26'], 20, {
@@ -453,16 +477,17 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Squeeze Rust.',
   }),
   rock('LODESTONE', 'Lodestone', 'Lds', ['#2a2a2e', '#343438', '#202024'], 5.2, 90, {
-    behavior: 'magnet',
-    desc: 'Naturally magnetic iron ore, probably magnetised by lightning. Chinese navigators floated it to make the first compasses.',
+    behavior: 'magnet', high: { temp: 580, to: 'HEMATITE', chance: 0.02 },
+    desc: 'Naturally magnetic iron ore, probably magnetised by lightning. Chinese navigators floated it to make the first compasses. Heat past 580 °C destroys its magnetism.',
     hint: 'Strike Hematite with Lightning.',
   }),
   rock('MARBLE', 'Marble', 'Mrb', ['#f2f0ec', '#e6e4e0', '#faf8f4', '#c8c8d0'], 2.7, 45, {
+    high: { temp: 825, to: 'QUICKLIME', chance: 0.02 },
     desc: 'Limestone recrystallised by heat and pressure: the stone of Michelangelo\'s David. Acid rain slowly dissolves it.',
     hint: 'Squeeze Limestone.',
   }),
   rock('SHALE', 'Shale', 'Shl', ['#5a5550', '#504b46', '#645f5a'], 2.4, 25, {
-    pressure: { above: 35, to: 'SLATE', chance: 0.01 },
+    pressure: { above: 35, to: 'SLATE', chance: 0.01 }, high: { temp: 1000, to: 'BRICK', chance: 0.02 },
     desc: 'Mud pressed into rock in thin layers. Some shale holds oil and gas.',
     hint: 'Squeeze Mud.',
   }),
@@ -472,20 +497,22 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Squeeze Shale.',
   }),
   rock('SANDSTONE', 'Sandstone', 'Sst', ['#d8b880', '#ccac74', '#e4c48c', '#c49a64'], 2.3, 30, {
+    pressure: { above: 20, to: 'SAND', chance: 0.01 },
     desc: 'Sand grains glued together by lime. The rose-red city of Petra is carved from it.',
     hint: 'Sand cemented by Limestone.',
   }),
   rock('CHALK', 'Chalk', 'Chk', ['#f8f8f4', '#f0f0ec', '#fffffc'], 1.8, 10, {
-    state: POWDER,
+    state: POWDER, high: { temp: 825, to: 'QUICKLIME', chance: 0.02 },
     desc: 'Soft white rock made almost entirely of the shells of tiny sea creatures. The White Cliffs of Dover are a pile of them.',
     hint: 'Breathe Carbon Dioxide into Limewater, or crush Seashells.',
   }),
   rock('FLINT', 'Flint', 'Fnt', ['#3a3834', '#44423e', '#302e2a'], 2.6, 100, {
+    high: { temp: 1700, to: 'MOLTEN_GLASS', chance: 0.02 },
     desc: 'Glassy stone that forms inside chalk. Chipped, it takes an edge sharper than steel; struck with steel, it throws sparks.',
     hint: 'Quartz that forms inside Chalk.',
   }),
   rock('PUMICE', 'Pumice', 'Pum', ['#d8d4c8', '#ccc8bc', '#e4e0d4'], 0.6, 10, {
-    state: POWDER,
+    state: POWDER, high: { temp: 1200, to: 'LAVA', chance: 0.02 },
     desc: 'Volcanic froth frozen solid, so full of bubbles that it floats. After some eruptions, rafts of it drift across the ocean for years.',
     hint: 'Lava frothing with Carbon Dioxide.',
   }),
@@ -495,14 +522,17 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Pour Lava into Salt Water.',
   }),
   rock('GEODE', 'Geode', 'Geo', ['#6a5a8a', '#9a6ad0', '#3a3434', '#b88ae8'], 2.6, 60, {
+    pressure: { above: 30, to: 'AMETHYST', chance: 0.02 },
     desc: 'A dull rock ball that cracks open onto a cave of crystals, grown by water seeping into a gas bubble in old lava.',
     hint: 'Amethyst growing inside Basalt.',
   }),
   rock('DESERT_ROSE', 'Desert Rose', 'DRs', ['#d8a878', '#cc9c6c', '#e4b484'], 2.4, 20, {
+    high: { temp: 150, to: 'PLASTER_OF_PARIS', chance: 0.02 },
     desc: 'Petal-shaped gypsum crystals that grow in desert sand, trapping the sand inside them.',
     hint: 'Gypsum growing in Sand.',
   }),
   rock('KIMBERLITE', 'Kimberlite', 'Kmb', ['#3a4a3a', '#445444', '#304030'], 3.0, 60, {
+    high: { temp: 1200, to: 'LAVA', chance: 0.02 },
     desc: 'Blue-green rock that shot up from 150 km down in volcanic pipes, carrying diamonds with it.',
     hint: 'Squeeze Peridot as hard as the deep mantle does.',
   }),
@@ -512,7 +542,7 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Potassium soaking into Granite.',
   }),
   rock('TALC', 'Talc', 'Tlc', ['#f0f0ea', '#e6e6e0', '#f8f8f2'], 2.7, 5, {
-    state: POWDER,
+    state: POWDER, high: { temp: 1000, to: 'PORCELAIN', chance: 0.02 },
     desc: 'The softest mineral: a fingernail scratches it. Ground up, it\'s talcum powder.',
     hint: 'Steam altering Peridot.',
   }),
@@ -522,6 +552,7 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Wash Clay with Acid until only the whitest part is left.',
   }),
   rock('FULGURITE', 'Fulgurite', 'Flg', ['#b8a888', '#aa9a7a', '#c4b494'], 2.0, 20, {
+    pressure: { above: 15, to: 'SAND', chance: 0.02 },
     desc: 'Hollow tubes of glass fused into sand where lightning struck: "petrified lightning".',
     hint: 'Lightning striking Sand.',
   }),
@@ -530,6 +561,7 @@ export const CHEMISTRY_ELEMENTS = [
     hint: 'Bury Bone under heavy Pressure.',
   }),
   rock('PETRIFIED_WOOD', 'Petrified Wood', 'PWd', ['#8a6a4a', '#a07a50', '#6a4a3a', '#c89a6a'], 2.6, 60, {
+    high: { temp: 1700, to: 'MOLTEN_GLASS', chance: 0.02 },
     desc: 'Wood turned to stone: silica soaked into every cell and copied it in quartz, growth rings and all.',
     hint: 'Soak Wood in Waterglass.',
   }),

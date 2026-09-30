@@ -1,5 +1,6 @@
 // Builds and updates everything around the canvas: the discovery meter, the
-// tool bar, the element palette, the recipe book, toasts and the HUD.
+// tool bar, the element palette, the recipe tree's card and count, toasts and
+// the HUD. The tree itself is drawn by src/render/tree-view.js.
 
 import {
   DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor, halfLife,
@@ -92,9 +93,11 @@ export class UI {
     this.game = game;
     this.fresh = new Set();
     this.filter = '';
+    this.cardId = null; // the element whose card is open under the tree
+    this.onReveal = null; // called with an element id after its recipe is revealed
     this.buildMeter();
     this.buildTools();
-    this.bindTabs();
+    this.bindCard();
     this.bindBrush();
     this.refresh();
   }
@@ -246,7 +249,7 @@ export class UI {
       ${facts.length ? `<ul class="facts">${facts.map((f) => `<li>${f}</li>`).join('')}</ul>` : ''}`;
   }
 
-  // ---- recipe book -------------------------------------------------------
+  // ---- recipe tree: the count and the card ----------------------------------
 
   // Undiscovered elements whose ingredients the player already has.
   available() {
@@ -255,53 +258,68 @@ export class UI {
       && rulesFor(d.id).some((r) => RULES[r].inputs.every((i) => progress.has(i))));
   }
 
-  renderRecipes() {
-    const { progress } = this.game;
-    const avail = this.available();
-    const badge = $('recipe-badge');
-    badge.hidden = avail.length === 0;
-    badge.textContent = avail.length;
-
-    const knownRules = (d) => rulesFor(d.id)
-      .filter((r) => progress.freePlay || RULES[r].inputs.every((i) => progress.has(i)))
-      .map((r) => esc(ruleLabel(RULES[r])));
-
-    const tryNext = avail.map((d) => {
-      const revealed = progress.freePlay || progress.revealed.has(d.key);
-      const how = revealed
-        ? `<div class="recipe-text">${knownRules(d).join('<br>')}</div>`
-        : `<button type="button" class="reveal" data-reveal="${d.id}">Show the recipe</button>`;
-      return `<div class="hint-card">${mini(d, false)}<div><p>${esc(d.hint)}</p>${how}</div></div>`;
-    }).join('');
-
-    const found = COLLECTIBLE.filter((d) => !d.start && progress.has(d.id)).map((d) => `
-      <div class="recipe-row">${mini(d)}<div><div class="name">${esc(d.name)}</div>
-      <div class="how">${knownRules(d).join(' · ')}</div></div></div>`).join('');
-
-    const starters = COLLECTIBLE.filter((d) => d.start).map((d) => d.name).join(', ');
-    const locked = COLLECTIBLE.length - progress.count - avail.length;
-
-    $('recipes').innerHTML = `<div class="book">
-      <p class="book-intro">Mix, heat, cool, squeeze and electrify what you have. Each time something new forms in the chamber, it's added to your palette. You started with ${esc(starters)}.</p>
-      ${avail.length ? `<section><h3>Try next</h3><div class="book-list">${tryNext}</div></section>` : ''}
-      ${found ? `<section><h3>Discovered</h3><div class="book-list">${found}</div></section>` : ''}
-      ${locked > 0 ? `<p class="locked-note">${locked} more element${locked === 1 ? '' : 's'} need ingredients you haven't found yet.</p>` : ''}
-      ${progress.count === COLLECTIBLE.length ? '<p class="book-intro">You\'ve discovered every element. The whole table is yours.</p>' : ''}
-    </div>`;
+  renderTreeCount() {
+    const n = this.game.progress.freePlay ? 0 : this.available().length;
+    const count = $('tree-count');
+    count.hidden = n === 0;
+    count.textContent = `${n} to try`;
   }
 
-  bindTabs() {
-    const tabs = [$('tab-elements'), $('tab-recipes')];
-    const panels = [$('panel-elements'), $('panel-recipes')];
-    tabs.forEach((tab, k) => tab.addEventListener('click', () => {
-      tabs.forEach((t, j) => t.setAttribute('aria-selected', String(j === k)));
-      panels.forEach((p, j) => { p.hidden = j !== k; });
-    }));
-    $('recipes').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-reveal]');
-      if (!b) return;
-      this.game.progress.reveal(Number(b.dataset.reveal));
-      this.renderRecipes();
+  // The recipes for d the player can see: those whose ingredients they have.
+  knownRecipes(d) {
+    const { progress } = this.game;
+    return rulesFor(d.id)
+      .filter((r) => progress.freePlay || RULES[r].inputs.every((i) => progress.has(i)))
+      .map((r) => `<li class="recipe-text">${esc(ruleLabel(RULES[r]))}</li>`)
+      .join('');
+  }
+
+  // The card for a node clicked in the tree: how a discovered element is
+  // made, or the hint for an undiscovered one.
+  showCard(id) {
+    const { progress } = this.game;
+    const d = DEFS[id];
+    const known = progress.freePlay || progress.has(id);
+    const close = `<button type="button" class="tree-card-close" data-close aria-label="Close">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.1L8 6.6l4.5-4.5 1.4 1.4L9.4 8l4.5 4.5-1.4 1.4L8 9.4l-4.5 4.5-1.4-1.4L6.6 8 2.1 3.5z"/></svg></button>`;
+    let body;
+    if (known) {
+      const how = d.start
+        ? '<p class="desc">One of the four elements you start with.</p>'
+        : `<div class="tree-card-label">Made by</div><ul class="tree-card-list">${this.knownRecipes(d)}</ul>`;
+      body = `<div class="inspect-head">${mini(d)}
+          <div><div class="inspect-title">${esc(d.name)}</div><div class="inspect-sub">No. ${d.number} · ${stateName(d)}</div></div>${close}</div>
+        ${how}<p class="desc">${esc(d.desc)}</p>`;
+    } else {
+      const how = progress.revealed.has(d.key)
+        ? `<div class="tree-card-label">Recipe</div><ul class="tree-card-list">${this.knownRecipes(d)}</ul>`
+        : `<button type="button" class="reveal" data-reveal="${id}">Show the recipe</button>`;
+      body = `<div class="inspect-head">${mini(d, false)}
+          <div><div class="inspect-title">Undiscovered</div><div class="inspect-sub">You have everything it needs</div></div>${close}</div>
+        <p>${esc(d.hint)}</p>${how}`;
+    }
+    const card = $('tree-card');
+    card.innerHTML = body;
+    card.hidden = false;
+    this.cardId = id;
+  }
+
+  hideCard() {
+    $('tree-card').hidden = true;
+    this.cardId = null;
+  }
+
+  bindCard() {
+    $('tree-card').addEventListener('click', (e) => {
+      const reveal = e.target.closest('[data-reveal]');
+      if (reveal) {
+        const id = Number(reveal.dataset.reveal);
+        this.game.progress.reveal(id);
+        this.showCard(id);
+        if (this.onReveal) this.onReveal(id);
+        return;
+      }
+      if (e.target.closest('[data-close]')) this.hideCard();
     });
   }
 
@@ -309,7 +327,8 @@ export class UI {
     this.renderMeter();
     this.renderPalette();
     this.renderInspect();
-    this.renderRecipes();
+    this.renderTreeCount();
+    if (this.cardId !== null) this.showCard(this.cardId);
   }
 
   // ---- discovery toast ---------------------------------------------------
@@ -348,7 +367,10 @@ export class UI {
       else if ((c & 0x7fff) && t === ID.FIRE) name = `Burning ${DEFS[c & 0x7fff].name}`;
       else if (c && t === ID.CLONE) name = `Clone of ${DEFS[c].name}`;
       if (world.loose[i]) name += ' (torn loose)';
-      const temp = t ? `${sep}${fmtTemp(world.temp[i])}` : '';
+      // With convection on, the air has a temperature of its own.
+      const airT = world.air.heat ? fmtTemp(world.air.t[world.air.at(hover.x, hover.y)]) : '';
+      let temp = t ? `${sep}${fmtTemp(world.temp[i])}` : '';
+      if (airT) temp += t ? `${sep}air ${airT}` : `${sep}${airT}`;
       cell.innerHTML = `<b>${esc(name)}</b>${temp}${sep}pressure ${p >= 0 ? '+' : ''}${p.toFixed(1)}${sep}x ${hover.x} y ${hover.y}`;
     }
   }

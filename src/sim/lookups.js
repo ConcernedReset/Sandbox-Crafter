@@ -39,6 +39,19 @@ for (const d of DEFS) {
   MIRROR_BACKING[d.id] = d.transparent && d.state === SOLID ? 1 : 0;
 }
 
+// Mass for Newtonian gravity: an element's density, except that walls,
+// energy and flying particles weigh nothing, a few cosmic objects weigh a
+// great deal, and a White Hole pushes instead of pulling.
+export const MASS = new Float32Array(NUM);
+for (const d of DEFS) {
+  MASS[d.id] = d.id === 0 || d.id === ID.WALL || d.state === ENERGY || d.projectile ? 0 : d.density;
+}
+MASS[ID.BLACK_HOLE] = 2000;
+MASS[ID.PULSAR] = 1000;
+MASS[ID.STAR] = 200;
+MASS[ID.DARK_MATTER] = 50; // invisible, but it weighs something
+MASS[ID.WHITE_HOLE] = -500;
+
 // What a dispenser remembers and pours out: anything a clone would copy,
 // except solid blocks (creatures aside), wires and other machines.
 export const DISPENSABLE = new Uint8Array(NUM);

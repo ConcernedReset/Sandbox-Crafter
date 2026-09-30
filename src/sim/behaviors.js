@@ -7,6 +7,7 @@ import { MAX_TEMP } from './constants.js';
 import {
   CONDUCTOR, CLONEABLE, ORGANIC, TRANSMUTABLE, SPEW, POWERED, PRESSABLE,
 } from './lookups.js';
+import { DX8, DY8 } from './gravity.js';
 
 const { SOLID, POWDER, LIQUID, GAS } = State;
 const {
@@ -17,6 +18,17 @@ const {
 
 const SPARK_COOLDOWN = 6;
 export const LOOSE_FLAME = 0x8000;
+// Flames use up the air around them, so a fire pulls air in. Where the
+// pressure has fallen below SNUFF_AT (a sealed room that has burned its air
+// away), flames go out and nothing new catches.
+export const FIRE_DRAW = 0.04;
+export const SNUFF_AT = -3;
+const SNUFF_RATE = 0.15; // chance per frame, per unit of pressure below SNUFF_AT
+
+// Fuels that burn in place as embers rather than being used up as a flame.
+function burnsInPlace(f) {
+  return f.state === SOLID || f.sticky || (f.state === POWDER && f.explode === 0);
+}
 const DX4 = [1, -1, 0, 0];
 const DY4 = [0, 0, 1, -1];
 
@@ -53,13 +65,13 @@ export const Behaviors = {
           // A glowing conductor (an LED) already counts its life down as spark cooldown.
           if (!d.conductor) this.life[i]--;
         }
-        return name === 'geiger';
+        return false;
       case 'laser': this.fireBeam(x, y, LASER, 0.2); return true;
       case 'machine': return this.updateMachine(i, x, y, d);
-      case 'magnet':
+      case 'magnet': // still melts, reacts and gets crushed like anything else
         this.magnetCount[this.air.at(x, y)] += d.magnet;
         this.magnetTotal++;
-        return true;
+        return false;
       case 'electromagnet': // only while current is flowing through it
         if (this.life[i] > 0) {
           this.magnetCount[this.air.at(x, y)] += d.magnet;
@@ -128,11 +140,21 @@ export const Behaviors = {
   // Fire and plasma: count down, ignite neighbours, maybe leave smoke.
   // Fire burning a solid, a sticky liquid or a non-explosive powder stays on
   // its fuel as an ember and throws loose flames upward, so logs burn in place.
+  // Fire (not plasma) also uses up air, and goes out where the air runs out.
   burnOut(i, x, y, smoky) {
     // Flames thrown off a burning ember carry its fuel with the LOOSE bit set,
     // only so they're drawn in the fuel's flame colour.
     const c = this.ctype[i];
     const fuel = c & ~LOOSE_FLAME;
+    if (smoky) {
+      const a = this.air.at(x, y);
+      this.air.addPressure(a, -FIRE_DRAW);
+      const p = this.air.p[a];
+      if (p < SNUFF_AT && this.rand() < (SNUFF_AT - p) * SNUFF_RATE) {
+        this.snuff(i, fuel, c & LOOSE_FLAME);
+        return true;
+      }
+    }
     if (c & LOOSE_FLAME) {
       if (--this.life[i] <= 0) { this.clearCell(i); return true; }
       this.igniteAround(x, y);
@@ -148,9 +170,11 @@ export const Behaviors = {
     if (fuel && smoky) {
       const f = DEFS[fuel];
       if (f.burn && f.burn.flare && this.rand() < 0.3) this.emitAt(PHOTON, x, y);
-      if (f.state === SOLID || f.sticky || (f.state === POWDER && f.explode === 0)) {
-        if (y > 0 && this.rand() < 0.25 && this.type[i - this.w] === 0) {
-          const j = i - this.w;
+      if (burnsInPlace(f)) {
+        const { downX, downY } = this.gravity;
+        const ax = x - downX, ay = y - downY;
+        if (this.inBounds(ax, ay) && this.rand() < 0.25 && this.type[ay * this.w + ax] === 0) {
+          const j = ay * this.w + ax;
           this.spawn(j, FIRE);
           this.life[j] = 10 + ((this.rand() * 20) | 0);
           this.temp[j] = this.temp[i];
@@ -161,6 +185,13 @@ export const Behaviors = {
       }
     }
     return false;
+  },
+
+  // Put a flame out. An ember turns back into its fuel, still hot, and
+  // catches again once there's air.
+  snuff(i, fuel, loose) {
+    if (fuel && !loose && burnsInPlace(DEFS[fuel])) this.convert(i, fuel, true, -1);
+    else this.clearCell(i);
   },
 
   igniteAround(x, y) {
@@ -214,9 +245,10 @@ export const Behaviors = {
     return false; // falls through to reactions (electrolysis, lightning)
   },
 
+  // Returns false so a battery can still be crushed, react and fall as debris.
   updateBattery(x, y, d) {
     const { w, h, type } = this;
-    if (d.batteryRate < 1 && this.rand() >= d.batteryRate) return true; // a weak cell
+    if (d.batteryRate < 1 && this.rand() >= d.batteryRate) return false; // a weak cell
     for (let k = 0; k < 4; k++) {
       const nx = x + DX4[k], ny = y + DY4[k];
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
@@ -229,7 +261,7 @@ export const Behaviors = {
         this.powerCell(j);
       }
     }
-    return true;
+    return false;
   },
 
   updatePlant(i, x, y) {
@@ -255,8 +287,10 @@ export const Behaviors = {
   },
 
   updateCloud(i, x, y) {
-    if (y < this.h - 1 && this.rand() < 0.002) {
-      const j = i + this.w;
+    const { downX, downY } = this.gravity;
+    const bx = x + downX, by = y + downY;
+    if (this.inBounds(bx, by) && this.rand() < 0.002) {
+      const j = by * this.w + bx;
       if (this.type[j] === 0) {
         const cold = this.temp[i] < 0;
         this.spawn(j, cold ? SNOW : WATER);
@@ -273,11 +307,14 @@ export const Behaviors = {
       if (--this.life[i] <= 0) this.clearCell(i);
       return true;
     }
+    // Lightning strikes along the gravity arrow, forking across it.
+    const { downX, downY } = this.gravity;
+    const px = downY, py = -downX;
     let cur = i, cx = x, cy = y;
     for (let s = 0; s < 4; s++) {
-      const nx = cx + ((this.rand() * 3) | 0) - 1;
-      const ny = cy + 1;
-      if (nx < 0 || nx >= w || ny >= h) { this.strike(cur, cx, cy); return true; }
+      const fork = ((this.rand() * 3) | 0) - 1;
+      const nx = cx + fork * px + downX, ny = cy + fork * py + downY;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) { this.strike(cur, cx, cy); return true; }
       const j = ny * w + nx;
       const u = type[j];
       if (u === 0 || (DEFS[u].displaceable && DEFS[u].state === GAS)) {
@@ -303,9 +340,13 @@ export const Behaviors = {
     this.ctype[i] = 1;
     this.life[i] = 5;
     this.air.addPressure(this.air.at(x, y), 6);
-    for (let dy = -1; dy <= 3; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        const nx = x + dx, ny = y + dy;
+    // The strike reaches a cell back and three ahead along the arrow, two
+    // either side of it.
+    const { downX, downY } = this.gravity;
+    const px = downY, py = -downX;
+    for (let a = -1; a <= 3; a++) {
+      for (let b = -2; b <= 2; b++) {
+        const nx = x + b * px + a * downX, ny = y + b * py + a * downY;
         if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
         const j = ny * w + nx;
         const u = type[j];
@@ -382,12 +423,19 @@ export const Behaviors = {
     const g = d.grow;
     if (this.rand() < g.chance) {
       const j = this.randomNeighbor(x, y);
-      if (j >= 0 && g.into[this.type[j]] && (!g.surface || (j >= this.w && this.type[j - this.w] === 0))) {
+      if (j >= 0 && g.into[this.type[j]] && (!g.surface || this.openAbove(j))) {
         this.convert(j, t, false, -1);
         this.shade[j] = (this.rand() * 256) | 0;
       }
     }
     return false;
+  },
+
+  // Is the cell above j (against the gravity arrow) in the world and empty?
+  openAbove(j) {
+    const { downX, downY } = this.gravity;
+    const x = (j % this.w) - downX, y = ((j / this.w) | 0) - downY;
+    return this.inBounds(x, y) && this.type[y * this.w + x] === 0;
   },
 
   updateVirus(i, x, y) {
@@ -401,9 +449,11 @@ export const Behaviors = {
   // leaving a wooden trunk, then bursts into a canopy of leaves.
   updateSeed(i, x, y) {
     const { w, type } = this;
+    const { downX, downY } = this.gravity;
     if (this.ctype[i] === 0) {
-      if (y + 1 < this.h) {
-        const b = type[i + w];
+      const bx = x + downX, by = y + downY;
+      if (this.inBounds(bx, by)) {
+        const b = type[by * w + bx];
         if (b === DIRT || b === MUD || b === GRASS) {
           this.ctype[i] = 1;
           this.life[i] = 12 + ((this.rand() * 16) | 0);
@@ -412,19 +462,22 @@ export const Behaviors = {
       return false;
     }
     if (this.rand() > 0.12) return true;
-    if (this.life[i] > 0 && y > 0 && type[i - w] === 0) {
-      const j = i - w;
+    const ax = x - downX, ay = y - downY;
+    if (this.life[i] > 0 && this.inBounds(ax, ay) && type[ay * w + ax] === 0) {
+      const j = ay * w + ax;
       this.spawn(j, SEED);
       this.ctype[j] = 1;
       this.life[j] = this.life[i] - 1;
       this.convert(i, WOOD, false, -1);
     } else {
+      // The canopy: an ellipse, wider across the arrow than along it.
+      const px = downY, py = -downX;
       const r = 3 + ((this.rand() * 3) | 0);
-      for (let dy = -r; dy <= 1; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          const nx = x + dx, ny = y + dy;
+      for (let a = -r; a <= 1; a++) {
+        for (let b = -r; b <= r; b++) {
+          const nx = x + b * px + a * downX, ny = y + b * py + a * downY;
           if (nx < 0 || ny < 0 || nx >= w || ny >= this.h) continue;
-          if ((dx * dx) / (r * r) + (dy * dy) / (r * r * 0.6) > 1) continue;
+          if ((b * b) / (r * r) + (a * a) / (r * r * 0.6) > 1) continue;
           const j = ny * w + nx;
           if (type[j] === 0 && this.rand() < 0.8) this.spawn(j, PLANT);
         }
@@ -438,19 +491,26 @@ export const Behaviors = {
   updateFirework(i, x, y) {
     if (this.ctype[i] !== 1) return false;
     const { w, type } = this;
+    const { downX, downY } = this.gravity;
     if (--this.life[i] <= 0) { this.burst(i, x, y); return true; }
-    if (y + 1 < this.h && type[i + w] === 0 && this.rand() < 0.6) {
-      this.spawn(i + w, FIRE);
-      this.life[i + w] = 6 + ((this.rand() * 8) | 0);
+    const bx = x + downX, by = y + downY;
+    if (this.inBounds(bx, by) && type[by * w + bx] === 0 && this.rand() < 0.6) {
+      const t = by * w + bx;
+      this.spawn(t, FIRE);
+      this.life[t] = 6 + ((this.rand() * 8) | 0);
     }
-    let cur = i, cy = y;
+    // It climbs against the gravity arrow.
+    let cur = i, cx = x, cy = y;
     for (let s = 0; s < 2; s++) {
-      if (cy <= 0) { this.burst(cur, x, cy); return true; }
-      const u = type[cur - w];
-      if (u !== 0 && !DEFS[u].displaceable) { this.burst(cur, x, cy); return true; }
-      this.swap(cur, cur - w);
-      cur -= w;
-      cy--;
+      const nx = cx - downX, ny = cy - downY;
+      if (!this.inBounds(nx, ny)) { this.burst(cur, cx, cy); return true; }
+      const next = ny * w + nx;
+      const u = type[next];
+      if (u !== 0 && !DEFS[u].displaceable) { this.burst(cur, cx, cy); return true; }
+      this.swap(cur, next);
+      cur = next;
+      cx = nx;
+      cy = ny;
     }
     return true;
   },
@@ -478,10 +538,11 @@ export const Behaviors = {
 
   updateGlitter(i, x, y, d) {
     if (--this.life[i] <= 0) { this.clearCell(i); return true; }
-    const vx = this.vx[i] * 0.96, vy = this.vy[i] * 0.96 + 0.04;
+    const g = this.gravity, a = this.air.at(x, y);
+    const vx = this.vx[i] * 0.96 + 0.04 * g.gx[a], vy = this.vy[i] * 0.96 + 0.04 * g.gy[a];
     this.vx[i] = vx;
     this.vy[i] = vy;
-    this.travel(i, x, y, vx, vy, d);
+    this.travelAlong(i, x, y, vx, vy, d, g.ux[a], g.uy[a]);
     return true;
   },
 
@@ -506,10 +567,14 @@ export const Behaviors = {
   updateSuperfluid(i, x, y, d) {
     if (this.lifeRunsOut(i, d)) return true;
     const { w, type } = this;
-    const l = x > 0 ? type[i - 1] : WALL;
-    const r = x < w - 1 ? type[i + 1] : WALL;
+    const { downX, downY } = this.gravity;
+    const px = downY, py = -downX;
+    const lx = x - px, ly = y - py, rx = x + px, ry = y + py;
+    const l = this.inBounds(lx, ly) ? type[ly * w + lx] : WALL;
+    const r = this.inBounds(rx, ry) ? type[ry * w + rx] : WALL;
     if (DEFS[l].state !== SOLID && DEFS[r].state !== SOLID) return false;
-    if (y > 0 && type[i - w] === 0 && this.rand() < 0.35) this.swap(i, i - w);
+    const ax = x - downX, ay = y - downY;
+    if (this.inBounds(ax, ay) && type[ay * w + ax] === 0 && this.rand() < 0.35) this.swap(i, ay * w + ax);
     return true;
   },
 
@@ -628,11 +693,13 @@ export const Behaviors = {
       if (meal) { this.eat(i, j, x, y, t, d, meal); return false; }
     }
 
-    // Move.
+    // Move. Down is the way the gravity arrow points.
+    const { downX, downY } = this.gravity;
     if (stranded || c.moves === 'walk' || c.moves === 'burrow') {
       // Fall if there is nothing underneath.
-      if (y + 1 < h) {
-        const b = i + w;
+      const bx = x + downX, by = y + downY;
+      if (bx >= 0 && by >= 0 && bx < w && by < h) {
+        const b = by * w + bx;
         const u = type[b];
         if (u === 0 || (DEFS[u].displaceable && !c.home[u] && DEFS[u].state !== LIQUID)) {
           this.swap(i, b);
@@ -644,11 +711,14 @@ export const Behaviors = {
     let j = -1;
     if (c.moves === 'walk') {
       if (this.ctype[i] === 0) this.ctype[i] = this.rand() < 0.5 ? 1 : 2;
-      const dx = this.ctype[i] === 1 ? 1 : -1;
-      const nx = x + dx;
-      if (nx < 0 || nx >= w) { this.ctype[i] = 3 - this.ctype[i]; return false; }
-      if (type[i + dx] === 0) j = i + dx;
-      else if (y > 0 && type[i - w] === 0 && type[i - w + dx] === 0) j = i - w + dx; // climb a step
+      const dir = this.ctype[i] === 1 ? 1 : -1;
+      const sx = dir * downY, sy = -dir * downX; // a step across the arrow
+      const nx = x + sx, ny = y + sy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) { this.ctype[i] = 3 - this.ctype[i]; return false; }
+      const ax = x - downX, ay = y - downY;
+      if (type[ny * w + nx] === 0) j = ny * w + nx;
+      else if (ax >= 0 && ay >= 0 && ax < w && ay < h && type[ay * w + ax] === 0
+        && type[(ay + sy) * w + ax + sx] === 0) j = (ay + sy) * w + ax + sx; // climb a step
       else { this.ctype[i] = 3 - this.ctype[i]; return false; }
     } else {
       const a = (this.rand() * 8) | 0;
@@ -709,8 +779,10 @@ export const Behaviors = {
       this.ctype[i] = 1;
       this.life[i] = s.height[0] + ((this.rand() * (s.height[1] - s.height[0] + 1)) | 0);
     }
-    if (this.life[i] > 0 && y > 0 && this.rand() < s.rate) {
-      const j = i - this.w;
+    const { downX, downY } = this.gravity;
+    const ax = x - downX, ay = y - downY;
+    if (this.life[i] > 0 && this.inBounds(ax, ay) && this.rand() < s.rate) {
+      const j = ay * this.w + ax;
       if (s.into[this.type[j]]) {
         this.spawn(j, t);
         this.ctype[j] = 1;
@@ -721,9 +793,13 @@ export const Behaviors = {
     return false;
   },
 
-  // A meteor falls like a stone and explodes where it lands.
+  // A meteor falls like a stone and explodes where it lands. It falls with
+  // its block's full gravity, Newtonian pull included.
   updateMeteor(i, x, y, d) {
-    if (y + 1 < this.h && this.canEnter(d, i + this.w, 1)) return false;
+    const k = this.gravity.dirA[this.air.at(x, y)];
+    if (k < 0) return false; // nothing to fall towards: it just drifts
+    const nx = x + DX8[k], ny = y + DY8[k];
+    if (this.inBounds(nx, ny) && this.canEnter(d, ny * this.w + nx, 1)) return false;
     const le = d.lifeEnd;
     this.blast(x, y, le.explode);
     this.convert(i, le.to, false, le.rule);
