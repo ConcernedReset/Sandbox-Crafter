@@ -15,14 +15,18 @@
 // Mixed into World.prototype; `initParticles` sets up the storage.
 
 import { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL } from './elements.js';
-import { MAX_TEMP, KICK_CHANCE, KICK_EMIT, KICK_DECAY } from './constants.js';
-import { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING } from './lookups.js';
+import { MAX_TEMP, MIN_TEMP, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } from './constants.js';
+import { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED } from './lookups.js';
 import { LENS } from './gravity.js';
 
 const PASS = 0, DEAD = 1, BOUNCE = 2;
 const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
-const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO, HYDROGEN } = ID;
+const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO, GAMMA, PION } = ID;
+// A proton hotter than this sets fuel and explosives alight as it passes.
+const PROTON_IGNITES = 500;
+// Chance per cell that an antineutron meets a nucleus and annihilates.
+const ANNIHILATE = 0.2;
 const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
 // Photon tints that a clear material recolours: plain light, and light
 // already coloured by another clear material.
@@ -40,6 +44,7 @@ export function initParticles(world) {
   world.ptype = new Uint16Array(CAPACITY);
   world.plife = new Int16Array(CAPACITY);
   world.ptint = new Uint16Array(CAPACITY);
+  world.ptemp = new Float32Array(CAPACITY); // what a proton carries (see hitCell)
   world.pn = 0;
   world.pmap = new Int32Array(world.w * world.h); // index + 1 of a particle in each cell
   const airCells = world.air.W * world.air.H;
@@ -68,11 +73,18 @@ export const Particles = {
     this.ptype[k] = t;
     this.plife[k] = d.lifeMin + ((this.rand() * (d.lifeMax - d.lifeMin + 1)) | 0);
     this.ptint[k] = tint;
+    this.ptemp[k] = AMBIENT;
     return k;
   },
 
+  // Launch a particle from cell (x, y). It starts at that cell's temperature.
   emitAt(t, x, y) {
-    return this.spawnProjectile(t, x + 0.5, y + 0.5);
+    const k = this.spawnProjectile(t, x + 0.5, y + 0.5);
+    if (k >= 0 && x >= 0 && y >= 0 && x < this.w && y < this.h) {
+      const i = y * this.w + x;
+      if (this.type[i] !== 0) this.ptemp[k] = this.temp[i];
+    }
+    return k;
   },
 
   killProjectile(k) {
@@ -85,6 +97,7 @@ export const Particles = {
     this.ptype[k] = this.ptype[last];
     this.plife[k] = this.plife[last];
     this.ptint[k] = this.ptint[last];
+    this.ptemp[k] = this.ptemp[last];
   },
 
   // Spread each magnet's pull over the nearby air cells.
@@ -156,7 +169,14 @@ export const Particles = {
     }
 
     let x = this.px[k], y = this.py[k];
-    const vx = this.pvx[k], vy = this.pvy[k];
+    let vx = this.pvx[k], vy = this.pvy[k];
+    // Light (and ultraviolet) slows down inside clear liquids and solids,
+    // and is back to full speed once out.
+    if (d.pmode === PMODE.photon || d.pmode === PMODE.uv) {
+      const f = LIGHT_SPEED[type[(y | 0) * w + (x | 0)]];
+      vx *= f;
+      vy *= f;
+    }
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(vx), Math.abs(vy))));
     const sx = vx / steps, sy = vy / steps;
     let cx = x | 0, cy = y | 0;
@@ -194,8 +214,16 @@ export const Particles = {
     const r = HIT[t * NUM + u];
     if (r !== null && (r.recover === 0 || this.life[j] === 0)) {
       let chance = r.chance;
-      // Slow neutrons split atoms far more readily than fast ones.
-      if (r.fission && this.pvx[k] * this.pvx[k] + this.pvy[k] * this.pvy[k] < 2) chance *= 3;
+      if (r.fission) {
+        // Slow neutrons split atoms far more readily than fast ones, and
+        // pressure makes some (plutonium) split faster still.
+        if (this.pvx[k] * this.pvx[k] + this.pvy[k] * this.pvy[k] < 2) chance *= 3;
+        const boost = DEFS[u].fission.boost;
+        if (boost) {
+          const p = this.air.p[this.air.at(ix, iy)];
+          if (p > 0) chance *= 1 + p / boost;
+        }
+      }
       if (this.rand() < chance) return this.applyHit(k, r, j, ix, iy, lx, ly);
     }
     // Hard radiation can be swallowed by a stable radioactive atom it passes,
@@ -234,11 +262,17 @@ export const Particles = {
         if (e.transparent || GASLIKE[u]) return PASS;
         return this.impact(j, lx, ly, d);
       case PMODE.proton: {
-        if (GASLIKE[u]) return PASS;
-        // It stops and sometimes picks up an electron as a wisp of hydrogen.
-        const li = ly * this.w + lx;
-        if (this.type[li] === 0 && this.rand() < 0.25) this.spawn(li, HYDROGEN);
-        return this.impact(j, lx, ly, d);
+        // As in The Powder Toy, a proton flies straight through matter (Wall
+        // aside), pulling whatever it passes a quarter of the way to its own
+        // temperature, and a hot one sets fuel and explosives alight.
+        if (e.indestructible) return this.impact(j, lx, ly, d);
+        const T = this.ptemp[k];
+        const nt = this.temp[j] + (T - this.temp[j]) * 0.25;
+        this.temp[j] = nt > MAX_TEMP ? MAX_TEMP : nt < MIN_TEMP ? MIN_TEMP : nt;
+        if (T > PROTON_IGNITES && (e.flammable > 0 || e.explode > 0) && this.ignite(j, ix, iy)) {
+          this.air.addPressure(this.air.at(ix, iy), 1);
+        }
+        return PASS;
       }
       case PMODE.neutron: {
         if (e.moderator) {
@@ -303,6 +337,15 @@ export const Particles = {
           return this.rand() < 0.3 ? DEAD : PASS;
         }
         return PASS;
+      case PMODE.antineutron:
+        // Like a neutron it slips through matter, until it meets a nucleus:
+        // then both are gone in a flash of gamma rays.
+        if (GASLIKE[u] || this.rand() >= ANNIHILATE) return PASS;
+        if (!e.indestructible) this.clearCell(j);
+        this.emitAt(GAMMA, ix, iy);
+        this.emitAt(GAMMA, ix, iy);
+        if (this.rand() < 0.5) this.emitAt(PION, ix, iy);
+        return this.impact(j, lx, ly, d);
       default:
         return PASS; // neutrinos, muons and other ghosts
     }
@@ -375,10 +418,14 @@ export const Particles = {
       this.convert(j, f.captureTo, true, f.captureRule);
       return;
     }
+    // Heat first, so what flies out (protons especially) carries it.
+    this.temp[j] = f.hot ? MAX_TEMP : Math.min(MAX_TEMP, this.temp[j] + f.heat);
     for (let n = 0; n < f.neutrons; n++) this.emitAt(NEUTRON, x, y);
     for (let n = 0; n < f.photons; n++) this.emitAt(PHOTON, x, y);
-    this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + f.heat);
+    for (let n = 0; n < f.protons; n++) this.emitAt(PROTON, x, y);
+    if (f.pressure) this.air.addPressure(this.air.at(x, y), f.pressure);
     if (f.blast) this.blast(x, y, f.blast);
+    if (f.hot) this.igniteAround(x, y);
     let roll = this.rand();
     for (const p of f.products) {
       if (roll < p.w) { this.convert(j, p.id, true, p.rule); break; }
@@ -485,9 +532,10 @@ export const Particles = {
       }
       return;
     }
-    const x = this.px[k], y = this.py[k], vx = this.pvx[k], vy = this.pvy[k];
+    const x = this.px[k], y = this.py[k], vx = this.pvx[k], vy = this.pvy[k], T = this.ptemp[k];
     this.killProjectile(k);
-    this.spawnProjectile(PROTON, x, y, vx * 0.75, vy * 0.75);
+    const p = this.spawnProjectile(PROTON, x, y, vx * 0.75, vy * 0.75);
+    if (p >= 0) this.ptemp[p] = T;
     this.spawnProjectile(ELECTRON, x, y);
     this.spawnProjectile(NEUTRINO, x, y);
     this.record(PROTON, SPECIAL['neutron-proton']);

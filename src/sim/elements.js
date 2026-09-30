@@ -76,7 +76,11 @@ export const CATEGORIES = [
 //   emits       [{ p, chance }] particles thrown off each frame
 //   selfHeat    °C gained per frame (radioactive warmth)
 //   decay       { chance, to, spawn } random decay, like a half-life
-//   fission     what a neutron does when it splits this element
+//   fission     what a neutron does when it splits this element: neutrons,
+//               photons and protons thrown out, heat (or hot: the maximum
+//               temperature), pressure added to its air block, blast (a
+//               push), boost (the pressure that doubles the chance of a
+//               split), products, capture
 //   transparent / opaque / reflect   how light treats it
 //   light       the colour of light it gives off or tints reflected light
 //               (defaults to its own colour, brightened)
@@ -490,13 +494,13 @@ const id = (key) => {
 const HIT_IMPACT = {
   photon: [120, 0.3], electron: [80, 0.4], proton: [350, 2], neutron: [300, 1.5],
   positron: [900, 5], neutrino: [0, 0], alpha: [450, 2.5], ion: [1800, 8], gamma: [300, 1.5],
-  xray: [120, 0.4], uv: [180, 0.4], microwave: [45, 0], ghost: [0, 0],
+  xray: [120, 0.4], uv: [180, 0.4], microwave: [45, 0], ghost: [0, 0], antineutron: [900, 5],
 };
 
 // How each kind of flying particle behaves when it meets matter.
 export const PMODE = {
   photon: 1, electron: 2, proton: 3, neutron: 4, positron: 5, neutrino: 6,
-  alpha: 7, ion: 8, gamma: 9, xray: 10, uv: 11, microwave: 12, ghost: 13,
+  alpha: 7, ion: 8, gamma: 9, xray: 10, uv: 11, microwave: 12, ghost: 13, antineutron: 14,
 };
 
 // RULES: every way an element can be produced, for discovery tracking and
@@ -782,8 +786,12 @@ ELEMENT_LIST.forEach((e, i) => {
   DEFS[i].fission = {
     neutrons: f.neutrons,
     heat: f.heat ?? 0,
+    hot: !!f.hot,
+    pressure: f.pressure ?? 0,
+    boost: f.boost ?? 0,
     blast: f.blast ?? 0,
     photons: f.photons ?? 0,
+    protons: f.protons ?? 0,
     products: (f.products ?? []).map(([k, w]) => ({ id: id(k), w, rule: addRule('contact', inputs, id(k)) })),
     captureTo: f.capture ? id(f.capture[0]) : -1,
     captureChance: f.capture ? f.capture[1] : 0,

@@ -11,8 +11,11 @@
 // the block) stop flow entirely so sealed boxes hold pressure.
 //
 // With convection on (`heat`), each block also has an air temperature.
-// Particles trade heat with it (world.js, warmAir); air that warms swells,
-// raising its pressure, and air that cools shrinks; air warmer than the air
+// Particles trade heat with it (world.js, warmAir). Warm air presses
+// harder: a block's pressure includes EXPAND for every degree its air is
+// above room temperature, so heating sealed air raises the pressure while
+// it stays hot, and in the open hot air pushes out and is drawn back as it
+// cools, with nothing left over once it has; air warmer than the air
 // around it is pushed against gravity and cooler air sinks, so a plume rises
 // over something hot, spreads, comes down at the sides and is drawn back in
 // at the base; the flow carries the heat along; and the air gives its heat
@@ -23,8 +26,8 @@ import { AMBIENT } from './constants.js';
 export const CELL = 4;
 
 // Convection. A degree lost by a particle warms its block's air by
-// AIR_SHARE degrees (air holds little heat), and each degree the air gains
-// raises its pressure by EXPAND. Air is pushed against gravity by BUOYANCY
+// AIR_SHARE degrees (air holds little heat), and each degree of air above
+// room temperature adds EXPAND to the pressure. Air is pushed against gravity by BUOYANCY
 // per degree it is warmer than the air within MEAN_RADIUS blocks, per g, per
 // frame (cooler air is pushed with it), and gives AIR_TEMP_LOSS of its
 // excess heat back to the room a frame. HEAT_SMOOTH blurs it a little, like the
@@ -58,6 +61,7 @@ export class Air {
     this.solid = new Uint8Array(n); // airtight particles counted in each block this frame
     this.scratch = new Float32Array(n);
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
+    this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature already counted in p
     this.heat = false;
   }
 
@@ -88,6 +92,15 @@ export class Air {
     this.vx.fill(0);
     this.vy.fill(0);
     this.t.fill(AMBIENT);
+    this.tPressed.fill(AMBIENT);
+  }
+
+  // Convection off: the air forgets its heat, and the pressure it made.
+  coolAll() {
+    const { p, t, tPressed, blocked } = this;
+    for (let i = 0; i < p.length; i++) if (!blocked[i]) p[i] += (AMBIENT - tPressed[i]) * EXPAND;
+    t.fill(AMBIENT);
+    tPressed.fill(AMBIENT);
   }
 
   // `gravity` (gravity.js) is only read with convection on.
@@ -217,8 +230,7 @@ export class Air {
       }
     }
 
-    // 3. A little blurring, and 4. the room soaks up the heat; air that
-    // cools shrinks.
+    // 3. A little blurring, and 4. the room soaks up the heat.
     scratch.set(t);
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
@@ -230,10 +242,16 @@ export class Air {
         if (!blocked[i + W]) { sum += scratch[i + W]; n++; }
         let v = scratch[i];
         if (n) v += (sum / n - v) * HEAT_SMOOTH;
-        const d = (AMBIENT - v) * AIR_TEMP_LOSS;
-        t[i] = v + d;
-        p[i] += d * EXPAND;
+        t[i] = v + (AMBIENT - v) * AIR_TEMP_LOSS;
       }
+    }
+
+    // 5. The pressure follows the temperature, however it changed this
+    // frame (particles, tools, the flow, cooling).
+    const { tPressed } = this;
+    for (let i = 0; i < t.length; i++) {
+      if (!blocked[i]) p[i] += (t[i] - tPressed[i]) * EXPAND;
+      tPressed[i] = t[i];
     }
   }
 }

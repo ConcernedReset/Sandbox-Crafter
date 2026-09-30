@@ -41,7 +41,8 @@ test('particles hit hard: they heat what stops them and kick up air pressure', (
     for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.STONE) heat += w.temp[i] - 22;
     return { heat, peak };
   };
-  const photon = hit(ID.PHOTON), proton = hit(ID.PROTON);
+  // Protons fly through matter (they only carry heat); alpha particles stop dead.
+  const photon = hit(ID.PHOTON), alpha = hit(ID.ALPHA);
   assert.ok(photon.heat > 16 * 100, `16 photons put ${photon.heat.toFixed(0)} °C of heat into the stone`);
-  assert.ok(proton.heat > 16 * 300 && proton.peak > 2, `protons: ${JSON.stringify(proton)}`);
+  assert.ok(alpha.heat > 16 * 300 && alpha.peak > 2, `alpha particles: ${JSON.stringify(alpha)}`);
 });

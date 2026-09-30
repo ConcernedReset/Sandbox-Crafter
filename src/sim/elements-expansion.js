@@ -454,8 +454,8 @@ export const EXPANSION_ELEMENTS = [
   },
   {
     key: 'PROTON', name: 'Proton', sym: 'p+', cat: 'particle', state: ENERGY, projectile: 'proton',
-    colors: ['#ff6a6a'], speed: 1.5, charge: 1, life: [60, 100],
-    desc: 'Positive charge. Knocks neutrons out of metal, and grabs an electron to become hydrogen.',
+    colors: ['#ff6a6a'], speed: 1.5, charge: 1, life: [60, 100], expire: ['HYDROGEN'],
+    desc: 'Positive charge. Flies straight through matter carrying its own temperature, so a hot one heats everything it passes through and sets fuel alight. Knocks neutrons out of metal, and ends up grabbing an electron to become hydrogen.',
     hint: 'Light can strip the electron off Hydrogen.',
   },
   {
@@ -502,12 +502,15 @@ export const EXPANSION_ELEMENTS = [
     key: 'PLUTONIUM', name: 'Plutonium', sym: 'Pu', cat: 'nuclear', state: POWDER,
     colors: ['#8a6f6a', '#7d625d', '#967a75'], density: 19.8, conduct: 0.3, selfHeat: 0.05,
     emits: [{ p: 'NEUTRON', chance: 0.0015 }], glowAmount: 0.25,
+    // As in The Powder Toy: every split adds a big kick of pressure, and
+    // pressure makes splits more likely, so a chain feeds on itself; what's
+    // left is as hot as anything gets.
     fission: {
-      neutrons: 3, heat: 1500, blast: 6, photons: 2,
+      neutrons: 3, photons: 2, protons: 1, hot: true, pressure: 10, boost: 10,
       products: [['FALLOUT', 0.4], ['PLASMA', 0.3]], capture: ['AMERICIUM', 0.04],
     },
     high: { temp: 2500, to: 'CORIUM', chance: 0.05 },
-    desc: 'Extremely fissile. Each split releases three neutrons, so once a neutron gets into a big enough pile it runs away into a nuclear explosion.',
+    desc: 'Extremely fissile. Each split throws out three neutrons and a searing proton and a punch of pressure, and pressure makes it split all the faster, so once a neutron gets into a big enough pile it runs away into a nuclear explosion.',
     hint: 'Uranium that catches a neutron without splitting.',
   },
   {

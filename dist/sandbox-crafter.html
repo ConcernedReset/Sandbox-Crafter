@@ -828,7 +828,7 @@ kbd {
     <h1 class="wordmark">Sandbox <span>Crafter</span></h1>
 
     <div class="meter" id="meter" title="Elements discovered">
-      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">567</span> elements</div>
+      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">568</span> elements</div>
       <div class="meter-cells" id="meter-cells" aria-hidden="true"></div>
     </div>
 
@@ -1036,8 +1036,11 @@ __modules["src/sim/air.js"] = (() => {
 // the block) stop flow entirely so sealed boxes hold pressure.
 //
 // With convection on (`heat`), each block also has an air temperature.
-// Particles trade heat with it (world.js, warmAir); air that warms swells,
-// raising its pressure, and air that cools shrinks; air warmer than the air
+// Particles trade heat with it (world.js, warmAir). Warm air presses
+// harder: a block's pressure includes EXPAND for every degree its air is
+// above room temperature, so heating sealed air raises the pressure while
+// it stays hot, and in the open hot air pushes out and is drawn back as it
+// cools, with nothing left over once it has; air warmer than the air
 // around it is pushed against gravity and cooler air sinks, so a plume rises
 // over something hot, spreads, comes down at the sides and is drawn back in
 // at the base; the flow carries the heat along; and the air gives its heat
@@ -1048,8 +1051,8 @@ const { AMBIENT } = __modules["src/sim/constants.js"];
 const CELL = 4;
 
 // Convection. A degree lost by a particle warms its block's air by
-// AIR_SHARE degrees (air holds little heat), and each degree the air gains
-// raises its pressure by EXPAND. Air is pushed against gravity by BUOYANCY
+// AIR_SHARE degrees (air holds little heat), and each degree of air above
+// room temperature adds EXPAND to the pressure. Air is pushed against gravity by BUOYANCY
 // per degree it is warmer than the air within MEAN_RADIUS blocks, per g, per
 // frame (cooler air is pushed with it), and gives AIR_TEMP_LOSS of its
 // excess heat back to the room a frame. HEAT_SMOOTH blurs it a little, like the
@@ -1083,6 +1086,7 @@ class Air {
     this.solid = new Uint8Array(n); // airtight particles counted in each block this frame
     this.scratch = new Float32Array(n);
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
+    this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature already counted in p
     this.heat = false;
   }
 
@@ -1113,6 +1117,15 @@ class Air {
     this.vx.fill(0);
     this.vy.fill(0);
     this.t.fill(AMBIENT);
+    this.tPressed.fill(AMBIENT);
+  }
+
+  // Convection off: the air forgets its heat, and the pressure it made.
+  coolAll() {
+    const { p, t, tPressed, blocked } = this;
+    for (let i = 0; i < p.length; i++) if (!blocked[i]) p[i] += (AMBIENT - tPressed[i]) * EXPAND;
+    t.fill(AMBIENT);
+    tPressed.fill(AMBIENT);
   }
 
   // `gravity` (gravity.js) is only read with convection on.
@@ -1242,8 +1255,7 @@ class Air {
       }
     }
 
-    // 3. A little blurring, and 4. the room soaks up the heat; air that
-    // cools shrinks.
+    // 3. A little blurring, and 4. the room soaks up the heat.
     scratch.set(t);
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
@@ -1255,10 +1267,16 @@ class Air {
         if (!blocked[i + W]) { sum += scratch[i + W]; n++; }
         let v = scratch[i];
         if (n) v += (sum / n - v) * HEAT_SMOOTH;
-        const d = (AMBIENT - v) * AIR_TEMP_LOSS;
-        t[i] = v + d;
-        p[i] += d * EXPAND;
+        t[i] = v + (AMBIENT - v) * AIR_TEMP_LOSS;
       }
+    }
+
+    // 5. The pressure follows the temperature, however it changed this
+    // frame (particles, tools, the flow, cooling).
+    const { tPressed } = this;
+    for (let i = 0; i < t.length; i++) {
+      if (!blocked[i]) p[i] += (t[i] - tPressed[i]) * EXPAND;
+      tPressed[i] = t[i];
     }
   }
 }
@@ -1723,8 +1741,8 @@ const EXPANSION_ELEMENTS = [
   },
   {
     key: 'PROTON', name: 'Proton', sym: 'p+', cat: 'particle', state: ENERGY, projectile: 'proton',
-    colors: ['#ff6a6a'], speed: 1.5, charge: 1, life: [60, 100],
-    desc: 'Positive charge. Knocks neutrons out of metal, and grabs an electron to become hydrogen.',
+    colors: ['#ff6a6a'], speed: 1.5, charge: 1, life: [60, 100], expire: ['HYDROGEN'],
+    desc: 'Positive charge. Flies straight through matter carrying its own temperature, so a hot one heats everything it passes through and sets fuel alight. Knocks neutrons out of metal, and ends up grabbing an electron to become hydrogen.',
     hint: 'Light can strip the electron off Hydrogen.',
   },
   {
@@ -1771,12 +1789,15 @@ const EXPANSION_ELEMENTS = [
     key: 'PLUTONIUM', name: 'Plutonium', sym: 'Pu', cat: 'nuclear', state: POWDER,
     colors: ['#8a6f6a', '#7d625d', '#967a75'], density: 19.8, conduct: 0.3, selfHeat: 0.05,
     emits: [{ p: 'NEUTRON', chance: 0.0015 }], glowAmount: 0.25,
+    // As in The Powder Toy: every split adds a big kick of pressure, and
+    // pressure makes splits more likely, so a chain feeds on itself; what's
+    // left is as hot as anything gets.
     fission: {
-      neutrons: 3, heat: 1500, blast: 6, photons: 2,
+      neutrons: 3, photons: 2, protons: 1, hot: true, pressure: 10, boost: 10,
       products: [['FALLOUT', 0.4], ['PLASMA', 0.3]], capture: ['AMERICIUM', 0.04],
     },
     high: { temp: 2500, to: 'CORIUM', chance: 0.05 },
-    desc: 'Extremely fissile. Each split releases three neutrons, so once a neutron gets into a big enough pile it runs away into a nuclear explosion.',
+    desc: 'Extremely fissile. Each split throws out three neutrons and a searing proton and a punch of pressure, and pressure makes it split all the faster, so once a neutron gets into a big enough pile it runs away into a nuclear explosion.',
     hint: 'Uranium that catches a neutron without splitting.',
   },
   {
@@ -4991,7 +5012,8 @@ const WORLD_HITS = [
 ];
 
 const WORLD_PAIRS = [
-  { a: 'PROTON', b: 'PROTON', chance: 0.3, emit: ['PION', 'PION'] },
+  { a: 'PROTON', b: 'PROTON', chance: 0.3, emit: ['NEUTRON', 'ANTINEUTRON', 'PION'] },
+  { a: 'NEUTRON', b: 'ANTINEUTRON', chance: 0.9, emit: ['GAMMA', 'GAMMA'] },
   { a: 'MUON', b: 'MUON', chance: 0.5, emit: ['HIGGS'] },
 ];
 
@@ -5153,9 +5175,16 @@ __modules["src/sim/elements-more.js"] = (() => {
 
 const { State } = __modules["src/sim/constants.js"];
 
-const { SOLID, POWDER, LIQUID } = State;
+const { SOLID, POWDER, LIQUID, ENERGY } = State;
 
 const MORE_ELEMENTS = [
+  // ---- particles ----------------------------------------------------------------
+  {
+    key: 'ANTINEUTRON', name: 'Antineutron', sym: 'n̄', cat: 'particle', state: ENERGY, projectile: 'antineutron',
+    colors: ['#ffb0d8'], speed: 2, life: [80, 120],
+    desc: "The neutron's antimatter twin. It slips through matter like a neutron until it meets a nucleus, then both vanish in a burst of gamma rays.",
+    hint: 'Collide Protons head-on, hard.',
+  },
   // ---- ores ---------------------------------------------------------------------
   {
     key: 'CHALCOPYRITE', name: 'Chalcopyrite', sym: 'Cpy', cat: 'mineral', state: SOLID, strength: 40,
@@ -5409,7 +5438,11 @@ const CATEGORIES = [
 //   emits       [{ p, chance }] particles thrown off each frame
 //   selfHeat    °C gained per frame (radioactive warmth)
 //   decay       { chance, to, spawn } random decay, like a half-life
-//   fission     what a neutron does when it splits this element
+//   fission     what a neutron does when it splits this element: neutrons,
+//               photons and protons thrown out, heat (or hot: the maximum
+//               temperature), pressure added to its air block, blast (a
+//               push), boost (the pressure that doubles the chance of a
+//               split), products, capture
 //   transparent / opaque / reflect   how light treats it
 //   light       the colour of light it gives off or tints reflected light
 //               (defaults to its own colour, brightened)
@@ -5823,13 +5856,13 @@ const id = (key) => {
 const HIT_IMPACT = {
   photon: [120, 0.3], electron: [80, 0.4], proton: [350, 2], neutron: [300, 1.5],
   positron: [900, 5], neutrino: [0, 0], alpha: [450, 2.5], ion: [1800, 8], gamma: [300, 1.5],
-  xray: [120, 0.4], uv: [180, 0.4], microwave: [45, 0], ghost: [0, 0],
+  xray: [120, 0.4], uv: [180, 0.4], microwave: [45, 0], ghost: [0, 0], antineutron: [900, 5],
 };
 
 // How each kind of flying particle behaves when it meets matter.
 const PMODE = {
   photon: 1, electron: 2, proton: 3, neutron: 4, positron: 5, neutrino: 6,
-  alpha: 7, ion: 8, gamma: 9, xray: 10, uv: 11, microwave: 12, ghost: 13,
+  alpha: 7, ion: 8, gamma: 9, xray: 10, uv: 11, microwave: 12, ghost: 13, antineutron: 14,
 };
 
 // RULES: every way an element can be produced, for discovery tracking and
@@ -6115,8 +6148,12 @@ ELEMENT_LIST.forEach((e, i) => {
   DEFS[i].fission = {
     neutrons: f.neutrons,
     heat: f.heat ?? 0,
+    hot: !!f.hot,
+    pressure: f.pressure ?? 0,
+    boost: f.boost ?? 0,
     blast: f.blast ?? 0,
     photons: f.photons ?? 0,
+    protons: f.protons ?? 0,
     products: (f.products ?? []).map(([k, w]) => ({ id: id(k), w, rule: addRule('contact', inputs, id(k)) })),
     captureTo: f.capture ? id(f.capture[0]) : -1,
     captureChance: f.capture ? f.capture[1] : 0,
@@ -6276,6 +6313,17 @@ for (const d of DEFS) {
   MIRROR_BACKING[d.id] = d.transparent && d.state === SOLID ? 1 : 0;
 }
 
+// How fast light travels through each element, as a share of its speed in
+// air (1 over the refractive index): clear liquids about 3/4, clear solids
+// about 2/3, diamond much slower. Everything else leaves it at full speed.
+const LIGHT_SPEED = new Float32Array(NUM).fill(1);
+for (const d of DEFS) {
+  if (!d.transparent) continue;
+  if (d.state === State.LIQUID) LIGHT_SPEED[d.id] = 0.75;
+  else if (d.state === SOLID || d.state === State.POWDER) LIGHT_SPEED[d.id] = 0.67;
+}
+LIGHT_SPEED[ID.DIAMOND] = 0.41;
+
 // Mass for Newtonian gravity: an element's density, except that walls,
 // energy and flying particles weigh nothing, a few cosmic objects weigh a
 // great deal, and a White Hole pushes instead of pulling.
@@ -6316,7 +6364,7 @@ const TRANSMUTABLE = setOf([
 // What a White Hole pours out.
 const SPEW = ['SAND', 'WATER', 'STONE', 'DIRT', 'STEAM', 'FIRE', 'PLASMA', 'METAL'].map((k) => ID[k]);
 
-return { COND, AIR_COOL, CONDUCTOR, CLONEABLE, GASLIKE, AIRTIGHT, MACHINE, POWERED, PRESSABLE, LIGHT_SENSOR, MIRROR_BACKING, MASS, DISPENSABLE, ORGANIC, TRANSMUTABLE, SPEW };
+return { COND, AIR_COOL, CONDUCTOR, CLONEABLE, GASLIKE, AIRTIGHT, MACHINE, POWERED, PRESSABLE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED, MASS, DISPENSABLE, ORGANIC, TRANSMUTABLE, SPEW };
 })();
 
 __modules["src/sim/fft.js"] = (() => {
@@ -7495,14 +7543,18 @@ __modules["src/sim/particles.js"] = (() => {
 // Mixed into World.prototype; `initParticles` sets up the storage.
 
 const { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL } = __modules["src/sim/elements.js"];
-const { MAX_TEMP, KICK_CHANCE, KICK_EMIT, KICK_DECAY } = __modules["src/sim/constants.js"];
-const { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING } = __modules["src/sim/lookups.js"];
+const { MAX_TEMP, MIN_TEMP, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } = __modules["src/sim/constants.js"];
+const { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED } = __modules["src/sim/lookups.js"];
 const { LENS } = __modules["src/sim/gravity.js"];
 
 const PASS = 0, DEAD = 1, BOUNCE = 2;
 const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
-const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO, HYDROGEN } = ID;
+const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO, GAMMA, PION } = ID;
+// A proton hotter than this sets fuel and explosives alight as it passes.
+const PROTON_IGNITES = 500;
+// Chance per cell that an antineutron meets a nucleus and annihilates.
+const ANNIHILATE = 0.2;
 const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
 // Photon tints that a clear material recolours: plain light, and light
 // already coloured by another clear material.
@@ -7520,6 +7572,7 @@ function initParticles(world) {
   world.ptype = new Uint16Array(CAPACITY);
   world.plife = new Int16Array(CAPACITY);
   world.ptint = new Uint16Array(CAPACITY);
+  world.ptemp = new Float32Array(CAPACITY); // what a proton carries (see hitCell)
   world.pn = 0;
   world.pmap = new Int32Array(world.w * world.h); // index + 1 of a particle in each cell
   const airCells = world.air.W * world.air.H;
@@ -7548,11 +7601,18 @@ const Particles = {
     this.ptype[k] = t;
     this.plife[k] = d.lifeMin + ((this.rand() * (d.lifeMax - d.lifeMin + 1)) | 0);
     this.ptint[k] = tint;
+    this.ptemp[k] = AMBIENT;
     return k;
   },
 
+  // Launch a particle from cell (x, y). It starts at that cell's temperature.
   emitAt(t, x, y) {
-    return this.spawnProjectile(t, x + 0.5, y + 0.5);
+    const k = this.spawnProjectile(t, x + 0.5, y + 0.5);
+    if (k >= 0 && x >= 0 && y >= 0 && x < this.w && y < this.h) {
+      const i = y * this.w + x;
+      if (this.type[i] !== 0) this.ptemp[k] = this.temp[i];
+    }
+    return k;
   },
 
   killProjectile(k) {
@@ -7565,6 +7625,7 @@ const Particles = {
     this.ptype[k] = this.ptype[last];
     this.plife[k] = this.plife[last];
     this.ptint[k] = this.ptint[last];
+    this.ptemp[k] = this.ptemp[last];
   },
 
   // Spread each magnet's pull over the nearby air cells.
@@ -7636,7 +7697,14 @@ const Particles = {
     }
 
     let x = this.px[k], y = this.py[k];
-    const vx = this.pvx[k], vy = this.pvy[k];
+    let vx = this.pvx[k], vy = this.pvy[k];
+    // Light (and ultraviolet) slows down inside clear liquids and solids,
+    // and is back to full speed once out.
+    if (d.pmode === PMODE.photon || d.pmode === PMODE.uv) {
+      const f = LIGHT_SPEED[type[(y | 0) * w + (x | 0)]];
+      vx *= f;
+      vy *= f;
+    }
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(vx), Math.abs(vy))));
     const sx = vx / steps, sy = vy / steps;
     let cx = x | 0, cy = y | 0;
@@ -7674,8 +7742,16 @@ const Particles = {
     const r = HIT[t * NUM + u];
     if (r !== null && (r.recover === 0 || this.life[j] === 0)) {
       let chance = r.chance;
-      // Slow neutrons split atoms far more readily than fast ones.
-      if (r.fission && this.pvx[k] * this.pvx[k] + this.pvy[k] * this.pvy[k] < 2) chance *= 3;
+      if (r.fission) {
+        // Slow neutrons split atoms far more readily than fast ones, and
+        // pressure makes some (plutonium) split faster still.
+        if (this.pvx[k] * this.pvx[k] + this.pvy[k] * this.pvy[k] < 2) chance *= 3;
+        const boost = DEFS[u].fission.boost;
+        if (boost) {
+          const p = this.air.p[this.air.at(ix, iy)];
+          if (p > 0) chance *= 1 + p / boost;
+        }
+      }
       if (this.rand() < chance) return this.applyHit(k, r, j, ix, iy, lx, ly);
     }
     // Hard radiation can be swallowed by a stable radioactive atom it passes,
@@ -7714,11 +7790,17 @@ const Particles = {
         if (e.transparent || GASLIKE[u]) return PASS;
         return this.impact(j, lx, ly, d);
       case PMODE.proton: {
-        if (GASLIKE[u]) return PASS;
-        // It stops and sometimes picks up an electron as a wisp of hydrogen.
-        const li = ly * this.w + lx;
-        if (this.type[li] === 0 && this.rand() < 0.25) this.spawn(li, HYDROGEN);
-        return this.impact(j, lx, ly, d);
+        // As in The Powder Toy, a proton flies straight through matter (Wall
+        // aside), pulling whatever it passes a quarter of the way to its own
+        // temperature, and a hot one sets fuel and explosives alight.
+        if (e.indestructible) return this.impact(j, lx, ly, d);
+        const T = this.ptemp[k];
+        const nt = this.temp[j] + (T - this.temp[j]) * 0.25;
+        this.temp[j] = nt > MAX_TEMP ? MAX_TEMP : nt < MIN_TEMP ? MIN_TEMP : nt;
+        if (T > PROTON_IGNITES && (e.flammable > 0 || e.explode > 0) && this.ignite(j, ix, iy)) {
+          this.air.addPressure(this.air.at(ix, iy), 1);
+        }
+        return PASS;
       }
       case PMODE.neutron: {
         if (e.moderator) {
@@ -7783,6 +7865,15 @@ const Particles = {
           return this.rand() < 0.3 ? DEAD : PASS;
         }
         return PASS;
+      case PMODE.antineutron:
+        // Like a neutron it slips through matter, until it meets a nucleus:
+        // then both are gone in a flash of gamma rays.
+        if (GASLIKE[u] || this.rand() >= ANNIHILATE) return PASS;
+        if (!e.indestructible) this.clearCell(j);
+        this.emitAt(GAMMA, ix, iy);
+        this.emitAt(GAMMA, ix, iy);
+        if (this.rand() < 0.5) this.emitAt(PION, ix, iy);
+        return this.impact(j, lx, ly, d);
       default:
         return PASS; // neutrinos, muons and other ghosts
     }
@@ -7855,10 +7946,14 @@ const Particles = {
       this.convert(j, f.captureTo, true, f.captureRule);
       return;
     }
+    // Heat first, so what flies out (protons especially) carries it.
+    this.temp[j] = f.hot ? MAX_TEMP : Math.min(MAX_TEMP, this.temp[j] + f.heat);
     for (let n = 0; n < f.neutrons; n++) this.emitAt(NEUTRON, x, y);
     for (let n = 0; n < f.photons; n++) this.emitAt(PHOTON, x, y);
-    this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + f.heat);
+    for (let n = 0; n < f.protons; n++) this.emitAt(PROTON, x, y);
+    if (f.pressure) this.air.addPressure(this.air.at(x, y), f.pressure);
     if (f.blast) this.blast(x, y, f.blast);
+    if (f.hot) this.igniteAround(x, y);
     let roll = this.rand();
     for (const p of f.products) {
       if (roll < p.w) { this.convert(j, p.id, true, p.rule); break; }
@@ -7965,9 +8060,10 @@ const Particles = {
       }
       return;
     }
-    const x = this.px[k], y = this.py[k], vx = this.pvx[k], vy = this.pvy[k];
+    const x = this.px[k], y = this.py[k], vx = this.pvx[k], vy = this.pvy[k], T = this.ptemp[k];
     this.killProjectile(k);
-    this.spawnProjectile(PROTON, x, y, vx * 0.75, vy * 0.75);
+    const p = this.spawnProjectile(PROTON, x, y, vx * 0.75, vy * 0.75);
+    if (p >= 0) this.ptemp[p] = T;
     this.spawnProjectile(ELECTRON, x, y);
     this.spawnProjectile(NEUTRINO, x, y);
     this.record(PROTON, SPECIAL['neutron-proton']);
@@ -8331,7 +8427,7 @@ __modules["src/sim/world.js"] = (() => {
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
-const { Air, CELL, AIR_SHARE, EXPAND } = __modules["src/sim/air.js"];
+const { Air, CELL, AIR_SHARE } = __modules["src/sim/air.js"];
 const { DEFS, ID, NUM, State, AMBIENT, REACT } = __modules["src/sim/elements.js"];
 const { MAX_TEMP, MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY } = __modules["src/sim/constants.js"];
 const { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS } = __modules["src/sim/lookups.js"];
@@ -9269,7 +9365,6 @@ class World {
     const now = T + f;
     let t = was - f * AIR_SHARE;
     if ((f < 0 && t > now) || (f > 0 && t < now)) t = now; // never past the particle
-    air.p[a] += (t - was) * EXPAND;
     air.t[a] = t;
     return now;
   }
@@ -9277,7 +9372,7 @@ class World {
   // Convection on or off. Off, the air forgets any heat it held.
   setConvection(on) {
     this.air.heat = !!on;
-    if (!on) this.air.t.fill(AMBIENT);
+    if (!on) this.air.coolAll();
   }
 
   // ---- tools (used by the game and by tests) -------------------------------
@@ -9364,7 +9459,6 @@ class World {
         if (!air.blocked[a]) {
           const was = air.t[a], now = Math.min(MAX_TEMP, Math.max(MIN_TEMP, was + share));
           air.t[a] = now;
-          air.p[a] += (now - was) * EXPAND;
         }
       }
       if (!t) return;

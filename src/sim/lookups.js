@@ -39,6 +39,17 @@ for (const d of DEFS) {
   MIRROR_BACKING[d.id] = d.transparent && d.state === SOLID ? 1 : 0;
 }
 
+// How fast light travels through each element, as a share of its speed in
+// air (1 over the refractive index): clear liquids about 3/4, clear solids
+// about 2/3, diamond much slower. Everything else leaves it at full speed.
+export const LIGHT_SPEED = new Float32Array(NUM).fill(1);
+for (const d of DEFS) {
+  if (!d.transparent) continue;
+  if (d.state === State.LIQUID) LIGHT_SPEED[d.id] = 0.75;
+  else if (d.state === SOLID || d.state === State.POWDER) LIGHT_SPEED[d.id] = 0.67;
+}
+LIGHT_SPEED[ID.DIAMOND] = 0.41;
+
 // Mass for Newtonian gravity: an element's density, except that walls,
 // energy and flying particles weigh nothing, a few cosmic objects weigh a
 // great deal, and a White Hole pushes instead of pulling.

@@ -133,3 +133,38 @@ test('the Heat tool warms the air, which rises; the Cool tool chills it, which s
   run(off, 20, () => off.heat(40, 40, 6, 30));
   assert.ok(off.air.t.every((t) => t === AMBIENT), 'with convection off the air has no temperature');
 });
+
+// Mean pressure over the inside of a box.
+function meanPressure(w, x0, y0, x1, y1) {
+  let s = 0, n = 0;
+  for (let y = y0; y <= y1; y += 4) for (let x = x0; x <= x1; x += 4) { s += w.pressureAt(x, y); n++; }
+  return s / n;
+}
+
+test('heating the air in a sealed box raises the pressure, and cooling brings it back to zero', () => {
+  const w = makeWorld(120, 80);
+  w.setConvection(true);
+  const box = wallBox(w, 30, 20, 90, 60);
+  const inside = () => meanPressure(w, box.x0 + 3, box.y0 + 3, box.x1 - 3, box.y1 - 3);
+  run(w, 120, () => w.heat(60, 40, 8, 30));
+  const hot = inside();
+  assert.ok(hot > 1, `pressure while hot ${hot.toFixed(2)}`);
+  run(w, 1200);
+  const cold = inside();
+  assert.ok(Math.abs(cold) < 0.2, `pressure once cool ${cold.toFixed(2)}`);
+});
+
+test('in the open, hot air pushes out and is drawn back in as it cools', () => {
+  const w = makeWorld(120, 80);
+  w.setConvection(true);
+  const a = w.air;
+  run(w, 60, () => w.heat(60, 40, 8, 30));
+  let peak = 0;
+  run(w, 40, () => { peak = Math.max(peak, a.cvx(a.at(76, 40))); });
+  assert.ok(peak > 0.05, `air pushed out to the right while hot (${peak.toFixed(3)})`);
+  let back = 0;
+  run(w, 600, () => { back = Math.min(back, a.cvx(a.at(76, 40))); });
+  assert.ok(back < -0.02, `air drawn back in as it cools (${back.toFixed(3)})`);
+  run(w, 1200);
+  assert.ok(Math.abs(w.pressureAt(60, 40)) < 0.1, `pressure settles to zero (${w.pressureAt(60, 40).toFixed(3)})`);
+});

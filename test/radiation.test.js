@@ -69,24 +69,26 @@ test('graphite moderates a uranium pile into a chain reaction; boron shuts it do
   assert.ok(boron < 0.05, `boron-controlled pile burned ${boron}`);
 });
 
-test('a large ball of plutonium sits still until a neutron sets it off; a pinch of it fizzles', () => {
+test('a large ball of plutonium sits still until a neutron sets it off; a pinch of it only pops', () => {
   const pile = (size, spark) => {
     const w = new World(400, 240, 99);
     const x0 = 200 - (size >> 1);
     for (let y = 240 - size; y < 240; y++) {
       for (let x = x0; x < x0 + size; x++) w.spawn(y * 400 + x, ID.PLUTONIUM);
     }
+    let pressure = 0;
     run(w, 300, (f) => {
       // A few neutrons fired into the middle of the pile.
       if (spark && f === 10) for (let k = 0; k < 6; k++) w.spawnProjectile(ID.NEUTRON, 200.5, 240 - size / 2);
+      for (const p of w.air.p) if (p > pressure) pressure = p;
     });
-    return { left: types(w, ID.PLUTONIUM) / (size * size), fallout: types(w, ID.FALLOUT) };
+    return { left: types(w, ID.PLUTONIUM) / (size * size), fallout: types(w, ID.FALLOUT), pressure: Math.round(pressure) };
   };
   const still = pile(16, false), big = pile(16, true), small = pile(4, true);
-  assert.ok(still.left > 0.98 && still.fallout <= 2, `16x16 pile left alone: ${JSON.stringify(still)}`);
-  assert.ok(big.left < 0.6 && big.fallout > 20, `16x16 pile: ${JSON.stringify(big)}`);
-  // The neutrons may split or transmute an atom or two, but nothing runs away.
-  assert.ok(small.left >= 0.75 && small.fallout <= 4, `4x4 pinch: ${JSON.stringify(small)}`);
+  assert.ok(still.left > 0.98 && still.fallout <= 2 && still.pressure < 1, `16x16 pile left alone: ${JSON.stringify(still)}`);
+  assert.ok(big.left < 0.6 && big.fallout > 20 && big.pressure > 150, `16x16 pile: ${JSON.stringify(big)}`);
+  // A pinch reacts too, but with far too little to blow anything apart.
+  assert.ok(small.pressure < 50, `4x4 pinch: ${JSON.stringify(small)}`);
 });
 
 test('deuterium doubles the neutrons that pass through it', () => {
@@ -189,4 +191,81 @@ test('superfluid climbs up the inside of a container', () => {
     for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.SUPERFLUID) highest = Math.min(highest, (i / 40) | 0);
   });
   assert.ok(highest < 40, `reached row ${highest}`);
+});
+
+// Frames a photon fired right at (5, 10) takes to get past x = 150, with
+// `t` filling x 50-99 (or nothing).
+function crossing(t) {
+  const w = makeWorld(200, 20);
+  if (t) fillRect(w, 50, 0, 99, 19, t);
+  const k = w.spawnProjectile(ID.PHOTON, 5.5, 10.5, 3, 0);
+  let f = 0;
+  while (w.pn > 0 && w.px[k] < 150 && f < 200) { w.step(); f++; }
+  return { frames: f, speed: Math.hypot(w.pvx[k], w.pvy[k]), alive: w.pn > 0 };
+}
+
+test('light slows down in water, more in glass and most in diamond, and speeds up again after', () => {
+  const air = crossing(0), water = crossing(ID.WATER), glass = crossing(ID.GLASS), diamond = crossing(ID.DIAMOND);
+  for (const r of [water, glass, diamond]) assert.ok(r.alive, 'the photon got through');
+  assert.ok(water.frames >= air.frames + 4, `water ${water.frames} frames, air ${air.frames}`);
+  assert.ok(glass.frames > water.frames, `glass ${glass.frames}, water ${water.frames}`);
+  assert.ok(diamond.frames > glass.frames + 5, `diamond ${diamond.frames}, glass ${glass.frames}`);
+  for (const r of [water, glass, diamond]) assert.ok(Math.abs(r.speed - 3) < 1e-4, 'full speed again');
+});
+
+// ---- The Powder Toy style nuclear physics ---------------------------------
+
+test('one neutron sets off a plutonium ball: enormous pressure and heat tear the stone round it open', () => {
+  const w = new World(240, 160, 3);
+  const cx = 120, cy = 80;
+  w.forCircle(cx, cy, 40, (i, x, y) => { if (Math.hypot(x - cx, y - cy) > 30) w.spawn(i, ID.STONE); });
+  w.forCircle(cx, cy, 10, (i) => w.spawn(i, ID.PLUTONIUM));
+  const stone = types(w, ID.STONE), pu = types(w, ID.PLUTONIUM);
+  w.spawnProjectile(ID.NEUTRON, cx - 13.5, cy + 0.5, 1, 0);
+  let maxP = 0, maxT = 0;
+  run(w, 400, () => {
+    for (let i = 0; i < w.air.p.length; i++) if (w.air.p[i] > maxP) maxP = w.air.p[i];
+    for (let i = 0; i < w.temp.length; i++) if (w.type[i] && w.temp[i] > maxT) maxT = w.temp[i];
+  });
+  assert.ok(maxP > 200, `pressure reached ${maxP.toFixed(0)}`);
+  assert.ok(maxT > 5000, `temperature reached ${maxT.toFixed(0)}`);
+  assert.ok(types(w, ID.PLUTONIUM) < pu * 0.3, `${types(w, ID.PLUTONIUM)} of ${pu} plutonium left`);
+  assert.ok(types(w, ID.STONE) < stone * 0.8, `${types(w, ID.STONE)} of ${stone} stone left`);
+});
+
+test('a hot proton flies through stone, heating it, and sets wood alight', () => {
+  const w = makeWorld(120, 20);
+  fillRect(w, 30, 5, 49, 14, ID.STONE);
+  fillRect(w, 60, 5, 79, 14, ID.WOOD);
+  const k = w.spawnProjectile(ID.PROTON, 5.5, 10.5, 1.5, 0);
+  w.ptemp[k] = 3000;
+  let burning = false, hottest = 0;
+  run(w, 80, () => {
+    if (types(w, ID.FIRE) > 0) burning = true;
+    for (let x = 30; x < 50; x++) hottest = Math.max(hottest, w.temp[10 * 120 + x]);
+  });
+  assert.ok(hottest > 400, `stone in its path reached ${hottest.toFixed(0)}`);
+  assert.ok(burning, 'the wood caught fire');
+});
+
+test('protons smashed together make neutrons and antineutrons', () => {
+  const w = makeWorld(80, 40);
+  for (let n = 0; n < 60; n++) {
+    w.spawnProjectile(ID.PROTON, 20.5, 10.5 + (n % 20), 1.5, 0);
+    w.spawnProjectile(ID.PROTON, 59.5, 10.5 + (n % 20), -1.5, 0);
+  }
+  run(w, 40);
+  assert.ok(w.seen[ID.NEUTRON], 'neutrons');
+  assert.ok(w.seen[ID.ANTINEUTRON], 'antineutrons');
+});
+
+test('an antineutron annihilates with matter in a burst of gamma rays', () => {
+  const w = makeWorld(120, 20);
+  fillRect(w, 30, 0, 89, 19, ID.STONE);
+  const stone = types(w, ID.STONE);
+  let gamma = 0;
+  for (let n = 0; n < 20; n++) w.spawnProjectile(ID.ANTINEUTRON, 5.5, 0.5 + n, 2, 0);
+  run(w, 40, () => { for (let k = 0; k < w.pn; k++) if (w.ptype[k] === ID.GAMMA) gamma++; });
+  assert.ok(types(w, ID.STONE) < stone, 'stone was annihilated');
+  assert.ok(gamma > 0, 'gamma rays came out');
 });

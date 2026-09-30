@@ -1,7 +1,7 @@
 # Sandbox Crafter
 
 A falling-sand physics sandbox crossed with an element-crafting game. You start
-with four elements (**Sand, Water, Fire and Dirt**) and discover the other 563
+with four elements (**Sand, Water, Fire and Dirt**) and discover the other 564
 by making things happen in the simulation: pour water on dirt, bake mud, crush
 wood under pressure, run electricity through water, split uranium with
 neutrons, blast a diamond with plasma. Every new element you make is added to
@@ -166,8 +166,10 @@ Each frame (60 per second):
 
    **Convection** (when switched on) gives each air block a temperature.
    Particles next to empty cells trade heat with that air instead of with the
-   room; the air warms three times as fast as they cool, swells as it warms
-   (and shrinks as it cools), is pushed against gravity in proportion to how
+   room; the air warms three times as fast as they cool, presses harder the
+   hotter it is (so heating the air in a sealed box raises its pressure until
+   it cools again, and in the open hot air pushes outwards and is drawn back
+   as it cools), is pushed against gravity in proportion to how
    much warmer it is than the air around it (so air that has cooled below its
    surroundings sinks), is carried along by the wind, and loses its heat to
    the room. The loop this makes is the convection current.
@@ -220,6 +222,9 @@ Each frame (60 per second):
    cell it enters, passes through, bounces, is absorbed, or triggers a rule:
    - Light passes through glass, water and crystals, bounces off mirrors and
      metal, and heats whatever absorbs it. Ruby amplifies it (in red).
+   - Light slows down inside clear things, as it does for real: to about ¾
+     of its speed in water and other clear liquids, ⅔ in glass and clear
+     solids, and 0.4 in diamond, then speeds up again as it comes out.
    - Light that bounces off something takes on its colour: off gold it turns
      gold, off copper orange. The Mirror element reflects it unchanged.
    - Light shining through something clear takes on its colour too: blue
@@ -236,9 +241,17 @@ Each frame (60 per second):
    - Neutrons pass through most things, are soaked up by lead, boron and
      wall, and are slowed by graphite, heavy water and plastic. Slow neutrons
      split uranium three times as readily as fast ones.
+   - Protons fly straight through matter too, as in The Powder Toy, each
+     carrying its own temperature: every cell one passes through moves a
+     quarter of the way to it, and a proton hotter than 500 °C sets fuel and
+     explosives alight on its way. In the end one picks up an electron and
+     becomes hydrogen. Smash two together and they make a neutron, an
+     antineutron and a pion.
+   - An antineutron slips through matter like a neutron until it meets a
+     nucleus; then both vanish in a burst of gamma rays.
    - Charged particles curve near magnets.
    - Whatever finally stops a particle takes a hit: it heats up (by about
-     120 °C for light, 350 °C for a proton, 1800 °C for a heavy ion) and the
+     120 °C for light, 450 °C for an alpha particle, 1800 °C for a heavy ion) and the
      air in front of it gets a kick of pressure, so a heavy beam scorches,
      melts and tears apart whatever it's aimed at.
    - Alpha particles and heavy ions are stopped by the first solid or liquid
@@ -297,10 +310,15 @@ once started depends on its size and what surrounds it:
   hot, because slowed neutrons split atoms more easily. That's how the first
   reactor worked.
 - Swap some rods for **boron** and it shuts down again.
-- **Plutonium** releases three neutrons per split. A ball of a few hundred
-  grains sits there quietly until a neutron gets in, then detonates in a
-  flash of plasma and fallout; a small pinch hit by the same neutrons just
-  loses an atom or two.
+- **Plutonium** behaves as it does in The Powder Toy. A ball of a few hundred
+  grains sits there quietly until a neutron gets in. Then every split throws
+  out three neutrons and a proton, heats what's left to 9999 °C and adds a
+  big kick of air pressure, and the more pressure there is the more readily
+  plutonium splits. So the chain feeds itself: the pressure climbs to the
+  limit within a second, tears through stone and metal around it, and the
+  hot protons carry the heat deep into the walls. A small pinch hit by the
+  same neutrons melts and pops, but has too little in it to blow anything
+  apart.
 - **Deuterium** and **beryllium** double the neutrons passing through them, and
   **deuterium** and **tritium** fuse into helium above 3000 °C.
 
@@ -465,10 +483,12 @@ straight-down path exactly. The Newtonian tests check the FFT field against
 a direct sum, that nothing is built while it's off, that mass pulls sand in
 and a White Hole pushes, and that light bends. The convection tests cover a
 rising plume, the plume turning with the arrow, air flowing in at its base,
-the hot block cooling, a full loop in a closed box (markers carried up come
+the hot block cooling, the pressure rising in a heated sealed box and
+settling once it cools, hot air pushing out and being drawn back in the open,
+a full loop in a closed box (markers carried up come
 back down to the base), the Heat and Cool tools warming and chilling the
 air, and a sealed fire still going out. The recipe tests
-run all 1198 production rules in the real simulation.
+run all 1202 production rules in the real simulation.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.
@@ -504,7 +524,7 @@ Regenerate the table below after changing recipes with
 | 28 | Gunpowder | Coal + Salt |
 | 29 | Battery | Metal + Salt Water |
 | 30 | Spark | Battery + Metal |
-| 31 | Hydrogen | Liquid Hydrogen + Heat · Quark-Gluon Plasma + Time · Water + Spark · Sodium + Water · Potassium + Water · Lithium + Water · Cesium + Water · Cesium + Ice · Calcium + Water · Rubidium + Water · Francium + Water · Zinc + Acid · NaK + Water · Metal + Acid · Magnesium + Acid · Aluminum + Acid · Sodium + Acid · Lye + Aluminum · Barium + Water · Strontium + Water · Brittle Aluminum + Water · Sodium Vapour + Water · Water + Electron · Electron + Proton |
+| 31 | Hydrogen | Proton + Time · Liquid Hydrogen + Heat · Quark-Gluon Plasma + Time · Water + Spark · Sodium + Water · Potassium + Water · Lithium + Water · Cesium + Water · Cesium + Ice · Calcium + Water · Rubidium + Water · Francium + Water · Zinc + Acid · NaK + Water · Metal + Acid · Magnesium + Acid · Aluminum + Acid · Sodium + Acid · Lye + Aluminum · Barium + Water · Strontium + Water · Brittle Aluminum + Water · Sodium Vapour + Water · Water + Electron · Electron + Proton |
 | 32 | Acid | Chlorine + Hydrogen · Chlorine + Water |
 | 33 | Cloud | Steam + Smoke |
 | 34 | Lightning | Cloud + Spark |
@@ -575,7 +595,7 @@ Regenerate the table below after changing recipes with
 | 99 | Alcohol | Fruit + Time · Perfume + Cold · Wine + Heat · Wine + Cold · Mead + Heat · Yeast + Sugar |
 | 100 | Electron | Muon + Time · Metal + Photon · Cesium + Photon · Hydrogen + Photon · Lead + Photon · Heavy Water + Neutrino · Neutron + Time |
 | 101 | Proton | Hydrogen + Photon · Nitrogen + Alpha Particle · Neutron + Time |
-| 102 | Neutron | Polonium + Beryllium · Tritium + Deuterium · Metal + Proton · Lead + Proton · Tungsten + Proton · Beryllium + Alpha Particle · Deuterium + Muon |
+| 102 | Neutron | Polonium + Beryllium · Tritium + Deuterium · Metal + Proton · Lead + Proton · Tungsten + Proton · Beryllium + Alpha Particle · Deuterium + Muon · Proton + Proton |
 | 103 | Neutrino | Muon + Time · Pion + Time · Neutron + Time |
 | 104 | Pitchblende | Granite + Pressure |
 | 105 | Yellowcake | Pitchblende + Heat |
@@ -1006,7 +1026,7 @@ Regenerate the table below after changing recipes with
 | 530 | Grey Goo | Graphene + Virus |
 | 531 | Elixir of Life | Philosopher's Stone + Water |
 | 532 | Greek Fire | Tar + Quicklime |
-| 533 | Gamma Ray | Black Hole + White Hole · Electron + Positron |
+| 533 | Gamma Ray | Black Hole + White Hole · Electron + Positron · Neutron + Antineutron |
 | 534 | X-Ray | Pulsar + Star · Tungsten + Electron |
 | 535 | Ultraviolet | Mercury Vapour + Electron |
 | 536 | Microwave | Magnet + Spark |
@@ -1032,14 +1052,15 @@ Regenerate the table below after changing recipes with
 | 556 | Dispenser | Clone + Switch |
 | 557 | Drain | Void + Switch |
 | 558 | Beam Splitter | Mirror + Quartz |
-| 559 | Chalcopyrite | Lava + Sulfur |
-| 560 | Wolframite | Steam + Quartz |
-| 561 | White Copper Sulfate | Copper Sulfate + Heat |
-| 562 | Liquid Methane | Methane + Cold |
-| 563 | Heavy Ice | Heavy Water + Cold |
-| 564 | Sawdust | Termite + Wood |
-| 565 | Tun | Tardigrade + Cold |
-| 566 | Mead | Honey + Yeast |
-| 567 | Denim | Indigo + Cloth |
+| 559 | Antineutron | Proton + Proton |
+| 560 | Chalcopyrite | Lava + Sulfur |
+| 561 | Wolframite | Steam + Quartz |
+| 562 | White Copper Sulfate | Copper Sulfate + Heat |
+| 563 | Liquid Methane | Methane + Cold |
+| 564 | Heavy Ice | Heavy Water + Cold |
+| 565 | Sawdust | Termite + Wood |
+| 566 | Tun | Tardigrade + Cold |
+| 567 | Mead | Honey + Yeast |
+| 568 | Denim | Indigo + Cloth |
 
 </details>

@@ -18,7 +18,7 @@
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
-import { Air, CELL, AIR_SHARE, EXPAND } from './air.js';
+import { Air, CELL, AIR_SHARE } from './air.js';
 import { DEFS, ID, NUM, State, AMBIENT, REACT } from './elements.js';
 import {
   MAX_TEMP, MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY,
@@ -958,7 +958,6 @@ export class World {
     const now = T + f;
     let t = was - f * AIR_SHARE;
     if ((f < 0 && t > now) || (f > 0 && t < now)) t = now; // never past the particle
-    air.p[a] += (t - was) * EXPAND;
     air.t[a] = t;
     return now;
   }
@@ -966,7 +965,7 @@ export class World {
   // Convection on or off. Off, the air forgets any heat it held.
   setConvection(on) {
     this.air.heat = !!on;
-    if (!on) this.air.t.fill(AMBIENT);
+    if (!on) this.air.coolAll();
   }
 
   // ---- tools (used by the game and by tests) -------------------------------
@@ -1053,7 +1052,6 @@ export class World {
         if (!air.blocked[a]) {
           const was = air.t[a], now = Math.min(MAX_TEMP, Math.max(MIN_TEMP, was + share));
           air.t[a] = now;
-          air.p[a] += (now - was) * EXPAND;
         }
       }
       if (!t) return;

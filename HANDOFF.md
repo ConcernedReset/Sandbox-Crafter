@@ -2,7 +2,7 @@
 
 A falling-sand physics sandbox (modelled on The Powder Toy) crossed with an
 element-crafting game. You start with Sand, Water, Fire and Dirt and discover
-the other 563 elements by making things happen in the simulation. The README
+the other 564 elements by making things happen in the simulation. The README
 covers gameplay, physics and every recipe; this file is the short version for
 whoever picks the project up next.
 
@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,320 tests, all passing, in a few seconds
+npm test    # node --test: about 1,330 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -114,8 +114,20 @@ else; `test/build.test.js` checks the bundle runs.
   air of each empty neighbour, and `Air.stepHeat` does buoyancy, carrying,
   blurring and cooling. Buoyancy compares each block with the average of the
   air around it (`localMean`, a box blur), not with room temperature: that is
-  what makes cooled air sink and the loop close. `heatArea` (the Heat and
+  what makes cooled air sink and the loop close. The heat's share of the
+  pressure is `EXPAND × (t − room temperature)`, applied as the change
+  since last frame (`tPressed`), so it can't drift: never add to `p`
+  directly when the air's temperature changes. `heatArea` (the Heat and
   Cool tools) also changes the air. Constants are at the top of `air.js`.
+- **Plutonium and protons work as in The Powder Toy.** A fission's settings
+  (see the field docs in elements.js) can add pressure per split (`pressure`),
+  make splits likelier under pressure (`boost`), set what's left to the
+  maximum temperature (`hot`) and throw out protons. Flying particles have a
+  temperature (`ptemp`, set from the cell they came from); protons pass
+  through matter and pull what they pass towards it. Antineutrons (pmode
+  `antineutron`) annihilate a cell now and then as they pass.
+- **Light speed** in clear materials is `LIGHT_SPEED` in lookups.js (1 over
+  the refractive index), applied to photons and ultraviolet each frame.
 - **Balance numbers live in tests.** If you retune physics (pressure, particle
   impact heat, reactor behaviour), expect the pressure, radiation and
   mechanics tests to need their thresholds revisited. Some are ratios that
