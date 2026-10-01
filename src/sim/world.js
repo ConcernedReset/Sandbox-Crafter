@@ -268,10 +268,12 @@ export class World {
 
   // Which edges of the world are a void: { top, bottom, left, right }.
   // Whatever moves out through one is gone; things that stay put (a stone
-  // floor along it) stay.
+  // floor along it) stay. Pressure waves and heat go out through it too,
+  // instead of bouncing back off the edge.
   setVoidEdges({ top = false, bottom = false, left = false, right = false } = {}) {
     this.voidEdges = (top ? VOID_TOP : 0) | (bottom ? VOID_BOTTOM : 0)
       | (left ? VOID_LEFT : 0) | (right ? VOID_RIGHT : 0);
+    this.air.voidSides = this.voidEdges; // and the air lets waves and heat out there
   }
 
   // Is (x, y), just outside the world, through a void edge?
@@ -964,6 +966,7 @@ export class World {
   conductHeat() {
     const { w, h, type, temp } = this;
     const heat = this.air.heat;
+    const sides = this.voidEdges;
     let count = 0;
     for (let y = 0; y < h; y++) {
       const row = y * w;
@@ -995,6 +998,12 @@ export class World {
         }
         if (x > 0 && type[i - 1] === 0) open++;
         if (y > 0 && type[i - w] === 0) open++;
+        // Heat escapes through a void edge as through open air.
+        if (sides !== 0 && (x === 0 || y === 0 || x === w - 1 || y === h - 1)) {
+          const out = (x === 0 && (sides & VOID_LEFT) !== 0 ? 1 : 0) + (x === w - 1 && (sides & VOID_RIGHT) !== 0 ? 1 : 0)
+            + (y === 0 && (sides & VOID_TOP) !== 0 ? 1 : 0) + (y === h - 1 && (sides & VOID_BOTTOM) !== 0 ? 1 : 0);
+          if (out) T += (AMBIENT - T) * AIR_COOL[t] * out;
+        }
         if (open) {
           if (!heat) T += (AMBIENT - T) * AIR_COOL[t] * open;
           else {

@@ -59,6 +59,14 @@ const P_MIN = 0.01; // the deepest vacuum, in atmospheres
 const TROUTON = 10.5;
 const MELT_STIFF = 25;
 const PHASE_DEADBAND = 0.25; // pressure this close to normal counts as normal (under 1 °C off)
+
+// Void edges of the world (world.js, setVoidEdges) let pressure waves and
+// warm air out instead of bouncing them back: the last SPONGE blocks before
+// one damp the air more and more towards the edge, up to SPONGE_DAMP a
+// frame, so a wave dies away on its way out. Bits match world.js.
+const SPONGE = 6;
+const SPONGE_DAMP = 0.3;
+const SIDE_TOP = 1, SIDE_BOTTOM = 2, SIDE_LEFT = 4, SIDE_RIGHT = 8;
 // How far a boiling point can fall, and any phase change can rise.
 export const BOIL_LOWEST = 1 / (1 - Math.log(P_MIN) / TROUTON);
 export const PHASE_HIGHEST = 1 / (1 - Math.log(1 + MAX_PRESSURE / ATM) / TROUTON);
@@ -80,6 +88,7 @@ export class Air {
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
     this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature already counted in p
     this.heat = false;
+    this.voidSides = 0; // which edges are a void (see SPONGE)
     this.boil = new Float32Array(n).fill(1); // boiling point factor (see ATM)
     this.melt = new Float32Array(n).fill(1); // melting point factor
   }
@@ -166,7 +175,32 @@ export class Air {
     }
 
     if (this.heat) this.stepHeat(gravity.gx, gravity.gy);
+    if (this.voidSides !== 0) this.sponge();
 
+  }
+
+  // Damp the air near void edges (see SPONGE): pressure and flow fade out,
+  // and warm or cold air settles to room temperature, the nearer the edge
+  // the faster.
+  sponge() {
+    const { W, H, p, vx, vy, t, voidSides: v } = this;
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
+        let d = SPONGE;
+        if ((v & SIDE_LEFT) !== 0 && x - 1 < d) d = x - 1;
+        if ((v & SIDE_RIGHT) !== 0 && W - 2 - x < d) d = W - 2 - x;
+        if ((v & SIDE_TOP) !== 0 && y - 1 < d) d = y - 1;
+        if ((v & SIDE_BOTTOM) !== 0 && H - 2 - y < d) d = H - 2 - y;
+        if (d >= SPONGE) continue;
+        const r = (SPONGE - d) / SPONGE, loss = SPONGE_DAMP * r * r, k = 1 - loss;
+        p[i] *= k;
+        vx[i] *= k;
+        vy[i] *= k;
+        vx[i - 1] *= k;
+        vy[i - W] *= k;
+        if (this.heat) t[i] += (AMBIENT - t[i]) * loss;
+      }
+    }
   }
 
   // How the pressure in each block moves boiling and melting points. Sealed

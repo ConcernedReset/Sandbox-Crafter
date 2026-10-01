@@ -135,6 +135,10 @@ else; `test/build.test.js` checks the bundle runs.
   `setVoidEdges`). `travel`/`travelAlong` clear a particle that moves out
   through one and set `world.vanished`, which every mover checks; liquids
   treat a void side as a drop, and gases' sideways step can leave too.
+  The air's `voidSides` (the same bits) makes `Air.sponge` damp pressure,
+  flow and air heat in the last few blocks before a void edge, so waves
+  leave instead of reflecting; `conductHeat` lets edge particles lose heat
+  out through it.
 - **Replace** is `world.replace`, set from the game state by input.js
   before each stroke; `paintArea` overwrites occupied cells when it's on.
 - **Light speed** in clear materials is `LIGHT_SPEED` in lookups.js (1 over

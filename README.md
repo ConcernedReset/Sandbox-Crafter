@@ -133,7 +133,9 @@ The strip between the status line and the recipe tree changes the rules:
   that moves out through it vanishes, so a void floor drains away every loose
   grain and drop, water pours off a void side like a waterfall, and smoke
   escapes through a void roof. Things that stay put, like a stone floor
-  along the edge, stay. Void edges are marked with a purple line on the game.
+  along the edge, stay. Pressure waves and heat go out through a void edge
+  too, instead of bouncing back off it as they do off a solid one. Void
+  edges are marked with a purple line on the game.
 - **Reset** puts everything back: down, strength 1, Newtonian
   gravity off, convection on, no void edges (how the game starts). The
   settings are remembered in your browser.
@@ -520,7 +522,8 @@ straight-down path exactly. The Newtonian tests check the FFT field against
 a direct sum, that nothing is built while it's off, that mass pulls sand in
 and a White Hole pushes, and that light bends. The edge tests cover a void floor draining sand, water pouring off a void
 side, steam escaping a void roof, and a stone floor on a void edge staying
-put. The phase tests cover water
+put, and pressure waves and heat going out through void edges instead of
+bouncing back. The phase tests cover water
 boiling away in a vacuum, staying liquid past 100 °C in a pressure cooker,
 and metal that won't melt under heavy pressure. The convection tests cover a
 rising plume, the plume turning with the arrow, air flowing in at its base,

@@ -42,3 +42,33 @@ test('a still floor of stone on a void edge stays put', () => {
   assert.equal(countOf(w, ID.STONE), 40);
   assert.equal(countOf(w, ID.SAND), 90, 'the sand rests on the stone');
 });
+
+test('a pressure wave goes out through void edges instead of bouncing back', () => {
+  // A pulse in the middle; once it has reached the edges, how much comes back?
+  const echo = (open) => {
+    const w = makeWorld(200, 200);
+    if (open) w.setVoidEdges({ top: true, bottom: true, left: true, right: true });
+    w.pressurize(100, 100, 6, 60);
+    let most = 0;
+    run(w, 400, (f) => { if (f >= 120) most = Math.max(most, Math.abs(w.pressureAt(100, 100))); });
+    return most;
+  };
+  const solid = echo(false), open = echo(true);
+  assert.ok(solid > 2, `solid edges send the wave back (${solid.toFixed(2)})`);
+  assert.ok(open < solid / 3, `void edges let it out (${open.toFixed(2)} vs ${solid.toFixed(2)})`);
+});
+
+test('heat escapes through a void edge', () => {
+  const strip = (open) => {
+    const w = makeWorld(60, 20);
+    fillRect(w, 0, 19, 59, 19, ID.STONE);
+    for (let x = 0; x < 60; x++) w.temp[19 * 60 + x] = 800;
+    if (open) w.setVoidEdges({ bottom: true });
+    run(w, 300);
+    let sum = 0;
+    for (let x = 0; x < 60; x++) sum += w.temp[19 * 60 + x];
+    return sum / 60;
+  };
+  const solid = strip(false), open = strip(true);
+  assert.ok(open < solid - 50, `stone along a void floor cooled to ${open.toFixed(0)}, along a solid one ${solid.toFixed(0)}`);
+});
