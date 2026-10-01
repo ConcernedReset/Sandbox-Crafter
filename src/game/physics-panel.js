@@ -6,7 +6,7 @@
 import { MAX_STRENGTH } from '../sim/gravity.js';
 
 const KEY = 'sandbox-crafter:physics';
-export const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: false });
+export const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: true });
 const NAMES = ['Down', 'Down-left', 'Left', 'Up-left', 'Up', 'Up-right', 'Right', 'Down-right'];
 // Keys that turn the dial, in degrees clockwise.
 const TURN = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15, PageUp: 45, PageDown: -45 };

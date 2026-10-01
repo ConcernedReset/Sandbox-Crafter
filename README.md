@@ -98,7 +98,8 @@ The strip between the status line and the recipe tree changes the rules:
   map). The Heat and Cool tools warm and chill the air too, even over empty
   space: a warm bubble rises, a cold pocket sinks. The Heat view shows the
   air's temperature, and pointing at a cell shows it too.
-- **Reset** puts everything back: down, strength 1, both off. The settings are
+- **Reset** puts everything back: down, strength 1, Newtonian
+  gravity off, convection on (how the game starts). The settings are
   remembered in your browser.
 
 There are eight ways to combine things (the tree calls contact Mix, and

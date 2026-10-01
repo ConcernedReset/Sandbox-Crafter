@@ -935,7 +935,7 @@ kbd {
         </label>
         <label class="physics-toggle"><input type="checkbox" id="grav-newton"> Newtonian gravity</label>
         <label class="physics-toggle"><input type="checkbox" id="convection"> Convection</label>
-        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, both boxes off">Reset</button>
+        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, Newtonian off, convection on">Reset</button>
       </section>
       <section class="tree" aria-labelledby="tree-title">
         <canvas id="tree" aria-label="Recipe tree. Drag to move it, Ctrl-scroll or pinch to zoom, click an element to see how it's made."></canvas>
@@ -11602,7 +11602,7 @@ __modules["src/game/physics-panel.js"] = (() => {
 const { MAX_STRENGTH } = __modules["src/sim/gravity.js"];
 
 const KEY = 'sandbox-crafter:physics';
-const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: false });
+const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: true });
 const NAMES = ['Down', 'Down-left', 'Left', 'Up-left', 'Up', 'Up-right', 'Right', 'Down-right'];
 // Keys that turn the dial, in degrees clockwise.
 const TURN = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15, PageUp: 45, PageDown: -45 };

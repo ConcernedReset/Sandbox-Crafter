@@ -109,7 +109,8 @@ else; `test/build.test.js` checks the bundle runs.
 - **Newtonian gravity costs nothing while off.** The solver and field arrays
   are built on first use; `stepGravity` weighs the blocks (`MASS` in
   lookups.js) and solves every other frame, about 2 ms.
-- **Convection** is off by default and then touches nothing: `conductHeat`
+- **Convection** is off in a bare `World` (tests rely on that), but the Physics
+  panel turns it on at start (`DEFAULTS` in physics-panel.js). Off, it touches nothing: `conductHeat`
   keeps the old leak to room temperature. On, `warmAir` trades heat with the
   air of each empty neighbour, and `Air.stepHeat` does buoyancy, carrying,
   blurring and cooling. Buoyancy compares each block with the average of the
