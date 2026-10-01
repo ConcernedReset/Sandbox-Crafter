@@ -28,18 +28,39 @@ test('a mirror sends light back the way it came', () => {
   assert.ok(w.pvx[0] < 0, 'photon is heading back left');
 });
 
-test('lead stops neutrons that stone lets through', () => {
+test('neutrons bounce off stone, battering it, while lead soaks some of them up', () => {
   const shoot = (shield) => {
     const w = makeWorld(100, 30);
     fillRect(w, 40, 0, 49, 29, shield);
     for (let k = 0; k < 200; k++) w.spawnProjectile(ID.NEUTRON, 5.5, 5 + (k % 20) + 0.5, 2, 0);
-    let through = 0;
-    run(w, 60, () => {
-      for (let k = 0; k < w.pn; k++) if (w.ptype[k] === ID.NEUTRON && w.px[k] > 50) through++;
+    let back = 0, through = 0;
+    run(w, 40, () => {
+      for (let k = 0; k < w.pn; k++) {
+        if (w.ptype[k] !== ID.NEUTRON) continue;
+        if (w.pvx[k] < 0) back++;
+        if (w.px[k] > 50) through++;
+      }
     });
-    return through;
+    let heat = 0;
+    for (let i = 0; i < w.type.length; i++) if (w.type[i] === shield) heat += w.temp[i] - 22;
+    return { back, through, heat };
   };
-  assert.ok(shoot(ID.STONE) > shoot(ID.LEAD) * 5, 'far more neutrons get through stone than lead');
+  const stone = shoot(ID.STONE), lead = shoot(ID.LEAD);
+  assert.equal(stone.through, 0, 'nothing gets through stone');
+  // Lead soaks up about a third of the neutrons that hit it.
+  assert.ok(stone.back > lead.back * 1.3, `stone sends more of them back (${stone.back} vs ${lead.back})`);
+  assert.ok(stone.heat > 200 * 100, `the stone took a battering (${stone.heat.toFixed(0)} °C in all)`);
+});
+
+test('a neutron beam knocks pieces loose from a wall of stone', () => {
+  const w = makeWorld(100, 30);
+  fillRect(w, 40, 0, 49, 29, ID.STONE);
+  run(w, 60, () => {
+    for (let k = 0; k < 10; k++) w.spawnProjectile(ID.NEUTRON, 5.5, 10 + k + 0.5, 2, 0);
+  });
+  let loose = 0;
+  for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.STONE && w.loose[i]) loose++;
+  assert.ok(loose > 5, `${loose} pieces knocked loose`);
 });
 
 // A 20x20 uranium pile with rods of something between the columns, started
@@ -146,7 +167,8 @@ test('a burst of neutrons sets radioactive atoms off', () => {
   const decayed = polonium(300, (w, f) => {
     if (f < 60) for (let k = 0; k < 4; k++) w.spawnProjectile(ID.NEUTRON, 2.5 + k * 9, 20.5, 0.3, 2);
   });
-  assert.ok(decayed > 10, `${decayed} decayed after the neutrons went through`);
+  const rest = polonium(300); // the same, left alone
+  assert.ok(decayed > rest + 5, `${decayed} decayed after the neutrons went through, ${rest} left alone`);
 });
 
 test('antimatter annihilates what it touches but stays sealed in by wall', () => {

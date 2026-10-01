@@ -274,9 +274,13 @@ Each frame (60 per second):
      pressure. So does any metal with glass (or another clear solid, such as
      quartz or ice) in front of it: light that reaches it through the glass
      always bounces, while bare metal soaks up some of it and warms.
-   - Neutrons pass through most things, are soaked up by lead, boron and
-     wall, and are slowed by graphite, heavy water and plastic. Slow neutrons
-     split uranium three times as readily as fast ones.
+   - Neutrons fly through gases, radioactive elements (uranium, plutonium,
+     radium...) and moderators (graphite, heavy water, which slow them), but
+     bounce off anything else solid, powdery or liquid, and every bounce
+     batters what they hit: it heats up (about 300 °C), the air kicks, a
+     solid may have a piece knocked loose as debris, and a loose grain or
+     drop is shoved along. Lead and boron soak them up. Slow neutrons split
+     uranium three times as readily as fast ones.
    - Protons fly straight through matter too, as in The Powder Toy, each
      carrying its own temperature: every cell one passes through moves a
      quarter of the way to it, and a proton hotter than 500 °C sets fuel and
@@ -344,6 +348,9 @@ once started depends on its size and what surrounds it:
   hot, because slowed neutrons split atoms more easily. That's how the first
   reactor worked.
 - Swap some rods for **boron** and it shuts down again.
+- Neutrons pass through radioactive elements and graphite, but bounce off
+  most other things, so a pile walled in with stone or metal keeps its
+  neutrons in (a neutron reflector) and runs hotter.
 - **Plutonium** behaves as it does in The Powder Toy. A ball of a few hundred
   grains sits there quietly until a neutron gets in. Then every split throws
   out three neutrons and a proton, heats what's left to 9999 °C and adds a

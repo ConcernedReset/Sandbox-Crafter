@@ -461,7 +461,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'NEUTRON', name: 'Neutron', sym: 'n', cat: 'particle', state: ENERGY, projectile: 'neutron',
     colors: ['#b9b0ff'], speed: 2, life: [80, 120],
-    desc: 'Passes through most matter. Splits uranium and plutonium. Decays after a few seconds.',
+    desc: 'Flies through gases, radioactive elements and graphite, but bounces off anything else, battering it with heat and pressure and knocking pieces loose. Splits uranium and plutonium, and is soaked up by lead and boron. Decays after a few seconds.',
     hint: 'Fire Protons at Metal.',
   },
   {

@@ -14,18 +14,29 @@
 //
 // Mixed into World.prototype; `initParticles` sets up the storage.
 
-import { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL } from './elements.js';
+import { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL, State } from './elements.js';
 import { MAX_TEMP, MIN_TEMP, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } from './constants.js';
 import { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED } from './lookups.js';
 import { LENS } from './gravity.js';
 
 const PASS = 0, DEAD = 1, BOUNCE = 2;
+const { SOLID } = State;
 const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
 const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO } = ID;
 // A proton hotter than this sets fuel and explosives alight as it passes.
 const PROTON_IGNITES = 500;
 const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
+// What neutrons bounce off: anything solid, powdery or liquid, except
+// radioactive elements and moderators (graphite, heavy water), which they
+// pass through as they always did, so a reactor pile still needs its
+// moderator to run and a pinch of plutonium still fizzles.
+const NEUTRON_STOPS = Uint8Array.from(DEFS, (d) => (d.id !== 0 && !d.projectile && !GASLIKE[d.id]
+  && d.cat !== 'nuclear' && !d.moderator ? 1 : 0));
+// Chance a neutron bouncing off a solid knocks that piece loose as debris,
+// and how much of its velocity it hands to a loose grain or drop it hits.
+const NEUTRON_KNOCK = 0.12;
+const NEUTRON_SHOVE = 0.3;
 // Photon tints that a clear material recolours: plain light, and light
 // already coloured by another clear material.
 const FILTERED = Uint8Array.from(DEFS, (d) => (d.id === 0 || (d.transparent && d.light === null) ? 1 : 0));
@@ -273,6 +284,11 @@ export const Particles = {
         return PASS;
       }
       case PMODE.neutron: {
+        // Neutrons go through gases, radioactive elements and moderators
+        // (graphite and heavy water slow them), but bounce off anything else
+        // solid, powdery or liquid, battering it (see batter). Lead and boron
+        // soak them up.
+        if (GASLIKE[u]) return PASS;
         if (e.moderator) {
           const v2 = this.pvx[k] * this.pvx[k] + this.pvy[k] * this.pvy[k];
           if (v2 > 1.05) {
@@ -282,7 +298,10 @@ export const Particles = {
           }
         }
         if (e.nAbsorb > 0 && this.rand() < e.nAbsorb) return this.impact(j, lx, ly, d);
-        return PASS;
+        if (!NEUTRON_STOPS[u]) return PASS; // radioactive elements and moderators
+        this.batter(k, j, e, lx, ly, d);
+        this.bounce(k, ix, iy, lx, ly, NEUTRON_STOPS);
+        return BOUNCE;
       }
       case PMODE.positron:
         if (GASLIKE[u]) return PASS;
@@ -354,6 +373,21 @@ export const Particles = {
     if (d.hitHeat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + d.hitHeat);
     if (d.hitPressure) this.air.addPressure(this.air.at(x, y), d.hitPressure);
     return DEAD;
+  },
+
+  // A neutron bounces off cell j (element e), coming from (lx, ly): the cell
+  // heats up, the air kicks, a solid piece may be knocked loose as debris,
+  // and a loose grain or drop is shoved along.
+  batter(k, j, e, lx, ly, d) {
+    if (e.indestructible) return;
+    this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + d.hitHeat);
+    this.air.addPressure(this.air.at(lx, ly), d.hitPressure);
+    if (e.state === SOLID) {
+      if (e.strength > 0 && this.loose[j] === 0 && this.rand() < NEUTRON_KNOCK) this.loose[j] = 1;
+    } else {
+      this.vx[j] += this.pvx[k] * NEUTRON_SHOVE;
+      this.vy[j] += this.pvy[k] * NEUTRON_SHOVE;
+    }
   },
 
   applyHit(k, r, j, ix, iy, lx, ly) {

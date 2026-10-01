@@ -125,7 +125,11 @@ else; `test/build.test.js` checks the bundle runs.
   make splits likelier under pressure (`boost`), set what's left to the
   maximum temperature (`hot`) and throw out protons. Flying particles have a
   temperature (`ptemp`, set from the cell they came from); protons pass
-  through matter and pull what they pass towards it.
+  through matter and pull what they pass towards it. Neutrons bounce off
+  anything that isn't a gas, a radioactive element or a moderator
+  (`NEUTRON_STOPS`) and `batter` it: heat, a pressure kick, a chance to
+  knock a solid loose. Passing through fuel and moderators keeps the reactor
+  puzzle (graphite to run a pile, boron to stop it).
 - **Pressure moves phase changes.** `HIGH_PHASE`/`LOW_PHASE` (lookups.js)
   say whether a transition is boiling-like or melting-like; `Air.phaseFactors`
   works out a factor per block each frame (sealed blocks take it from the air
