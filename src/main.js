@@ -28,6 +28,7 @@ const game = {
   brush: 4,
   brushShape: 'circle',
   paused: false,
+  replace: false, // painting overwrites what's in the way
   select(sel) {
     this.selection = sel;
     ui.renderPalette();
@@ -163,6 +164,12 @@ function setView(view) {
   }
 }
 
+// Replace: painting overwrites whatever is in the way.
+function setReplace(on) {
+  game.replace = on;
+  $('btn-replace').setAttribute('aria-pressed', String(on));
+}
+
 // ---- zoom -----------------------------------------------------------------
 
 // Zoom in or out a step, towards the pointer if it's over the world.
@@ -209,6 +216,7 @@ function dismissTip() {
 $('btn-pause').addEventListener('click', () => setPaused(!game.paused));
 $('btn-step').addEventListener('click', stepOnce);
 $('btn-clear').addEventListener('click', () => world.clearAll());
+$('btn-replace').addEventListener('click', () => setReplace(!game.replace));
 for (const b of document.querySelectorAll('[data-shape]')) {
   b.addEventListener('click', () => {
     game.brushShape = b.dataset.shape;
@@ -268,6 +276,7 @@ document.addEventListener('keydown', (e) => {
     case '1': setView('normal'); break;
     case '2': setView('heat'); break;
     case '3': setView('pressure'); break;
+    case 'r': case 'R': setReplace(!game.replace); break;
     case '=': case '+': zoomStep(1); break;
     case '-': case '_': zoomStep(-1); break;
     case '0': camera.zoomTo(1); break;

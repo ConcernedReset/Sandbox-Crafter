@@ -126,6 +126,13 @@ else; `test/build.test.js` checks the bundle runs.
   maximum temperature (`hot`) and throw out protons. Flying particles have a
   temperature (`ptemp`, set from the cell they came from); protons pass
   through matter and pull what they pass towards it.
+- **Pressure moves phase changes.** `HIGH_PHASE`/`LOW_PHASE` (lookups.js)
+  say whether a transition is boiling-like or melting-like; `Air.phaseFactors`
+  works out a factor per block each frame (sealed blocks take it from the air
+  around them), and `World.phaseTemp` applies it in `update`. With no
+  pressure every factor is exactly 1, so thresholds are unchanged.
+- **Replace** is `world.replace`, set from the game state by input.js
+  before each stroke; `paintArea` overwrites occupied cells when it's on.
 - **Light speed** in clear materials is `LIGHT_SPEED` in lookups.js (1 over
   the refractive index), applied to photons and ultraviolet each frame.
 - **Balance numbers live in tests.** If you retune physics (pressure, particle

@@ -18,12 +18,14 @@
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
-import { Air, CELL, AIR_SHARE } from './air.js';
+import { Air, CELL, AIR_SHARE, BOIL_LOWEST, PHASE_HIGHEST } from './air.js';
 import { DEFS, ID, NUM, State, AMBIENT, REACT } from './elements.js';
 import {
   MAX_TEMP, MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY,
 } from './constants.js';
-import { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS } from './lookups.js';
+import {
+  COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS, HIGH_PHASE, LOW_PHASE, PHASE_BOIL,
+} from './lookups.js';
 import { Behaviors, SNUFF_AT } from './behaviors.js';
 import { Particles, initParticles } from './particles.js';
 import { Machines, initMachines } from './machines.js';
@@ -67,6 +69,7 @@ export class World {
     this.count = 0;
     this.blockedMoving = false;
     this.brushShape = 'circle';
+    this.replace = false; // painting overwrites what's in the way
     initParticles(this);
     initMachines(this);
   }
@@ -263,6 +266,7 @@ export class World {
     const { w, h, type, clock, air, loose } = this;
     const tick = ++this.tick;
     this.stepGravity();
+    air.phaseFactors(); // the pressure as it stands now moves boiling and melting points
     // Particles read last frame's complete blocked map while this frame's is built.
     const next = air.next;
     next.fill(0);
@@ -336,9 +340,15 @@ export class World {
       return;
     }
 
+    // Phase changes, at temperatures the air pressure here moves (air.js).
     const T = this.temp[i];
     const hi = d.high;
-    if (hi !== null && T >= hi.temp && this.rand() < hi.chance) {
+    let hiT = hi === null ? 0 : hi.temp;
+    const hk = HIGH_PHASE[t];
+    if (hk !== 0 && T >= hiT + (hiT + 273) * (hk === PHASE_BOIL ? BOIL_LOWEST - 1 : 0)) {
+      hiT = this.phaseTemp(hiT, hk, x, y);
+    }
+    if (hi !== null && T >= hiT && this.rand() < hi.chance) {
       if (hi.alt >= 0 && this.rand() < hi.altChance) {
         this.convert(i, hi.alt, true, hi.altRule);
       } else {
@@ -351,7 +361,9 @@ export class World {
     if (lo !== null) {
       // Molten metal sets back into whichever metal it was.
       const was = lo.restore ? this.ctype[i] : 0;
-      const limit = was ? DEFS[was].high.temp - 40 : lo.temp;
+      let limit = was ? DEFS[was].high.temp - 40 : lo.temp;
+      const lk = LOW_PHASE[t];
+      if (lk !== 0 && T <= limit + (limit + 273) * (PHASE_HIGHEST - 1)) limit = this.phaseTemp(limit, lk, x, y);
       if (T <= limit && this.rand() < lo.chance) {
         if (was) this.convert(i, was, true, -1);
         else if (lo.alt >= 0 && this.rand() < lo.altChance) this.convert(i, lo.alt, true, lo.altRule);
@@ -390,6 +402,15 @@ export class World {
       case SOLID: if (this.loose[i]) this.movePowder(i, x, y, d); break;
       default: break;
     }
+  }
+
+  // The temperature a phase change of kind `kind` (lookups.js) happens at
+  // here, given that it happens at `temp` in normal air (see
+  // Air.phaseFactors).
+  phaseTemp(temp, kind, x, y) {
+    const air = this.air;
+    const k = (kind === PHASE_BOIL ? air.boil : air.melt)[air.at(x, y)];
+    return temp + (temp + 273) * (k - 1);
   }
 
   // Pressure tears exposed solid particles loose. Each solid has a strength
@@ -1018,7 +1039,13 @@ export class World {
         if (PRESSABLE[u]) { this.press(i); return; }
         if (POWERED[u] || (u === 0 && this.doorTimer[i] !== 0)) { this.powerCell(i); return; }
       }
-      if (u === 0 && (density >= 1 || this.rand() < density)) this.spawn(i, t);
+      // With Replace on, whatever is in the way is overwritten (but painting
+      // an element over itself leaves it be).
+      if (u !== 0 && (!this.replace || u === t)) return;
+      if (density >= 1 || this.rand() < density) {
+        if (u !== 0) this.clearCell(i);
+        this.spawn(i, t);
+      }
     });
   }
 

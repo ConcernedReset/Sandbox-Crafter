@@ -50,6 +50,27 @@ for (const d of DEFS) {
 }
 LIGHT_SPEED[ID.DIAMOND] = 0.41;
 
+// Which of an element's phase changes air pressure moves (see air.js):
+// boiling and condensing (to or from a gas), melting and freezing (solid
+// to liquid and back). Chemical changes and anything to or from energy
+// don't move.
+export const PHASE_BOIL = 1;
+export const PHASE_MELT = 2;
+function phaseKind(from, to) {
+  const { POWDER, LIQUID } = State;
+  const solidish = (s) => s === SOLID || s === POWDER;
+  if ((solidish(from) || from === LIQUID) && to === GAS) return PHASE_BOIL;
+  if (from === GAS && (solidish(to) || to === LIQUID)) return PHASE_BOIL;
+  if ((solidish(from) && to === LIQUID) || (from === LIQUID && solidish(to))) return PHASE_MELT;
+  return 0;
+}
+export const HIGH_PHASE = new Uint8Array(NUM);
+export const LOW_PHASE = new Uint8Array(NUM);
+for (const d of DEFS) {
+  if (d.high) HIGH_PHASE[d.id] = phaseKind(d.state, DEFS[d.high.to].state);
+  if (d.low) LOW_PHASE[d.id] = d.low.restore ? PHASE_MELT : phaseKind(d.state, DEFS[d.low.to].state);
+}
+
 // Mass for Newtonian gravity: an element's density, except that walls,
 // energy and flying particles weigh nothing, a few cosmic objects weigh a
 // great deal, and a White Hole pushes instead of pulling.

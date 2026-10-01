@@ -6,7 +6,7 @@ import {
   DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor, halfLife,
 } from '../sim/elements.js';
 import { TOOLS, HEAT_RATE } from './input.js';
-import { AIRTIGHT } from '../sim/lookups.js';
+import { AIRTIGHT, HIGH_PHASE, LOW_PHASE } from '../sim/lookups.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -207,8 +207,9 @@ export class UI {
     const solidish = d.state === State.SOLID || d.state === State.ENERGY;
     if (!solidish && !d.projectile) facts.push(`Density <b>${d.density}</b>`);
     if (d.temp !== 22 && !d.projectile) facts.push(`Starts at <b>${fmtTemp(d.temp)}</b>`);
-    if (d.high) facts.push(`Changes above <b>${fmtTemp(d.high.temp)}</b>`);
-    if (d.low && !d.low.restore) facts.push(`Changes below <b>${fmtTemp(d.low.temp)}</b>`);
+    const normal = (kind) => (kind ? ' at normal pressure' : '');
+    if (d.high) facts.push(`Changes above <b>${fmtTemp(d.high.temp)}</b>${normal(HIGH_PHASE[d.id])}`);
+    if (d.low && !d.low.restore) facts.push(`Changes below <b>${fmtTemp(d.low.temp)}</b>${normal(LOW_PHASE[d.id])}`);
     if (d.flammable > 0 && d.ignite < 5000) facts.push(`Ignites at <b>${fmtTemp(d.ignite)}</b>`);
     if (d.explode > 0) facts.push('<b>Explosive</b>');
     if (d.pressure) facts.push(`Gives way above pressure <b>${d.pressure.above}</b>`);

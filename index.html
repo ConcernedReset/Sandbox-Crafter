@@ -33,6 +33,10 @@
         <button type="button" role="radio" aria-checked="false" data-view="heat" title="Temperature view (2)">Heat</button>
         <button type="button" role="radio" aria-checked="false" data-view="pressure" title="Air pressure view (3)">Pressure</button>
       </div>
+      <button class="btn" id="btn-replace" type="button" aria-pressed="false" title="Replace: painting overwrites whatever is in the way (R)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h8v3H5v5H2zM6 6h8v8H6z"/></svg>
+        <span>Replace</span>
+      </button>
       <button class="btn" id="btn-clear" type="button" title="Remove every particle">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h6l1 2h3v2H1V4h3zM3 7h10l-1 8H4z"/></svg>
         <span>Clear</span>
@@ -60,6 +64,7 @@
             <div><kbd>Shift</kbd>-drag a line</div>
             <div><kbd>Ctrl</kbd>-drag a box</div>
             <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> views</div>
+            <div><kbd>R</kbd> replace what you paint over</div>
             <div><kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>0</kbd> reset</div>
             <div><kbd>Ctrl</kbd>-scroll or pinch to zoom</div>
             <div>Arrows or middle-drag to pan</div>
@@ -72,6 +77,7 @@
 
   <main class="stage">
     <section class="chamber" aria-label="Simulation">
+      <div class="inspect" id="inspect" aria-live="polite"></div>
       <div class="screen">
         <div class="viewport" id="viewport">
           <canvas id="world" aria-label="Sandbox. Drag to paint with the selected element or tool."></canvas>
@@ -146,7 +152,6 @@
           </button>
         </div>
       </section>
-      <div class="inspect" id="inspect" aria-live="polite"></div>
     </section>
 
     <aside class="panel" aria-label="Elements">

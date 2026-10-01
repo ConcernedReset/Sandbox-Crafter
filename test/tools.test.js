@@ -46,3 +46,26 @@ test('particles hit hard: they heat what stops them and kick up air pressure', (
   assert.ok(photon.heat > 16 * 100, `16 photons put ${photon.heat.toFixed(0)} °C of heat into the stone`);
   assert.ok(alpha.heat > 16 * 300 && alpha.peak > 2, `alpha particles: ${JSON.stringify(alpha)}`);
 });
+
+test('Replace paints over whatever is in the way; without it, only empty cells are painted', () => {
+  const paint = (replace) => {
+    const w = makeWorld(40, 40);
+    fillRect(w, 15, 15, 24, 24, ID.WALL);
+    fillRect(w, 10, 10, 29, 29, ID.SAND);
+    w.replace = replace;
+    w.paintArea((fn) => w.forRect(5, 5, 34, 34, fn), ID.STONE);
+    return w;
+  };
+  const off = paint(false), on = paint(true);
+  assert.equal(countOf(off, ID.SAND), 300, 'sand left alone');
+  assert.equal(countOf(off, ID.WALL), 100, 'wall left alone');
+  assert.equal(countOf(on, ID.SAND) + countOf(on, ID.WALL), 0, 'sand and wall replaced');
+  assert.equal(countOf(on, ID.STONE), 30 * 30);
+  // Painting an element over itself leaves it be (it keeps its temperature).
+  const w = makeWorld(20, 20);
+  fillRect(w, 5, 5, 9, 9, ID.STONE);
+  w.temp[7 * 20 + 7] = 500;
+  w.replace = true;
+  w.paintArea((fn) => w.forRect(0, 0, 19, 19, fn), ID.STONE);
+  assert.equal(w.temp[7 * 20 + 7], 500);
+});

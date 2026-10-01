@@ -14,12 +14,25 @@ There are also machines to build with: switches, buttons, clocks and sensors
 driving doors, lamps, laser emitters, heaters and more (see
 [Machines and circuits](#machines-and-circuits)).
 
-The physics is modelled on [The Powder Toy](https://powdertoy.co.uk/).
+The physics is modelled on [The Powder Toy](https://powdertoy.co.uk/): sand
+piles, liquids level out, air pressure builds and tears things apart, fire
+uses up the air, and plutonium goes off like a Powder Toy nuke. A
+[Physics panel](#physics-panel) lets you turn gravity any way you like, make
+it stronger or switch it off, turn on Newtonian gravity (mass pulls on mass)
+and convection (hot air rises in loops), and air pressure moves boiling and
+melting points: water boils away in a vacuum. Under the game, a
+[recipe tree](#how-to-play) maps everything you've found and what's still
+waiting.
 
 ## Running it
 
-It's plain JavaScript with no dependencies and no build step. ES modules don't
-load from `file://`, so serve the folder:
+The quickest way to play is the ready-built single file in the repository:
+download `dist/sandbox-crafter.html` and open it in a browser. Your
+progress is saved in that browser.
+
+The source is plain JavaScript with no dependencies, and no build step is
+needed to work on it. ES modules don't load from `file://`, so serve the
+folder:
 
 ```sh
 npm start          # http://localhost:8080 (set PORT to change)
@@ -34,8 +47,8 @@ npm run build      # writes dist/sandbox-crafter.html
 ```
 
 That one HTML file has the stylesheet and every module inlined, so it runs
-straight from disk: double-click it, or send it to someone. Rebuild after
-changing the code. (Without an internet connection the Google fonts fall
+straight from disk: double-click it, or send it to someone. It's committed
+to the repository, so rebuild it before committing code changes. (Without an internet connection the Google fonts fall
 back to system ones; progress is saved per file location.)
 
 ## How to play
@@ -49,12 +62,15 @@ back to system ones; progress is saved per file location.)
   pinch on a trackpad), or a two-finger pinch on a touch screen. It zooms
   towards the pointer, up to 12×. Pan with the arrow keys, a middle-button
   drag or two fingers, or drag the little map that appears while zoomed in.
-- The panel under the simulation describes the selected element or tool.
+- The strip above the simulation describes the selected element or tool.
+- **Replace** (next to the view buttons, or `R`): while it's on, painting
+  overwrites whatever is in the way, Wall included, instead of only filling
+  empty space. Painting an element over itself leaves it alone.
 - **Tools:** Erase, Wall (indestructible and airtight), Heat, Cool, Wind (drag
   to blow), Pressure and Vacuum.
 - **Views:** Normal, Heat (a thermal camera) and Pressure (the air grid).
 - **Keys:** `Space` pause, `.` step one frame, `[` `]` brush size, `1` `2` `3` views,
-  `+` `-` `0` zoom, arrows pan.
+  `R` replace, `+` `-` `0` zoom, arrows pan.
 - The **Recipe tree** under the simulation shows everything you've found,
   each element linked to what it's made from with the process written under
   the line. Elements you have the ingredients for appear as **?**, linked to
@@ -69,6 +85,20 @@ back to system ones; progress is saved per file location.)
   use **Whole tree** to go back.
 - Discoveries are saved in your browser. The `⋯` menu has a free-play mode
   that unlocks everything, and a reset.
+
+There are eight ways to combine things (the tree calls contact Mix, and
+particle hits Bombard or Collide):
+
+| Method   | Example                                          |
+| -------- | ------------------------------------------------ |
+| Contact  | Dirt touching Water becomes Mud                  |
+| Heat     | Sand above 1700 °C melts into Molten Glass       |
+| Cold     | Water below 0 °C freezes into Ice                |
+| Pressure | Wood crushed in a sealed Wall box becomes Coal   |
+| Fire     | Burning Wood leaves Ash and Smoke (fire needs air) |
+| Time     | A Plant that grows thick enough turns woody      |
+| Decay    | Squeezed or bombarded, Radium decays into Radon  |
+| Particles | A Neutron splits Uranium; light knocks Electrons out of Metal |
 
 ### Physics panel
 
@@ -102,20 +132,6 @@ The strip between the status line and the recipe tree changes the rules:
   gravity off, convection on (how the game starts). The settings are
   remembered in your browser.
 
-There are eight ways to combine things (the tree calls contact Mix, and
-particle hits Bombard or Collide):
-
-| Method   | Example                                          |
-| -------- | ------------------------------------------------ |
-| Contact  | Dirt touching Water becomes Mud                  |
-| Heat     | Sand above 1700 °C melts into Molten Glass       |
-| Cold     | Water below 0 °C freezes into Ice                |
-| Pressure | Wood crushed in a sealed Wall box becomes Coal   |
-| Fire     | Burning Wood leaves Ash and Smoke (fire needs air) |
-| Time     | A Plant that grows thick enough turns woody      |
-| Decay    | Squeezed or bombarded, Radium decays into Radon  |
-| Particles | A Neutron splits Uranium; light knocks Electrons out of Metal |
-
 ## How the physics works
 
 Like The Powder Toy, the world is a grid (400 × 240) where each cell holds at
@@ -129,7 +145,7 @@ Each frame (60 per second):
    ("Bottom" is wherever gravity points: the scan starts from that end.)
    - *Powders* fall, accelerate, and slide off slopes diagonally, so they pile up.
    - *Liquids* fall, then flow sideways, and remember their flow direction.
-   - *Gases* random-walk with a buoyant bias upward.
+   - *Gases* random-walk with a buoyant bias against gravity.
    - Anything heavier sinks through lighter liquids and gases (sand sinks in
      water, oil floats on it, steam bubbles up through it).
    - Particles are pushed by the air and can be flung by explosions.
@@ -174,6 +190,17 @@ Each frame (60 per second):
    much warmer it is than the air around it (so air that has cooled below its
    surroundings sinks), is carried along by the wind, and loses its heat to
    the room. The loop this makes is the convection current.
+
+   **Pressure moves boiling and melting points.** Ten units of pressure
+   count as one atmosphere. Boiling points follow the chemists' rule of
+   thumb (Trouton's rule), so water boils at about 150 °C at +30 and at
+   around 270 °C at the limit, and in a deep vacuum it boils away at room
+   temperature; steam condenses at the matching temperature, so the two
+   don't flip back and forth. Melting points rise more gently under pressure
+   (metal at +150 melts about 230 °C later) and don't fall in a vacuum.
+   Solids feel the pressure of the air around them, all the way through.
+   Chemical changes, burning and ignition don't move. An element's card says
+   "at normal pressure" where this applies.
 
    Strong solids are airtight too. Anything with a strength of 25 or more
    that isn't itself explosive (glass, stone, metals, gems...) seals any air
@@ -463,11 +490,16 @@ box and hot fuel relighting once air gets back in. The pressure tests cover blas
 wood before stone before metal, hot metal tearing where cold metal holds,
 debris falling, strong shells holding air while wood leaks, a pumped vessel
 bursting once the pressure passes its strength, and a charge sealed in steel
-blowing the shell apart. The radiation tests cover light, neutron
-shielding, reactor criticality, the plutonium blast, magnets, decay, and
-radioactive elements staying still until pressure or particles disturb them.
-The tools tests cover brush shapes, boxes and particle impacts, and the camera
-tests cover zooming and panning. The tree tests cover which elements the
+blowing the shell apart. The radiation tests cover light (including how it slows in water, glass and
+diamond), neutron shielding, reactor criticality, a plutonium ball tearing
+open the stone around it while a pinch only pops, hot protons heating and
+lighting what they pass through, colliding protons making neutrons, magnets,
+decay, and radioactive elements staying still until pressure or particles
+disturb them.
+The tools tests cover brush shapes, boxes, Replace and particle impacts, and
+the camera tests cover zooming and panning. The Physics panel tests cover
+reading the strength box, turning the dial and saving the settings; the
+build test checks the single-file build runs. The tree tests cover which elements the
 recipe tree shows, one connection into each, columns, overlap, free play and
 process names. The machine tests
 cover coloured reflections and coloured glass, mirrors of metal behind glass, beams turned by
@@ -480,14 +512,17 @@ weak and strong gravity, gases rising against the arrow, fireworks, trees
 and rain following it, and the general movement code matching the fast
 straight-down path exactly. The Newtonian tests check the FFT field against
 a direct sum, that nothing is built while it's off, that mass pulls sand in
-and a White Hole pushes, and that light bends. The convection tests cover a
+and a White Hole pushes, and that light bends. The phase tests cover water
+boiling away in a vacuum, staying liquid past 100 °C in a pressure cooker,
+and metal that won't melt under heavy pressure. The convection tests cover a
 rising plume, the plume turning with the arrow, air flowing in at its base,
 the hot block cooling, the pressure rising in a heated sealed box and
 settling once it cools, hot air pushing out and being drawn back in the open,
 a full loop in a closed box (markers carried up come
 back down to the base), the Heat and Cool tools warming and chilling the
 air, and a sealed fire still going out. The recipe tests
-run all 1200 production rules in the real simulation.
+run all 1200 production rules in the real simulation. About 1,330 tests in
+all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.

@@ -14,8 +14,9 @@
   --brass: #d9a441;
   --brass-soft: rgba(217, 164, 65, 0.14);
   --chamber: #0a0c10;
-  /* The simulation keeps its 5:3 shape and leaves room below for the HUD and the Physics strip. */
-  --screen-w: calc((100dvh - 310px) * 5 / 3);
+  /* The simulation keeps its 5:3 shape and leaves room for the description
+     strip above it and the HUD and Physics strip below. */
+  --screen-w: calc((100dvh - 340px) * 5 / 3);
   --danger: #e76a4d;
 
   --cat-powder: #d8b36a;
@@ -585,25 +586,28 @@ kbd {
 .search input:focus-visible { outline: 2px solid var(--brass); outline-offset: 0; border-color: transparent; }
 .empty-search { margin: 0; font-size: 13px; color: var(--muted); }
 
+/* The selected element or tool, in a strip above the game: name on the
+   left, description and facts beside it. */
 .inspect {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 16px;
+  align-items: start;
   width: 100%;
   max-width: var(--screen-w);
   min-width: min(100%, 320px);
   margin-inline: auto;
-  padding: 12px 14px;
+  padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
 }
-.inspect-head { display: flex; align-items: center; gap: 10px; }
-.inspect-title { font: 700 17px/1.1 var(--font-display); }
+.inspect-head { grid-row: 1 / span 2; display: flex; align-items: center; gap: 10px; min-width: 150px; }
+.inspect-title { font: 700 16px/1.1 var(--font-display); }
 .inspect-sub { font-size: 12px; color: var(--muted); }
-.inspect p { margin: 0; font-size: 13px; max-width: 60ch; }
+.inspect p { margin: 0; font-size: 12.5px; line-height: 1.4; max-width: 90ch; }
 .facts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
-.facts li { font: 11.5px/1.5 var(--font-mono); color: var(--muted); }
+.facts li { font: 11px/1.45 var(--font-mono); color: var(--muted); }
 .facts b { color: var(--text); font-weight: 500; }
 
 /* ---- physics panel ---------------------------------------------------- */
@@ -796,7 +800,7 @@ kbd {
   .controls { width: 100%; }
   .btn span { display: none; }
   .btn { padding: 0 9px; }
-  .segmented { flex: 1; }
+  .segmented { flex: 1 1 100%; order: 1; } /* its own row under the buttons */
   .segmented button { flex: 1; padding: 0 6px; }
   .tip { position: static; max-width: none; margin-top: 8px; font-size: 12.5px; }
   .tools { grid-template-columns: repeat(4, 1fr); }
@@ -804,6 +808,8 @@ kbd {
   .zoom button { min-width: 28px; height: 26px; padding: 0 6px; }
   .viewport .minimap { right: 8px; bottom: 42px; width: 80px; height: 48px; }
   .tree-help { display: none; }
+  .inspect { grid-template-columns: minmax(0, 1fr); }
+  .inspect-head { grid-row: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

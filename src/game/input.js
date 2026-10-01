@@ -194,6 +194,7 @@ export class Input {
     if (!this.down) return;
     const world = this.getWorld();
     world.brushShape = this.state.brushShape;
+    world.replace = this.state.replace;
     const area = this.strokeArea(world, this.lastX, this.lastY, this.x, this.y);
     this.act(world, area, this.x - this.lastX, this.y - this.lastY, this.erasing);
     this.lastX = this.x;
@@ -224,6 +225,7 @@ export class Input {
   commitShape(shape) {
     const world = this.getWorld();
     world.brushShape = this.state.brushShape;
+    world.replace = this.state.replace;
     const { x0, y0 } = shape, x1 = this.x, y1 = this.y;
     const area = shape.kind === 'box'
       ? (fn) => world.forRect(x0, y0, x1, y1, fn)

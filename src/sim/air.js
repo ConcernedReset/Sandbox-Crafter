@@ -46,6 +46,23 @@ const VELOCITY_LOSS = 0.995;
 const SMOOTHING = 0.15;
 const MAX_PRESSURE = 256;
 
+// Pressure moves boiling and melting points. ATM pressure units make one
+// atmosphere (0 is normal air). A boiling point, in kelvin, is divided by
+// 1 - ln(P) / TROUTON, P in atmospheres (Trouton's rule, near enough for
+// most liquids): water boils at about 150 °C at +30 and below room
+// temperature in a deep vacuum. Melting points rise more gently under
+// pressure (MELT_STIFF in place of TROUTON) and don't fall in a vacuum.
+// `boil` and `melt` hold the factor for each block, worked out once a
+// frame; with no pressure both are exactly 1.
+const ATM = 10;
+const P_MIN = 0.01; // the deepest vacuum, in atmospheres
+const TROUTON = 10.5;
+const MELT_STIFF = 25;
+const PHASE_DEADBAND = 0.25; // pressure this close to normal counts as normal (under 1 °C off)
+// How far a boiling point can fall, and any phase change can rise.
+export const BOIL_LOWEST = 1 / (1 - Math.log(P_MIN) / TROUTON);
+export const PHASE_HIGHEST = 1 / (1 - Math.log(1 + MAX_PRESSURE / ATM) / TROUTON);
+
 export class Air {
   constructor(cols, rows) {
     this.cols = cols;
@@ -63,6 +80,8 @@ export class Air {
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
     this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature already counted in p
     this.heat = false;
+    this.boil = new Float32Array(n).fill(1); // boiling point factor (see ATM)
+    this.melt = new Float32Array(n).fill(1); // melting point factor
   }
 
   // Index of the air block that contains world cell (x, y).
@@ -147,6 +166,46 @@ export class Air {
     }
 
     if (this.heat) this.stepHeat(gravity.gx, gravity.gy);
+
+  }
+
+  // How the pressure in each block moves boiling and melting points. Sealed
+  // blocks (inside a solid, or with a wall through them) have no air of
+  // their own, but what's in them is squeezed by the air around: they take
+  // the strongest effect from their neighbours, spread a few sweeps deep.
+  phaseFactors() {
+    const { p, boil, melt, blocked, W } = this;
+    const n = p.length;
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const v = p[i];
+      if ((v < PHASE_DEADBAND && v > -PHASE_DEADBAND) || blocked[i]) { boil[i] = 1; melt[i] = 1; continue; }
+      any = true;
+      const P = 1 + v / ATM;
+      const l = Math.log(P > P_MIN ? P : P_MIN);
+      boil[i] = 1 / (1 - l / TROUTON);
+      melt[i] = l > 0 ? 1 / (1 - l / MELT_STIFF) : 1;
+    }
+    if (!any) return;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = W; i < n - W; i++) if (blocked[i]) this.squeeze(i);
+      for (let i = n - W - 1; i >= W; i--) if (blocked[i]) this.squeeze(i);
+    }
+  }
+
+  // A sealed block takes the furthest-from-normal factors beside it.
+  squeeze(i) {
+    const W = this.W;
+    this.squeezeFrom(i, i - 1);
+    this.squeezeFrom(i, i + 1);
+    this.squeezeFrom(i, i - W);
+    this.squeezeFrom(i, i + W);
+  }
+
+  squeezeFrom(i, b) {
+    const { boil, melt } = this;
+    if (Math.abs(boil[b] - 1) > Math.abs(boil[i] - 1)) boil[i] = boil[b];
+    if (melt[b] > melt[i]) melt[i] = melt[b];
   }
 
   // The average temperature of the open air within MEAN_RADIUS blocks of

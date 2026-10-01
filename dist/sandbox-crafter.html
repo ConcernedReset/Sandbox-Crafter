@@ -24,8 +24,9 @@
   --brass: #d9a441;
   --brass-soft: rgba(217, 164, 65, 0.14);
   --chamber: #0a0c10;
-  /* The simulation keeps its 5:3 shape and leaves room below for the HUD and the Physics strip. */
-  --screen-w: calc((100dvh - 310px) * 5 / 3);
+  /* The simulation keeps its 5:3 shape and leaves room for the description
+     strip above it and the HUD and Physics strip below. */
+  --screen-w: calc((100dvh - 340px) * 5 / 3);
   --danger: #e76a4d;
 
   --cat-powder: #d8b36a;
@@ -595,25 +596,28 @@ kbd {
 .search input:focus-visible { outline: 2px solid var(--brass); outline-offset: 0; border-color: transparent; }
 .empty-search { margin: 0; font-size: 13px; color: var(--muted); }
 
+/* The selected element or tool, in a strip above the game: name on the
+   left, description and facts beside it. */
 .inspect {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 16px;
+  align-items: start;
   width: 100%;
   max-width: var(--screen-w);
   min-width: min(100%, 320px);
   margin-inline: auto;
-  padding: 12px 14px;
+  padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
 }
-.inspect-head { display: flex; align-items: center; gap: 10px; }
-.inspect-title { font: 700 17px/1.1 var(--font-display); }
+.inspect-head { grid-row: 1 / span 2; display: flex; align-items: center; gap: 10px; min-width: 150px; }
+.inspect-title { font: 700 16px/1.1 var(--font-display); }
 .inspect-sub { font-size: 12px; color: var(--muted); }
-.inspect p { margin: 0; font-size: 13px; max-width: 60ch; }
+.inspect p { margin: 0; font-size: 12.5px; line-height: 1.4; max-width: 90ch; }
 .facts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
-.facts li { font: 11.5px/1.5 var(--font-mono); color: var(--muted); }
+.facts li { font: 11px/1.45 var(--font-mono); color: var(--muted); }
 .facts b { color: var(--text); font-weight: 500; }
 
 /* ---- physics panel ---------------------------------------------------- */
@@ -806,7 +810,7 @@ kbd {
   .controls { width: 100%; }
   .btn span { display: none; }
   .btn { padding: 0 9px; }
-  .segmented { flex: 1; }
+  .segmented { flex: 1 1 100%; order: 1; } /* its own row under the buttons */
   .segmented button { flex: 1; padding: 0 6px; }
   .tip { position: static; max-width: none; margin-top: 8px; font-size: 12.5px; }
   .tools { grid-template-columns: repeat(4, 1fr); }
@@ -814,6 +818,8 @@ kbd {
   .zoom button { min-width: 28px; height: 26px; padding: 0 6px; }
   .viewport .minimap { right: 8px; bottom: 42px; width: 80px; height: 48px; }
   .tree-help { display: none; }
+  .inspect { grid-template-columns: minmax(0, 1fr); }
+  .inspect-head { grid-row: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -846,6 +852,10 @@ kbd {
         <button type="button" role="radio" aria-checked="false" data-view="heat" title="Temperature view (2)">Heat</button>
         <button type="button" role="radio" aria-checked="false" data-view="pressure" title="Air pressure view (3)">Pressure</button>
       </div>
+      <button class="btn" id="btn-replace" type="button" aria-pressed="false" title="Replace: painting overwrites whatever is in the way (R)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h8v3H5v5H2zM6 6h8v8H6z"/></svg>
+        <span>Replace</span>
+      </button>
       <button class="btn" id="btn-clear" type="button" title="Remove every particle">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h6l1 2h3v2H1V4h3zM3 7h10l-1 8H4z"/></svg>
         <span>Clear</span>
@@ -873,6 +883,7 @@ kbd {
             <div><kbd>Shift</kbd>-drag a line</div>
             <div><kbd>Ctrl</kbd>-drag a box</div>
             <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> views</div>
+            <div><kbd>R</kbd> replace what you paint over</div>
             <div><kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>0</kbd> reset</div>
             <div><kbd>Ctrl</kbd>-scroll or pinch to zoom</div>
             <div>Arrows or middle-drag to pan</div>
@@ -885,6 +896,7 @@ kbd {
 
   <main class="stage">
     <section class="chamber" aria-label="Simulation">
+      <div class="inspect" id="inspect" aria-live="polite"></div>
       <div class="screen">
         <div class="viewport" id="viewport">
           <canvas id="world" aria-label="Sandbox. Drag to paint with the selected element or tool."></canvas>
@@ -959,7 +971,6 @@ kbd {
           </button>
         </div>
       </section>
-      <div class="inspect" id="inspect" aria-live="polite"></div>
     </section>
 
     <aside class="panel" aria-label="Elements">
@@ -1071,6 +1082,23 @@ const VELOCITY_LOSS = 0.995;
 const SMOOTHING = 0.15;
 const MAX_PRESSURE = 256;
 
+// Pressure moves boiling and melting points. ATM pressure units make one
+// atmosphere (0 is normal air). A boiling point, in kelvin, is divided by
+// 1 - ln(P) / TROUTON, P in atmospheres (Trouton's rule, near enough for
+// most liquids): water boils at about 150 °C at +30 and below room
+// temperature in a deep vacuum. Melting points rise more gently under
+// pressure (MELT_STIFF in place of TROUTON) and don't fall in a vacuum.
+// `boil` and `melt` hold the factor for each block, worked out once a
+// frame; with no pressure both are exactly 1.
+const ATM = 10;
+const P_MIN = 0.01; // the deepest vacuum, in atmospheres
+const TROUTON = 10.5;
+const MELT_STIFF = 25;
+const PHASE_DEADBAND = 0.25; // pressure this close to normal counts as normal (under 1 °C off)
+// How far a boiling point can fall, and any phase change can rise.
+const BOIL_LOWEST = 1 / (1 - Math.log(P_MIN) / TROUTON);
+const PHASE_HIGHEST = 1 / (1 - Math.log(1 + MAX_PRESSURE / ATM) / TROUTON);
+
 class Air {
   constructor(cols, rows) {
     this.cols = cols;
@@ -1088,6 +1116,8 @@ class Air {
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
     this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature already counted in p
     this.heat = false;
+    this.boil = new Float32Array(n).fill(1); // boiling point factor (see ATM)
+    this.melt = new Float32Array(n).fill(1); // melting point factor
   }
 
   // Index of the air block that contains world cell (x, y).
@@ -1172,6 +1202,46 @@ class Air {
     }
 
     if (this.heat) this.stepHeat(gravity.gx, gravity.gy);
+
+  }
+
+  // How the pressure in each block moves boiling and melting points. Sealed
+  // blocks (inside a solid, or with a wall through them) have no air of
+  // their own, but what's in them is squeezed by the air around: they take
+  // the strongest effect from their neighbours, spread a few sweeps deep.
+  phaseFactors() {
+    const { p, boil, melt, blocked, W } = this;
+    const n = p.length;
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const v = p[i];
+      if ((v < PHASE_DEADBAND && v > -PHASE_DEADBAND) || blocked[i]) { boil[i] = 1; melt[i] = 1; continue; }
+      any = true;
+      const P = 1 + v / ATM;
+      const l = Math.log(P > P_MIN ? P : P_MIN);
+      boil[i] = 1 / (1 - l / TROUTON);
+      melt[i] = l > 0 ? 1 / (1 - l / MELT_STIFF) : 1;
+    }
+    if (!any) return;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = W; i < n - W; i++) if (blocked[i]) this.squeeze(i);
+      for (let i = n - W - 1; i >= W; i--) if (blocked[i]) this.squeeze(i);
+    }
+  }
+
+  // A sealed block takes the furthest-from-normal factors beside it.
+  squeeze(i) {
+    const W = this.W;
+    this.squeezeFrom(i, i - 1);
+    this.squeezeFrom(i, i + 1);
+    this.squeezeFrom(i, i - W);
+    this.squeezeFrom(i, i + W);
+  }
+
+  squeezeFrom(i, b) {
+    const { boil, melt } = this;
+    if (Math.abs(boil[b] - 1) > Math.abs(boil[i] - 1)) boil[i] = boil[b];
+    if (melt[b] > melt[i]) melt[i] = melt[b];
   }
 
   // The average temperature of the open air within MEAN_RADIUS blocks of
@@ -1281,7 +1351,7 @@ class Air {
   }
 }
 
-return { CELL, AIR_SHARE, EXPAND, Air };
+return { CELL, AIR_SHARE, EXPAND, BOIL_LOWEST, PHASE_HIGHEST, Air };
 })();
 
 __modules["src/sim/elements-expansion.js"] = (() => {
@@ -6316,6 +6386,27 @@ for (const d of DEFS) {
 }
 LIGHT_SPEED[ID.DIAMOND] = 0.41;
 
+// Which of an element's phase changes air pressure moves (see air.js):
+// boiling and condensing (to or from a gas), melting and freezing (solid
+// to liquid and back). Chemical changes and anything to or from energy
+// don't move.
+const PHASE_BOIL = 1;
+const PHASE_MELT = 2;
+function phaseKind(from, to) {
+  const { POWDER, LIQUID } = State;
+  const solidish = (s) => s === SOLID || s === POWDER;
+  if ((solidish(from) || from === LIQUID) && to === GAS) return PHASE_BOIL;
+  if (from === GAS && (solidish(to) || to === LIQUID)) return PHASE_BOIL;
+  if ((solidish(from) && to === LIQUID) || (from === LIQUID && solidish(to))) return PHASE_MELT;
+  return 0;
+}
+const HIGH_PHASE = new Uint8Array(NUM);
+const LOW_PHASE = new Uint8Array(NUM);
+for (const d of DEFS) {
+  if (d.high) HIGH_PHASE[d.id] = phaseKind(d.state, DEFS[d.high.to].state);
+  if (d.low) LOW_PHASE[d.id] = d.low.restore ? PHASE_MELT : phaseKind(d.state, DEFS[d.low.to].state);
+}
+
 // Mass for Newtonian gravity: an element's density, except that walls,
 // energy and flying particles weigh nothing, a few cosmic objects weigh a
 // great deal, and a White Hole pushes instead of pulling.
@@ -6356,7 +6447,7 @@ const TRANSMUTABLE = setOf([
 // What a White Hole pours out.
 const SPEW = ['SAND', 'WATER', 'STONE', 'DIRT', 'STEAM', 'FIRE', 'PLASMA', 'METAL'].map((k) => ID[k]);
 
-return { COND, AIR_COOL, CONDUCTOR, CLONEABLE, GASLIKE, AIRTIGHT, MACHINE, POWERED, PRESSABLE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED, MASS, DISPENSABLE, ORGANIC, TRANSMUTABLE, SPEW };
+return { COND, AIR_COOL, CONDUCTOR, CLONEABLE, GASLIKE, AIRTIGHT, MACHINE, POWERED, PRESSABLE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED, PHASE_BOIL, PHASE_MELT, HIGH_PHASE, LOW_PHASE, MASS, DISPENSABLE, ORGANIC, TRANSMUTABLE, SPEW };
 })();
 
 __modules["src/sim/fft.js"] = (() => {
@@ -8408,10 +8499,10 @@ __modules["src/sim/world.js"] = (() => {
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
-const { Air, CELL, AIR_SHARE } = __modules["src/sim/air.js"];
+const { Air, CELL, AIR_SHARE, BOIL_LOWEST, PHASE_HIGHEST } = __modules["src/sim/air.js"];
 const { DEFS, ID, NUM, State, AMBIENT, REACT } = __modules["src/sim/elements.js"];
 const { MAX_TEMP, MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY } = __modules["src/sim/constants.js"];
-const { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS } = __modules["src/sim/lookups.js"];
+const { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS, HIGH_PHASE, LOW_PHASE, PHASE_BOIL } = __modules["src/sim/lookups.js"];
 const { Behaviors, SNUFF_AT } = __modules["src/sim/behaviors.js"];
 const { Particles, initParticles } = __modules["src/sim/particles.js"];
 const { Machines, initMachines } = __modules["src/sim/machines.js"];
@@ -8455,6 +8546,7 @@ class World {
     this.count = 0;
     this.blockedMoving = false;
     this.brushShape = 'circle';
+    this.replace = false; // painting overwrites what's in the way
     initParticles(this);
     initMachines(this);
   }
@@ -8651,6 +8743,7 @@ class World {
     const { w, h, type, clock, air, loose } = this;
     const tick = ++this.tick;
     this.stepGravity();
+    air.phaseFactors(); // the pressure as it stands now moves boiling and melting points
     // Particles read last frame's complete blocked map while this frame's is built.
     const next = air.next;
     next.fill(0);
@@ -8724,9 +8817,15 @@ class World {
       return;
     }
 
+    // Phase changes, at temperatures the air pressure here moves (air.js).
     const T = this.temp[i];
     const hi = d.high;
-    if (hi !== null && T >= hi.temp && this.rand() < hi.chance) {
+    let hiT = hi === null ? 0 : hi.temp;
+    const hk = HIGH_PHASE[t];
+    if (hk !== 0 && T >= hiT + (hiT + 273) * (hk === PHASE_BOIL ? BOIL_LOWEST - 1 : 0)) {
+      hiT = this.phaseTemp(hiT, hk, x, y);
+    }
+    if (hi !== null && T >= hiT && this.rand() < hi.chance) {
       if (hi.alt >= 0 && this.rand() < hi.altChance) {
         this.convert(i, hi.alt, true, hi.altRule);
       } else {
@@ -8739,7 +8838,9 @@ class World {
     if (lo !== null) {
       // Molten metal sets back into whichever metal it was.
       const was = lo.restore ? this.ctype[i] : 0;
-      const limit = was ? DEFS[was].high.temp - 40 : lo.temp;
+      let limit = was ? DEFS[was].high.temp - 40 : lo.temp;
+      const lk = LOW_PHASE[t];
+      if (lk !== 0 && T <= limit + (limit + 273) * (PHASE_HIGHEST - 1)) limit = this.phaseTemp(limit, lk, x, y);
       if (T <= limit && this.rand() < lo.chance) {
         if (was) this.convert(i, was, true, -1);
         else if (lo.alt >= 0 && this.rand() < lo.altChance) this.convert(i, lo.alt, true, lo.altRule);
@@ -8778,6 +8879,15 @@ class World {
       case SOLID: if (this.loose[i]) this.movePowder(i, x, y, d); break;
       default: break;
     }
+  }
+
+  // The temperature a phase change of kind `kind` (lookups.js) happens at
+  // here, given that it happens at `temp` in normal air (see
+  // Air.phaseFactors).
+  phaseTemp(temp, kind, x, y) {
+    const air = this.air;
+    const k = (kind === PHASE_BOIL ? air.boil : air.melt)[air.at(x, y)];
+    return temp + (temp + 273) * (k - 1);
   }
 
   // Pressure tears exposed solid particles loose. Each solid has a strength
@@ -9406,7 +9516,13 @@ class World {
         if (PRESSABLE[u]) { this.press(i); return; }
         if (POWERED[u] || (u === 0 && this.doorTimer[i] !== 0)) { this.powerCell(i); return; }
       }
-      if (u === 0 && (density >= 1 || this.rand() < density)) this.spawn(i, t);
+      // With Replace on, whatever is in the way is overwritten (but painting
+      // an element over itself leaves it be).
+      if (u !== 0 && (!this.replace || u === t)) return;
+      if (density >= 1 || this.rand() < density) {
+        if (u !== 0) this.clearCell(i);
+        this.spawn(i, t);
+      }
     });
   }
 
@@ -10933,6 +11049,7 @@ class Input {
     if (!this.down) return;
     const world = this.getWorld();
     world.brushShape = this.state.brushShape;
+    world.replace = this.state.replace;
     const area = this.strokeArea(world, this.lastX, this.lastY, this.x, this.y);
     this.act(world, area, this.x - this.lastX, this.y - this.lastY, this.erasing);
     this.lastX = this.x;
@@ -10963,6 +11080,7 @@ class Input {
   commitShape(shape) {
     const world = this.getWorld();
     world.brushShape = this.state.brushShape;
+    world.replace = this.state.replace;
     const { x0, y0 } = shape, x1 = this.x, y1 = this.y;
     const area = shape.kind === 'box'
       ? (fn) => world.forRect(x0, y0, x1, y1, fn)
@@ -11215,7 +11333,7 @@ __modules["src/game/ui.js"] = (() => {
 
 const { DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor, halfLife } = __modules["src/sim/elements.js"];
 const { TOOLS, HEAT_RATE } = __modules["src/game/input.js"];
-const { AIRTIGHT } = __modules["src/sim/lookups.js"];
+const { AIRTIGHT, HIGH_PHASE, LOW_PHASE } = __modules["src/sim/lookups.js"];
 
 const $ = (id) => document.getElementById(id);
 
@@ -11416,8 +11534,9 @@ class UI {
     const solidish = d.state === State.SOLID || d.state === State.ENERGY;
     if (!solidish && !d.projectile) facts.push(`Density <b>${d.density}</b>`);
     if (d.temp !== 22 && !d.projectile) facts.push(`Starts at <b>${fmtTemp(d.temp)}</b>`);
-    if (d.high) facts.push(`Changes above <b>${fmtTemp(d.high.temp)}</b>`);
-    if (d.low && !d.low.restore) facts.push(`Changes below <b>${fmtTemp(d.low.temp)}</b>`);
+    const normal = (kind) => (kind ? ' at normal pressure' : '');
+    if (d.high) facts.push(`Changes above <b>${fmtTemp(d.high.temp)}</b>${normal(HIGH_PHASE[d.id])}`);
+    if (d.low && !d.low.restore) facts.push(`Changes below <b>${fmtTemp(d.low.temp)}</b>${normal(LOW_PHASE[d.id])}`);
     if (d.flammable > 0 && d.ignite < 5000) facts.push(`Ignites at <b>${fmtTemp(d.ignite)}</b>`);
     if (d.explode > 0) facts.push('<b>Explosive</b>');
     if (d.pressure) facts.push(`Gives way above pressure <b>${d.pressure.above}</b>`);
@@ -11760,6 +11879,7 @@ const game = {
   brush: 4,
   brushShape: 'circle',
   paused: false,
+  replace: false, // painting overwrites what's in the way
   select(sel) {
     this.selection = sel;
     ui.renderPalette();
@@ -11895,6 +12015,12 @@ function setView(view) {
   }
 }
 
+// Replace: painting overwrites whatever is in the way.
+function setReplace(on) {
+  game.replace = on;
+  $('btn-replace').setAttribute('aria-pressed', String(on));
+}
+
 // ---- zoom -----------------------------------------------------------------
 
 // Zoom in or out a step, towards the pointer if it's over the world.
@@ -11941,6 +12067,7 @@ function dismissTip() {
 $('btn-pause').addEventListener('click', () => setPaused(!game.paused));
 $('btn-step').addEventListener('click', stepOnce);
 $('btn-clear').addEventListener('click', () => world.clearAll());
+$('btn-replace').addEventListener('click', () => setReplace(!game.replace));
 for (const b of document.querySelectorAll('[data-shape]')) {
   b.addEventListener('click', () => {
     game.brushShape = b.dataset.shape;
@@ -12000,6 +12127,7 @@ document.addEventListener('keydown', (e) => {
     case '1': setView('normal'); break;
     case '2': setView('heat'); break;
     case '3': setView('pressure'); break;
+    case 'r': case 'R': setReplace(!game.replace); break;
     case '=': case '+': zoomStep(1); break;
     case '-': case '_': zoomStep(-1); break;
     case '0': camera.zoomTo(1); break;
