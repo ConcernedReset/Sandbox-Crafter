@@ -248,7 +248,7 @@ test('a hot proton flies through stone, heating it, and sets wood alight', () =>
   assert.ok(burning, 'the wood caught fire');
 });
 
-test('protons smashed together make neutrons and antineutrons', () => {
+test('protons smashed together make neutrons', () => {
   const w = makeWorld(80, 40);
   for (let n = 0; n < 60; n++) {
     w.spawnProjectile(ID.PROTON, 20.5, 10.5 + (n % 20), 1.5, 0);
@@ -256,16 +256,4 @@ test('protons smashed together make neutrons and antineutrons', () => {
   }
   run(w, 40);
   assert.ok(w.seen[ID.NEUTRON], 'neutrons');
-  assert.ok(w.seen[ID.ANTINEUTRON], 'antineutrons');
-});
-
-test('an antineutron annihilates with matter in a burst of gamma rays', () => {
-  const w = makeWorld(120, 20);
-  fillRect(w, 30, 0, 89, 19, ID.STONE);
-  const stone = types(w, ID.STONE);
-  let gamma = 0;
-  for (let n = 0; n < 20; n++) w.spawnProjectile(ID.ANTINEUTRON, 5.5, 0.5 + n, 2, 0);
-  run(w, 40, () => { for (let k = 0; k < w.pn; k++) if (w.ptype[k] === ID.GAMMA) gamma++; });
-  assert.ok(types(w, ID.STONE) < stone, 'stone was annihilated');
-  assert.ok(gamma > 0, 'gamma rays came out');
 });

@@ -455,7 +455,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'PROTON', name: 'Proton', sym: 'p+', cat: 'particle', state: ENERGY, projectile: 'proton',
     colors: ['#ff6a6a'], speed: 1.5, charge: 1, life: [60, 100], expire: ['HYDROGEN'],
-    desc: 'Positive charge. Flies straight through matter carrying its own temperature, so a hot one heats everything it passes through and sets fuel alight. Knocks neutrons out of metal, and ends up grabbing an electron to become hydrogen.',
+    desc: 'Positive charge. Flies straight through matter carrying its own temperature, so a hot one heats everything it passes through and sets fuel alight. Knocks neutrons out of metal, and ends up grabbing an electron to become hydrogen. Smash two together and a neutron and a pion fly out.',
     hint: 'Light can strip the electron off Hydrogen.',
   },
   {

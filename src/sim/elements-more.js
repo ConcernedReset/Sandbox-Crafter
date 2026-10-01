@@ -7,16 +7,9 @@
 
 import { State } from './constants.js';
 
-const { SOLID, POWDER, LIQUID, ENERGY } = State;
+const { SOLID, POWDER, LIQUID } = State;
 
 export const MORE_ELEMENTS = [
-  // ---- particles ----------------------------------------------------------------
-  {
-    key: 'ANTINEUTRON', name: 'Antineutron', sym: 'n̄', cat: 'particle', state: ENERGY, projectile: 'antineutron',
-    colors: ['#ffb0d8'], speed: 2, life: [80, 120],
-    desc: "The neutron's antimatter twin. It slips through matter like a neutron until it meets a nucleus, then both vanish in a burst of gamma rays.",
-    hint: 'Collide Protons head-on, hard.',
-  },
   // ---- ores ---------------------------------------------------------------------
   {
     key: 'CHALCOPYRITE', name: 'Chalcopyrite', sym: 'Cpy', cat: 'mineral', state: SOLID, strength: 40,

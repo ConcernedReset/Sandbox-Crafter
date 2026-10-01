@@ -828,7 +828,7 @@ kbd {
     <h1 class="wordmark">Sandbox <span>Crafter</span></h1>
 
     <div class="meter" id="meter" title="Elements discovered">
-      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">568</span> elements</div>
+      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">567</span> elements</div>
       <div class="meter-cells" id="meter-cells" aria-hidden="true"></div>
     </div>
 
@@ -1742,7 +1742,7 @@ const EXPANSION_ELEMENTS = [
   {
     key: 'PROTON', name: 'Proton', sym: 'p+', cat: 'particle', state: ENERGY, projectile: 'proton',
     colors: ['#ff6a6a'], speed: 1.5, charge: 1, life: [60, 100], expire: ['HYDROGEN'],
-    desc: 'Positive charge. Flies straight through matter carrying its own temperature, so a hot one heats everything it passes through and sets fuel alight. Knocks neutrons out of metal, and ends up grabbing an electron to become hydrogen.',
+    desc: 'Positive charge. Flies straight through matter carrying its own temperature, so a hot one heats everything it passes through and sets fuel alight. Knocks neutrons out of metal, and ends up grabbing an electron to become hydrogen. Smash two together and a neutron and a pion fly out.',
     hint: 'Light can strip the electron off Hydrogen.',
   },
   {
@@ -5012,8 +5012,7 @@ const WORLD_HITS = [
 ];
 
 const WORLD_PAIRS = [
-  { a: 'PROTON', b: 'PROTON', chance: 0.3, emit: ['NEUTRON', 'ANTINEUTRON', 'PION'] },
-  { a: 'NEUTRON', b: 'ANTINEUTRON', chance: 0.9, emit: ['GAMMA', 'GAMMA'] },
+  { a: 'PROTON', b: 'PROTON', chance: 0.3, emit: ['NEUTRON', 'PION'] },
   { a: 'MUON', b: 'MUON', chance: 0.5, emit: ['HIGGS'] },
 ];
 
@@ -5175,16 +5174,9 @@ __modules["src/sim/elements-more.js"] = (() => {
 
 const { State } = __modules["src/sim/constants.js"];
 
-const { SOLID, POWDER, LIQUID, ENERGY } = State;
+const { SOLID, POWDER, LIQUID } = State;
 
 const MORE_ELEMENTS = [
-  // ---- particles ----------------------------------------------------------------
-  {
-    key: 'ANTINEUTRON', name: 'Antineutron', sym: 'n̄', cat: 'particle', state: ENERGY, projectile: 'antineutron',
-    colors: ['#ffb0d8'], speed: 2, life: [80, 120],
-    desc: "The neutron's antimatter twin. It slips through matter like a neutron until it meets a nucleus, then both vanish in a burst of gamma rays.",
-    hint: 'Collide Protons head-on, hard.',
-  },
   // ---- ores ---------------------------------------------------------------------
   {
     key: 'CHALCOPYRITE', name: 'Chalcopyrite', sym: 'Cpy', cat: 'mineral', state: SOLID, strength: 40,
@@ -5856,13 +5848,13 @@ const id = (key) => {
 const HIT_IMPACT = {
   photon: [120, 0.3], electron: [80, 0.4], proton: [350, 2], neutron: [300, 1.5],
   positron: [900, 5], neutrino: [0, 0], alpha: [450, 2.5], ion: [1800, 8], gamma: [300, 1.5],
-  xray: [120, 0.4], uv: [180, 0.4], microwave: [45, 0], ghost: [0, 0], antineutron: [900, 5],
+  xray: [120, 0.4], uv: [180, 0.4], microwave: [45, 0], ghost: [0, 0],
 };
 
 // How each kind of flying particle behaves when it meets matter.
 const PMODE = {
   photon: 1, electron: 2, proton: 3, neutron: 4, positron: 5, neutrino: 6,
-  alpha: 7, ion: 8, gamma: 9, xray: 10, uv: 11, microwave: 12, ghost: 13, antineutron: 14,
+  alpha: 7, ion: 8, gamma: 9, xray: 10, uv: 11, microwave: 12, ghost: 13,
 };
 
 // RULES: every way an element can be produced, for discovery tracking and
@@ -7550,11 +7542,9 @@ const { LENS } = __modules["src/sim/gravity.js"];
 const PASS = 0, DEAD = 1, BOUNCE = 2;
 const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
-const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO, GAMMA, PION } = ID;
+const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO } = ID;
 // A proton hotter than this sets fuel and explosives alight as it passes.
 const PROTON_IGNITES = 500;
-// Chance per cell that an antineutron meets a nucleus and annihilates.
-const ANNIHILATE = 0.2;
 const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
 // Photon tints that a clear material recolours: plain light, and light
 // already coloured by another clear material.
@@ -7865,15 +7855,6 @@ const Particles = {
           return this.rand() < 0.3 ? DEAD : PASS;
         }
         return PASS;
-      case PMODE.antineutron:
-        // Like a neutron it slips through matter, until it meets a nucleus:
-        // then both are gone in a flash of gamma rays.
-        if (GASLIKE[u] || this.rand() >= ANNIHILATE) return PASS;
-        if (!e.indestructible) this.clearCell(j);
-        this.emitAt(GAMMA, ix, iy);
-        this.emitAt(GAMMA, ix, iy);
-        if (this.rand() < 0.5) this.emitAt(PION, ix, iy);
-        return this.impact(j, lx, ly, d);
       default:
         return PASS; // neutrinos, muons and other ghosts
     }

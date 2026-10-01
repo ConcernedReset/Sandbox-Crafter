@@ -1223,7 +1223,6 @@ export const WORLD_HITS = [
 ];
 
 export const WORLD_PAIRS = [
-  { a: 'PROTON', b: 'PROTON', chance: 0.3, emit: ['NEUTRON', 'ANTINEUTRON', 'PION'] },
-  { a: 'NEUTRON', b: 'ANTINEUTRON', chance: 0.9, emit: ['GAMMA', 'GAMMA'] },
+  { a: 'PROTON', b: 'PROTON', chance: 0.3, emit: ['NEUTRON', 'PION'] },
   { a: 'MUON', b: 'MUON', chance: 0.5, emit: ['HIGGS'] },
 ];

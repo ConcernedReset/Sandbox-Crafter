@@ -1,7 +1,7 @@
 # Sandbox Crafter
 
 A falling-sand physics sandbox crossed with an element-crafting game. You start
-with four elements (**Sand, Water, Fire and Dirt**) and discover the other 564
+with four elements (**Sand, Water, Fire and Dirt**) and discover the other 563
 by making things happen in the simulation: pour water on dirt, bake mud, crush
 wood under pressure, run electricity through water, split uranium with
 neutrons, blast a diamond with plasma. Every new element you make is added to
@@ -245,10 +245,8 @@ Each frame (60 per second):
      carrying its own temperature: every cell one passes through moves a
      quarter of the way to it, and a proton hotter than 500 °C sets fuel and
      explosives alight on its way. In the end one picks up an electron and
-     becomes hydrogen. Smash two together and they make a neutron, an
-     antineutron and a pion.
-   - An antineutron slips through matter like a neutron until it meets a
-     nucleus; then both vanish in a burst of gamma rays.
+     becomes hydrogen. Smash two together and they make a neutron and a
+     pion.
    - Charged particles curve near magnets.
    - Whatever finally stops a particle takes a hit: it heats up (by about
      120 °C for light, 450 °C for an alpha particle, 1800 °C for a heavy ion) and the
@@ -488,7 +486,7 @@ settling once it cools, hot air pushing out and being drawn back in the open,
 a full loop in a closed box (markers carried up come
 back down to the base), the Heat and Cool tools warming and chilling the
 air, and a sealed fire still going out. The recipe tests
-run all 1202 production rules in the real simulation.
+run all 1200 production rules in the real simulation.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.
@@ -1026,7 +1024,7 @@ Regenerate the table below after changing recipes with
 | 530 | Grey Goo | Graphene + Virus |
 | 531 | Elixir of Life | Philosopher's Stone + Water |
 | 532 | Greek Fire | Tar + Quicklime |
-| 533 | Gamma Ray | Black Hole + White Hole · Electron + Positron · Neutron + Antineutron |
+| 533 | Gamma Ray | Black Hole + White Hole · Electron + Positron |
 | 534 | X-Ray | Pulsar + Star · Tungsten + Electron |
 | 535 | Ultraviolet | Mercury Vapour + Electron |
 | 536 | Microwave | Magnet + Spark |
@@ -1052,15 +1050,14 @@ Regenerate the table below after changing recipes with
 | 556 | Dispenser | Clone + Switch |
 | 557 | Drain | Void + Switch |
 | 558 | Beam Splitter | Mirror + Quartz |
-| 559 | Antineutron | Proton + Proton |
-| 560 | Chalcopyrite | Lava + Sulfur |
-| 561 | Wolframite | Steam + Quartz |
-| 562 | White Copper Sulfate | Copper Sulfate + Heat |
-| 563 | Liquid Methane | Methane + Cold |
-| 564 | Heavy Ice | Heavy Water + Cold |
-| 565 | Sawdust | Termite + Wood |
-| 566 | Tun | Tardigrade + Cold |
-| 567 | Mead | Honey + Yeast |
-| 568 | Denim | Indigo + Cloth |
+| 559 | Chalcopyrite | Lava + Sulfur |
+| 560 | Wolframite | Steam + Quartz |
+| 561 | White Copper Sulfate | Copper Sulfate + Heat |
+| 562 | Liquid Methane | Methane + Cold |
+| 563 | Heavy Ice | Heavy Water + Cold |
+| 564 | Sawdust | Termite + Wood |
+| 565 | Tun | Tardigrade + Cold |
+| 566 | Mead | Honey + Yeast |
+| 567 | Denim | Indigo + Cloth |
 
 </details>

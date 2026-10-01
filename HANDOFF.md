@@ -2,7 +2,7 @@
 
 A falling-sand physics sandbox (modelled on The Powder Toy) crossed with an
 element-crafting game. You start with Sand, Water, Fire and Dirt and discover
-the other 564 elements by making things happen in the simulation. The README
+the other 563 elements by making things happen in the simulation. The README
 covers gameplay, physics and every recipe; this file is the short version for
 whoever picks the project up next.
 
@@ -124,8 +124,7 @@ else; `test/build.test.js` checks the bundle runs.
   make splits likelier under pressure (`boost`), set what's left to the
   maximum temperature (`hot`) and throw out protons. Flying particles have a
   temperature (`ptemp`, set from the cell they came from); protons pass
-  through matter and pull what they pass towards it. Antineutrons (pmode
-  `antineutron`) annihilate a cell now and then as they pass.
+  through matter and pull what they pass towards it.
 - **Light speed** in clear materials is `LIGHT_SPEED` in lookups.js (1 over
   the refractive index), applied to photons and ultraviolet each frame.
 - **Balance numbers live in tests.** If you retune physics (pressure, particle

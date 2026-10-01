@@ -22,11 +22,9 @@ import { LENS } from './gravity.js';
 const PASS = 0, DEAD = 1, BOUNCE = 2;
 const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
-const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO, GAMMA, PION } = ID;
+const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO } = ID;
 // A proton hotter than this sets fuel and explosives alight as it passes.
 const PROTON_IGNITES = 500;
-// Chance per cell that an antineutron meets a nucleus and annihilates.
-const ANNIHILATE = 0.2;
 const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
 // Photon tints that a clear material recolours: plain light, and light
 // already coloured by another clear material.
@@ -337,15 +335,6 @@ export const Particles = {
           return this.rand() < 0.3 ? DEAD : PASS;
         }
         return PASS;
-      case PMODE.antineutron:
-        // Like a neutron it slips through matter, until it meets a nucleus:
-        // then both are gone in a flash of gamma rays.
-        if (GASLIKE[u] || this.rand() >= ANNIHILATE) return PASS;
-        if (!e.indestructible) this.clearCell(j);
-        this.emitAt(GAMMA, ix, iy);
-        this.emitAt(GAMMA, ix, iy);
-        if (this.rand() < 0.5) this.emitAt(PION, ix, iy);
-        return this.impact(j, lx, ly, d);
       default:
         return PASS; // neutrinos, muons and other ghosts
     }
