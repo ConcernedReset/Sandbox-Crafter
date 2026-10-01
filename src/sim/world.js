@@ -38,6 +38,10 @@ const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
 // any unbroken line of strong solid across it.
 const SEAL_COUNT = 4;
 
+// Edges of the world that are a void: anything that moves out through one
+// vanishes (see setVoidEdges).
+export const VOID_TOP = 1, VOID_BOTTOM = 2, VOID_LEFT = 4, VOID_RIGHT = 8;
+
 // With no gravity, gases spread evenly: as likely to step either way.
 const ZERO_G_RISE = 0.3;
 const ZERO_G_SINK = 0.3 / 0.7;
@@ -70,6 +74,8 @@ export class World {
     this.blockedMoving = false;
     this.brushShape = 'circle';
     this.replace = false; // painting overwrites what's in the way
+    this.voidEdges = 0; // VOID_TOP | VOID_BOTTOM | ... (see setVoidEdges)
+    this.vanished = false; // the last travel took the particle off a void edge
     initParticles(this);
     initMachines(this);
   }
@@ -258,6 +264,21 @@ export class World {
   // Settings from the Physics panel: { angle, strength, newtonian }.
   setGravity(opts) {
     this.gravity.set(opts);
+  }
+
+  // Which edges of the world are a void: { top, bottom, left, right }.
+  // Whatever moves out through one is gone; things that stay put (a stone
+  // floor along it) stay.
+  setVoidEdges({ top = false, bottom = false, left = false, right = false } = {}) {
+    this.voidEdges = (top ? VOID_TOP : 0) | (bottom ? VOID_BOTTOM : 0)
+      | (left ? VOID_LEFT : 0) | (right ? VOID_RIGHT : 0);
+  }
+
+  // Is (x, y), just outside the world, through a void edge?
+  offEdge(x, y) {
+    const v = this.voidEdges;
+    return (y < 0 && (v & VOID_TOP) !== 0) || (y >= this.h && (v & VOID_BOTTOM) !== 0)
+      || (x < 0 && (v & VOID_LEFT) !== 0) || (x >= this.w && (v & VOID_RIGHT) !== 0);
   }
 
   // ---- main loop ----------------------------------------------------------
@@ -574,11 +595,16 @@ export class World {
     const rx = this.rand(), ry = this.rand();
     let cur = i, cx = x, cy = y;
     this.blockedMoving = false;
+    this.vanished = false;
     for (let s = 1; s <= n; s++) {
       const nx = x + Math.floor((vx * s) / n + rx);
       const ny = y + Math.floor((vy * s) / n + ry);
       if (nx === cx && ny === cy) continue;
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) { this.blockedMoving = true; break; }
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) {
+        if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { this.clearCell(cur); this.vanished = true; return cur; }
+        this.blockedMoving = true;
+        break;
+      }
       const j = ny * this.w + nx;
       if (!this.canEnter(d, j, ny - cy)) { this.blockedMoving = true; break; }
       this.swap(cur, j);
@@ -596,11 +622,16 @@ export class World {
     const rx = this.rand(), ry = this.rand();
     let cur = i, cx = x, cy = y;
     this.blockedMoving = false;
+    this.vanished = false;
     for (let s = 1; s <= n; s++) {
       const nx = x + Math.floor((vx * s) / n + rx);
       const ny = y + Math.floor((vy * s) / n + ry);
       if (nx === cx && ny === cy) continue;
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) { this.blockedMoving = true; break; }
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) {
+        if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { this.clearCell(cur); this.vanished = true; return cur; }
+        this.blockedMoving = true;
+        break;
+      }
       const j = ny * this.w + nx;
       const along = (nx - cx) * ux + (ny - cy) * uy;
       if (!this.canEnter(d, j, along > 0.3 ? 1 : along < -0.3 ? -1 : 0)) { this.blockedMoving = true; break; }
@@ -661,6 +692,7 @@ export class World {
       if (along < 1 && along > -0.5) { vx = vx - along * ux + ux; vy = vy - along * uy + uy; }
     }
     const j = this.travelAlong(i, x, y, vx, vy, d, ux, uy);
+    if (this.vanished) return;
     if (j !== i) {
       if (this.blockedMoving) this.stopAlong(j, ux, uy, 0.5);
       return;
@@ -702,6 +734,7 @@ export class World {
       if (along < 1 && along > -0.5) { vx = vx - along * ux + ux; vy = vy - along * uy + uy; }
     }
     const j = this.travelAlong(i, x, y, vx, vy, d, ux, uy);
+    if (this.vanished) return;
     if (j !== i) {
       if (this.blockedMoving) this.stopAlong(j, ux, uy, 1);
       return;
@@ -753,7 +786,11 @@ export class World {
       let drop = false;
       for (let s = 1; s <= d.spread; s++) {
         const nx = x + sx * s, ny = y + sy * s;
-        if (!this.inBounds(nx, ny)) break;
+        if (!this.inBounds(nx, ny)) {
+          // A void side is a cliff edge: the liquid pours off it.
+          if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { if (s === 1) { this.clearCell(i); return; } drop = true; }
+          break;
+        }
         const jj = ny * w + nx;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
@@ -801,10 +838,12 @@ export class World {
     if (dy > 3) dy = 3; else if (dy < -3) dy = -3;
     if (dx === 0 && dy === 0) return;
     const j = this.travelAlong(i, x, y, dx, dy, d, g.gasUx, g.gasUy);
+    if (this.vanished) return;
     if (j !== i) return;
     const side = this.rand() < 0.5 ? -1 : 1;
     const nx = x + side * cx, ny = y + side * cy;
-    if (this.inBounds(nx, ny) && this.canEnter(d, ny * this.w + nx, 0)) this.swap(i, ny * this.w + nx);
+    if (this.inBounds(nx, ny)) { if (this.canEnter(d, ny * this.w + nx, 0)) this.swap(i, ny * this.w + nx); }
+    else if (this.voidEdges !== 0 && this.offEdge(nx, ny)) this.clearCell(i);
   }
 
   // ---- straight-down fast paths ------------------------------------------
@@ -820,6 +859,7 @@ export class World {
     const vx = this.vx[i], vy = this.vy[i];
     const ty = vy < 1 && vy > -0.5 ? 1 : vy;
     const j = this.travel(i, x, y, vx, ty, d);
+    if (this.vanished) return;
     if (j !== i) {
       if (this.blockedMoving) { this.vx[j] *= 0.5; this.vy[j] = 0; }
       return;
@@ -848,6 +888,7 @@ export class World {
     const vx = this.vx[i], vy = this.vy[i];
     const ty = vy < 1 && vy > -0.5 ? 1 : vy;
     const j = this.travel(i, x, y, vx, ty, d);
+    if (this.vanished) return;
     if (j !== i) {
       if (this.blockedMoving) this.vy[j] = 0;
       return;
@@ -881,7 +922,10 @@ export class World {
       let drop = false;
       for (let s = 1; s <= d.spread; s++) {
         const nx = x + dir * s;
-        if (nx < 0 || nx >= w) break;
+        if (nx < 0 || nx >= w) {
+          if (this.voidEdges !== 0 && this.offEdge(nx, y)) { if (s === 1) { this.clearCell(i); return; } drop = true; }
+          break;
+        }
         const jj = i + dir * s;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
@@ -908,9 +952,11 @@ export class World {
     if (dy > 3) dy = 3; else if (dy < -3) dy = -3;
     if (dx === 0 && dy === 0) return;
     const j = this.travel(i, x, y, dx, dy, d);
+    if (this.vanished) return;
     if (j !== i) return;
     const nx = x + (this.rand() < 0.5 ? -1 : 1);
-    if (nx >= 0 && nx < this.w && this.canEnter(d, i - x + nx, 0)) this.swap(i, i - x + nx);
+    if (nx >= 0 && nx < this.w) { if (this.canEnter(d, i - x + nx, 0)) this.swap(i, i - x + nx); }
+    else if (this.voidEdges !== 0 && this.offEdge(nx, y)) this.clearCell(i);
   }
 
   // ---- heat -----------------------------------------------------------------

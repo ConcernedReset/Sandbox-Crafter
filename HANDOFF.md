@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,330 tests, all passing, in a few seconds
+npm test    # node --test: about 1,340 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -131,6 +131,10 @@ else; `test/build.test.js` checks the bundle runs.
   works out a factor per block each frame (sealed blocks take it from the air
   around them), and `World.phaseTemp` applies it in `update`. With no
   pressure every factor is exactly 1, so thresholds are unchanged.
+- **Void edges** are `world.voidEdges` (bits `VOID_TOP` and so on, set with
+  `setVoidEdges`). `travel`/`travelAlong` clear a particle that moves out
+  through one and set `world.vanished`, which every mover checks; liquids
+  treat a void side as a drop, and gases' sideways step can leave too.
 - **Replace** is `world.replace`, set from the game state by input.js
   before each stroke; `paintArea` overwrites occupied cells when it's on.
 - **Light speed** in clear materials is `LIGHT_SPEED` in lookups.js (1 over

@@ -128,9 +128,15 @@ The strip between the status line and the recipe tree changes the rules:
   map). The Heat and Cool tools warm and chill the air too, even over empty
   space: a warm bubble rises, a cold pocket sinks. The Heat view shows the
   air's temperature, and pointing at a cell shows it too.
+- **Edges.** A little box whose four sides are the roof, floor and walls of
+  the world. Click a side to shade it and that edge becomes a void: anything
+  that moves out through it vanishes, so a void floor drains away every loose
+  grain and drop, water pours off a void side like a waterfall, and smoke
+  escapes through a void roof. Things that stay put, like a stone floor
+  along the edge, stay. Void edges are marked with a purple line on the game.
 - **Reset** puts everything back: down, strength 1, Newtonian
-  gravity off, convection on (how the game starts). The settings are
-  remembered in your browser.
+  gravity off, convection on, no void edges (how the game starts). The
+  settings are remembered in your browser.
 
 ## How the physics works
 
@@ -512,7 +518,9 @@ weak and strong gravity, gases rising against the arrow, fireworks, trees
 and rain following it, and the general movement code matching the fast
 straight-down path exactly. The Newtonian tests check the FFT field against
 a direct sum, that nothing is built while it's off, that mass pulls sand in
-and a White Hole pushes, and that light bends. The phase tests cover water
+and a White Hole pushes, and that light bends. The edge tests cover a void floor draining sand, water pouring off a void
+side, steam escaping a void roof, and a stone floor on a void edge staying
+put. The phase tests cover water
 boiling away in a vacuum, staying liquid past 100 °C in a pressure cooker,
 and metal that won't melt under heavy pressure. The convection tests cover a
 rising plume, the plume turning with the arrow, air flowing in at its base,
@@ -521,7 +529,7 @@ settling once it cools, hot air pushing out and being drawn back in the open,
 a full loop in a closed box (markers carried up come
 back down to the base), the Heat and Cool tools warming and chilling the
 air, and a sealed fire still going out. The recipe tests
-run all 1200 production rules in the real simulation. About 1,330 tests in
+run all 1200 production rules in the real simulation. About 1,340 tests in
 all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with

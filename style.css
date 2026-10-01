@@ -662,6 +662,25 @@ kbd {
 .physics-strength input:focus-visible { outline: 2px solid var(--brass); outline-offset: 0; border-color: transparent; }
 .physics-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .physics-toggle input { margin: 0; accent-color: var(--brass); }
+/* The edges of the world: a box whose sides you click to make them a void. */
+.physics-edges { display: flex; align-items: center; gap: 8px; }
+.edges {
+  display: grid;
+  grid-template-columns: 9px 26px 9px;
+  grid-template-rows: 9px 26px 9px;
+  gap: 2px;
+}
+.edges-box { grid-area: 2 / 2; border: 1px dashed var(--line-strong); border-radius: 2px; }
+.edge { padding: 0; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--panel-2); }
+.edge:hover { border-color: var(--brass); }
+.edge[aria-pressed='true'] {
+  border-color: #a68cff;
+  background: repeating-linear-gradient(45deg, #8b6cff 0 3px, #2b2245 3px 6px);
+}
+.edge-top { grid-area: 1 / 2; }
+.edge-left { grid-area: 2 / 1; }
+.edge-right { grid-area: 2 / 3; }
+.edge-bottom { grid-area: 3 / 2; }
 .physics-reset {
   margin-left: auto;
   height: 28px;

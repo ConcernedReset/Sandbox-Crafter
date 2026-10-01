@@ -7,6 +7,7 @@
 
 import { DEFS, ID, NUM, State, AMBIENT } from '../sim/elements.js';
 import { CELL } from '../sim/air.js';
+import { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } from '../sim/world.js';
 
 const BG = [10, 12, 16];
 const SHADES = 8;
@@ -180,7 +181,24 @@ export class Renderer {
         0, 0, canvas.width, canvas.height);
       ctx.globalCompositeOperation = 'source-over';
     }
+    this.drawVoidEdges();
     if (brush) this.drawBrush(brush);
+  }
+
+  // A purple line along each edge of the world that's a void.
+  drawVoidEdges() {
+    const v = this.world.voidEdges;
+    if (!v) return;
+    const { ctx, canvas, camera: cam, world } = this;
+    const sx = canvas.width / cam.vw, sy = canvas.height / cam.vh;
+    const x0 = -cam.x * sx, y0 = -cam.y * sy;
+    const x1 = (world.w - cam.x) * sx, y1 = (world.h - cam.y) * sy;
+    const t = Math.max(2, Math.round(canvas.width / 300));
+    ctx.fillStyle = 'rgba(150, 115, 255, 0.85)';
+    if (v & VOID_TOP) ctx.fillRect(x0, y0, x1 - x0, t);
+    if (v & VOID_BOTTOM) ctx.fillRect(x0, y1 - t, x1 - x0, t);
+    if (v & VOID_LEFT) ctx.fillRect(x0, y0, t, y1 - y0);
+    if (v & VOID_RIGHT) ctx.fillRect(x1 - t, y0, t, y1 - y0);
   }
 
   // A small map of the whole world with the zoomed-in view marked on it.

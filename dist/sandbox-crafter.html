@@ -672,6 +672,25 @@ kbd {
 .physics-strength input:focus-visible { outline: 2px solid var(--brass); outline-offset: 0; border-color: transparent; }
 .physics-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .physics-toggle input { margin: 0; accent-color: var(--brass); }
+/* The edges of the world: a box whose sides you click to make them a void. */
+.physics-edges { display: flex; align-items: center; gap: 8px; }
+.edges {
+  display: grid;
+  grid-template-columns: 9px 26px 9px;
+  grid-template-rows: 9px 26px 9px;
+  gap: 2px;
+}
+.edges-box { grid-area: 2 / 2; border: 1px dashed var(--line-strong); border-radius: 2px; }
+.edge { padding: 0; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--panel-2); }
+.edge:hover { border-color: var(--brass); }
+.edge[aria-pressed='true'] {
+  border-color: #a68cff;
+  background: repeating-linear-gradient(45deg, #8b6cff 0 3px, #2b2245 3px 6px);
+}
+.edge-top { grid-area: 1 / 2; }
+.edge-left { grid-area: 2 / 1; }
+.edge-right { grid-area: 2 / 3; }
+.edge-bottom { grid-area: 3 / 2; }
 .physics-reset {
   margin-left: auto;
   height: 28px;
@@ -947,7 +966,17 @@ kbd {
         </label>
         <label class="physics-toggle"><input type="checkbox" id="grav-newton"> Newtonian gravity</label>
         <label class="physics-toggle"><input type="checkbox" id="convection"> Convection</label>
-        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, Newtonian off, convection on">Reset</button>
+        <div class="physics-edges" role="group" aria-labelledby="edges-label">
+          <span class="physics-label" id="edges-label">Edges</span>
+          <div class="edges" title="Click a side to make that edge of the world a void: anything that leaves through it vanishes">
+            <button type="button" class="edge edge-top" data-edge="top" aria-pressed="false" aria-label="Roof is a void"></button>
+            <button type="button" class="edge edge-left" data-edge="left" aria-pressed="false" aria-label="Left wall is a void"></button>
+            <span class="edges-box" aria-hidden="true"></span>
+            <button type="button" class="edge edge-right" data-edge="right" aria-pressed="false" aria-label="Right wall is a void"></button>
+            <button type="button" class="edge edge-bottom" data-edge="bottom" aria-pressed="false" aria-label="Floor is a void"></button>
+          </div>
+        </div>
+        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, Newtonian off, convection on, no void edges">Reset</button>
       </section>
       <section class="tree" aria-labelledby="tree-title">
         <canvas id="tree" aria-label="Recipe tree. Drag to move it, Ctrl-scroll or pinch to zoom, click an element to see how it's made."></canvas>
@@ -8515,6 +8544,10 @@ const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
 // any unbroken line of strong solid across it.
 const SEAL_COUNT = 4;
 
+// Edges of the world that are a void: anything that moves out through one
+// vanishes (see setVoidEdges).
+const VOID_TOP = 1, VOID_BOTTOM = 2, VOID_LEFT = 4, VOID_RIGHT = 8;
+
 // With no gravity, gases spread evenly: as likely to step either way.
 const ZERO_G_RISE = 0.3;
 const ZERO_G_SINK = 0.3 / 0.7;
@@ -8547,6 +8580,8 @@ class World {
     this.blockedMoving = false;
     this.brushShape = 'circle';
     this.replace = false; // painting overwrites what's in the way
+    this.voidEdges = 0; // VOID_TOP | VOID_BOTTOM | ... (see setVoidEdges)
+    this.vanished = false; // the last travel took the particle off a void edge
     initParticles(this);
     initMachines(this);
   }
@@ -8735,6 +8770,21 @@ class World {
   // Settings from the Physics panel: { angle, strength, newtonian }.
   setGravity(opts) {
     this.gravity.set(opts);
+  }
+
+  // Which edges of the world are a void: { top, bottom, left, right }.
+  // Whatever moves out through one is gone; things that stay put (a stone
+  // floor along it) stay.
+  setVoidEdges({ top = false, bottom = false, left = false, right = false } = {}) {
+    this.voidEdges = (top ? VOID_TOP : 0) | (bottom ? VOID_BOTTOM : 0)
+      | (left ? VOID_LEFT : 0) | (right ? VOID_RIGHT : 0);
+  }
+
+  // Is (x, y), just outside the world, through a void edge?
+  offEdge(x, y) {
+    const v = this.voidEdges;
+    return (y < 0 && (v & VOID_TOP) !== 0) || (y >= this.h && (v & VOID_BOTTOM) !== 0)
+      || (x < 0 && (v & VOID_LEFT) !== 0) || (x >= this.w && (v & VOID_RIGHT) !== 0);
   }
 
   // ---- main loop ----------------------------------------------------------
@@ -9051,11 +9101,16 @@ class World {
     const rx = this.rand(), ry = this.rand();
     let cur = i, cx = x, cy = y;
     this.blockedMoving = false;
+    this.vanished = false;
     for (let s = 1; s <= n; s++) {
       const nx = x + Math.floor((vx * s) / n + rx);
       const ny = y + Math.floor((vy * s) / n + ry);
       if (nx === cx && ny === cy) continue;
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) { this.blockedMoving = true; break; }
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) {
+        if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { this.clearCell(cur); this.vanished = true; return cur; }
+        this.blockedMoving = true;
+        break;
+      }
       const j = ny * this.w + nx;
       if (!this.canEnter(d, j, ny - cy)) { this.blockedMoving = true; break; }
       this.swap(cur, j);
@@ -9073,11 +9128,16 @@ class World {
     const rx = this.rand(), ry = this.rand();
     let cur = i, cx = x, cy = y;
     this.blockedMoving = false;
+    this.vanished = false;
     for (let s = 1; s <= n; s++) {
       const nx = x + Math.floor((vx * s) / n + rx);
       const ny = y + Math.floor((vy * s) / n + ry);
       if (nx === cx && ny === cy) continue;
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) { this.blockedMoving = true; break; }
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) {
+        if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { this.clearCell(cur); this.vanished = true; return cur; }
+        this.blockedMoving = true;
+        break;
+      }
       const j = ny * this.w + nx;
       const along = (nx - cx) * ux + (ny - cy) * uy;
       if (!this.canEnter(d, j, along > 0.3 ? 1 : along < -0.3 ? -1 : 0)) { this.blockedMoving = true; break; }
@@ -9138,6 +9198,7 @@ class World {
       if (along < 1 && along > -0.5) { vx = vx - along * ux + ux; vy = vy - along * uy + uy; }
     }
     const j = this.travelAlong(i, x, y, vx, vy, d, ux, uy);
+    if (this.vanished) return;
     if (j !== i) {
       if (this.blockedMoving) this.stopAlong(j, ux, uy, 0.5);
       return;
@@ -9179,6 +9240,7 @@ class World {
       if (along < 1 && along > -0.5) { vx = vx - along * ux + ux; vy = vy - along * uy + uy; }
     }
     const j = this.travelAlong(i, x, y, vx, vy, d, ux, uy);
+    if (this.vanished) return;
     if (j !== i) {
       if (this.blockedMoving) this.stopAlong(j, ux, uy, 1);
       return;
@@ -9230,7 +9292,11 @@ class World {
       let drop = false;
       for (let s = 1; s <= d.spread; s++) {
         const nx = x + sx * s, ny = y + sy * s;
-        if (!this.inBounds(nx, ny)) break;
+        if (!this.inBounds(nx, ny)) {
+          // A void side is a cliff edge: the liquid pours off it.
+          if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { if (s === 1) { this.clearCell(i); return; } drop = true; }
+          break;
+        }
         const jj = ny * w + nx;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
@@ -9278,10 +9344,12 @@ class World {
     if (dy > 3) dy = 3; else if (dy < -3) dy = -3;
     if (dx === 0 && dy === 0) return;
     const j = this.travelAlong(i, x, y, dx, dy, d, g.gasUx, g.gasUy);
+    if (this.vanished) return;
     if (j !== i) return;
     const side = this.rand() < 0.5 ? -1 : 1;
     const nx = x + side * cx, ny = y + side * cy;
-    if (this.inBounds(nx, ny) && this.canEnter(d, ny * this.w + nx, 0)) this.swap(i, ny * this.w + nx);
+    if (this.inBounds(nx, ny)) { if (this.canEnter(d, ny * this.w + nx, 0)) this.swap(i, ny * this.w + nx); }
+    else if (this.voidEdges !== 0 && this.offEdge(nx, ny)) this.clearCell(i);
   }
 
   // ---- straight-down fast paths ------------------------------------------
@@ -9297,6 +9365,7 @@ class World {
     const vx = this.vx[i], vy = this.vy[i];
     const ty = vy < 1 && vy > -0.5 ? 1 : vy;
     const j = this.travel(i, x, y, vx, ty, d);
+    if (this.vanished) return;
     if (j !== i) {
       if (this.blockedMoving) { this.vx[j] *= 0.5; this.vy[j] = 0; }
       return;
@@ -9325,6 +9394,7 @@ class World {
     const vx = this.vx[i], vy = this.vy[i];
     const ty = vy < 1 && vy > -0.5 ? 1 : vy;
     const j = this.travel(i, x, y, vx, ty, d);
+    if (this.vanished) return;
     if (j !== i) {
       if (this.blockedMoving) this.vy[j] = 0;
       return;
@@ -9358,7 +9428,10 @@ class World {
       let drop = false;
       for (let s = 1; s <= d.spread; s++) {
         const nx = x + dir * s;
-        if (nx < 0 || nx >= w) break;
+        if (nx < 0 || nx >= w) {
+          if (this.voidEdges !== 0 && this.offEdge(nx, y)) { if (s === 1) { this.clearCell(i); return; } drop = true; }
+          break;
+        }
         const jj = i + dir * s;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
@@ -9385,9 +9458,11 @@ class World {
     if (dy > 3) dy = 3; else if (dy < -3) dy = -3;
     if (dx === 0 && dy === 0) return;
     const j = this.travel(i, x, y, dx, dy, d);
+    if (this.vanished) return;
     if (j !== i) return;
     const nx = x + (this.rand() < 0.5 ? -1 : 1);
-    if (nx >= 0 && nx < this.w && this.canEnter(d, i - x + nx, 0)) this.swap(i, i - x + nx);
+    if (nx >= 0 && nx < this.w) { if (this.canEnter(d, i - x + nx, 0)) this.swap(i, i - x + nx); }
+    else if (this.voidEdges !== 0 && this.offEdge(nx, y)) this.clearCell(i);
   }
 
   // ---- heat -----------------------------------------------------------------
@@ -9597,7 +9672,7 @@ class World {
 
 Object.assign(World.prototype, Behaviors, Particles, Machines);
 
-return { World, MAX_TEMP, MIN_TEMP };
+return { VOID_TOP, World, MAX_TEMP, MIN_TEMP };
 })();
 
 __modules["src/render/renderer.js"] = (() => {
@@ -9610,6 +9685,7 @@ __modules["src/render/renderer.js"] = (() => {
 
 const { DEFS, ID, NUM, State, AMBIENT } = __modules["src/sim/elements.js"];
 const { CELL } = __modules["src/sim/air.js"];
+const { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } = __modules["src/sim/world.js"];
 
 const BG = [10, 12, 16];
 const SHADES = 8;
@@ -9783,7 +9859,24 @@ class Renderer {
         0, 0, canvas.width, canvas.height);
       ctx.globalCompositeOperation = 'source-over';
     }
+    this.drawVoidEdges();
     if (brush) this.drawBrush(brush);
+  }
+
+  // A purple line along each edge of the world that's a void.
+  drawVoidEdges() {
+    const v = this.world.voidEdges;
+    if (!v) return;
+    const { ctx, canvas, camera: cam, world } = this;
+    const sx = canvas.width / cam.vw, sy = canvas.height / cam.vh;
+    const x0 = -cam.x * sx, y0 = -cam.y * sy;
+    const x1 = (world.w - cam.x) * sx, y1 = (world.h - cam.y) * sy;
+    const t = Math.max(2, Math.round(canvas.width / 300));
+    ctx.fillStyle = 'rgba(150, 115, 255, 0.85)';
+    if (v & VOID_TOP) ctx.fillRect(x0, y0, x1 - x0, t);
+    if (v & VOID_BOTTOM) ctx.fillRect(x0, y1 - t, x1 - x0, t);
+    if (v & VOID_LEFT) ctx.fillRect(x0, y0, t, y1 - y0);
+    if (v & VOID_RIGHT) ctx.fillRect(x1 - t, y0, t, y1 - y0);
   }
 
   // A small map of the whole world with the zoomed-in view marked on it.
@@ -11714,14 +11807,16 @@ return { toolColor, UI };
 
 __modules["src/game/physics-panel.js"] = (() => {
 // The Physics panel under the game: which way gravity pulls (a dial you
-// turn), how hard (a text box), Newtonian gravity and convection. Settings
+// turn), how hard (a text box), Newtonian gravity, convection, and which
+// edges of the world are a void (a box whose sides you click). Settings
 // are kept in localStorage, guarded like saved progress, and applied to the
 // world at start.
 
 const { MAX_STRENGTH } = __modules["src/sim/gravity.js"];
 
 const KEY = 'sandbox-crafter:physics';
-const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: true });
+const NO_EDGES = Object.freeze({ top: false, bottom: false, left: false, right: false });
+const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: true, edges: NO_EDGES });
 const NAMES = ['Down', 'Down-left', 'Left', 'Up-left', 'Up', 'Up-right', 'Right', 'Down-right'];
 // Keys that turn the dial, in degrees clockwise.
 const TURN = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15, PageUp: 45, PageDown: -45 };
@@ -11759,7 +11854,10 @@ function loadSettings(storage = globalThis.localStorage) {
       angle: Number.isFinite(data.angle) ? wrap(data.angle) : DEFAULTS.angle,
       strength: parseStrength(data.strength) ?? DEFAULTS.strength,
       newtonian: !!data.newtonian,
-      convection: !!data.convection,
+      convection: data.convection === undefined ? DEFAULTS.convection : !!data.convection,
+      edges: {
+        top: !!data.edges?.top, bottom: !!data.edges?.bottom, left: !!data.edges?.left, right: !!data.edges?.right,
+      },
     };
   } catch {
     return { ...DEFAULTS }; // unreadable or unavailable storage
@@ -11785,6 +11883,7 @@ class PhysicsPanel {
     this.box = $('grav-strength');
     this.newton = $('grav-newton');
     this.convect = $('convection');
+    this.edges = [...doc.querySelectorAll('[data-edge]')];
     this.settings = loadSettings();
     this.bind($('physics-reset'));
     this.apply();
@@ -11795,6 +11894,8 @@ class PhysicsPanel {
     const s = this.settings;
     this.world.setGravity({ angle: s.angle, strength: s.strength, newtonian: s.newtonian });
     this.world.setConvection(s.convection);
+    this.world.setVoidEdges(s.edges);
+    for (const b of this.edges) b.setAttribute('aria-pressed', String(s.edges[b.dataset.edge]));
     this.arrow.setAttribute('transform', `rotate(${s.angle})`);
     this.dial.setAttribute('aria-valuenow', String(s.angle));
     this.dial.setAttribute('aria-valuetext', angleText(s.angle));
@@ -11841,6 +11942,12 @@ class PhysicsPanel {
     });
     this.newton.addEventListener('change', () => this.update({ newtonian: this.newton.checked }));
     this.convect.addEventListener('change', () => this.update({ convection: this.convect.checked }));
+    for (const b of this.edges) {
+      b.addEventListener('click', () => {
+        const side = b.dataset.edge;
+        this.update({ edges: { ...this.settings.edges, [side]: !this.settings.edges[side] } });
+      });
+    }
     reset.addEventListener('click', () => { this.settings = { ...DEFAULTS }; this.apply(); });
   }
 }

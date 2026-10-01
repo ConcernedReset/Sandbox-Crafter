@@ -32,8 +32,9 @@ test('the dial turns to where the pointer is', () => {
 test('settings survive a save and load, and bad or missing storage gives the defaults', () => {
   const store = new Map();
   const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
-  saveSettings({ angle: 30, strength: 2, newtonian: true, convection: true }, storage);
-  assert.deepEqual(loadSettings(storage), { angle: 30, strength: 2, newtonian: true, convection: true });
+  const edges = { top: false, bottom: true, left: false, right: true };
+  saveSettings({ angle: 30, strength: 2, newtonian: true, convection: false, edges }, storage);
+  assert.deepEqual(loadSettings(storage), { angle: 30, strength: 2, newtonian: true, convection: false, edges });
   store.set('sandbox-crafter:physics', '{bad json');
   assert.deepEqual(loadSettings(storage), DEFAULTS);
   assert.deepEqual(loadSettings(undefined), DEFAULTS);
