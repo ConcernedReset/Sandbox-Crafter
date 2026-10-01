@@ -8,20 +8,15 @@
 // a two-finger pinch on a touch screen, and pans with a middle-button drag
 // or by moving both fingers. See camera.js.
 
-import { DEFS, ID, State } from '../sim/elements.js';
+import { DEFS, ID } from '../sim/elements.js';
 
 export const HEAT_RATE = 30; // °C per frame under the brush
 export const PRESSURE_RATE = 2; // pressure units per frame under the brush
 const WIND_STRENGTH = 0.6;
 
-// How densely each kind of element is sprinkled by the brush.
-const DENSITY = {
-  [State.POWDER]: 0.5,
-  [State.LIQUID]: 0.7,
-  [State.GAS]: 0.5,
-  [State.ENERGY]: 0.6,
-  [State.SOLID]: 1,
-};
+// Elements fill every cell under the brush; flying particles (photons,
+// neutrons...) are sprayed instead, this densely (see World.paintArea).
+const PARTICLE_DENSITY = 0.6;
 
 export const TOOLS = ['erase', 'wall', 'heat', 'cool', 'wind', 'pressure', 'vacuum'];
 export const MAX_BRUSH = 72;
@@ -240,7 +235,7 @@ export class Input {
     if (erasing) { world.eraseArea(area); return; }
     const sel = this.state.selection;
     if (sel.kind === 'element') {
-      world.paintArea(area, sel.id, DENSITY[DEFS[sel.id].state] ?? 1);
+      world.paintArea(area, sel.id, DEFS[sel.id].projectile ? PARTICLE_DENSITY : 1);
       return;
     }
     switch (sel.id) {
