@@ -5,7 +5,8 @@
 import {
   DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor, halfLife,
 } from '../sim/elements.js';
-import { TOOLS, HEAT_RATE } from './input.js';
+import { TOOLS, HARD_BLOCKED, HEAT_RATE } from './input.js';
+import { clue, processName } from './tree.js';
 import { AIRTIGHT, HIGH_PHASE, LOW_PHASE } from '../sim/lookups.js';
 
 const $ = (id) => document.getElementById(id);
@@ -53,6 +54,11 @@ const TOOL_INFO = {
     icon: '<path d="M3 7.5h9.5a2.5 2.5 0 1 0-2.5-2.5M3 11h12a2.5 2.5 0 1 1-2.5 2.5M3 14.5h5"/>',
     desc: 'Drag to blow air in that direction. Gases and light powders follow the wind.',
   },
+  mix: {
+    name: 'Mix', color: '#c39bff',
+    icon: '<path d="M3 6h3c2 0 3 1 4 4s2 4 4 4h3M3 14h3c2 0 3-1 4-4s2-4 4-4h3M14.5 3.5L17 6l-2.5 2.5M14.5 11.5L17 14l-2.5 2.5"/>',
+    desc: 'Stirs whatever is under the brush, swapping cells at random so layers blend in moments. Walls stay put, and the air is left alone.',
+  },
   pressure: {
     name: 'Pressure', color: '#ff6b5a',
     icon: '<path d="M10 2v5M7.5 4.5L10 7l2.5-2.5M10 18v-5M7.5 15.5L10 13l2.5 2.5M2 10h5M4.5 7.5L7 10l-2.5 2.5M18 10h-5M15.5 7.5L13 10l2.5 2.5"/>',
@@ -94,6 +100,7 @@ export class UI {
     this.fresh = new Set();
     this.filter = '';
     this.cardId = null; // the element whose card is open under the tree
+    this.cardLink = null; // and the tree's link into it (hard mode)
     this.onReveal = null; // called with an element id after its recipe is revealed
     this.buildMeter();
     this.buildTools();
@@ -187,7 +194,13 @@ export class UI {
     if (hadFocus) $('palette').querySelector('[aria-pressed="true"]')?.focus();
 
     for (const b of $('tools').children) {
-      b.setAttribute('aria-pressed', String(selection.kind === 'tool' && selection.id === b.dataset.tool));
+      const t = b.dataset.tool;
+      b.setAttribute('aria-pressed', String(selection.kind === 'tool' && selection.id === t));
+      // Hard mode crosses out the tools it takes away.
+      const blocked = progress.hard && HARD_BLOCKED.has(t);
+      b.disabled = blocked;
+      b.classList.toggle('blocked', blocked);
+      b.title = blocked ? `${TOOL_INFO[t].name}: not in hard mode` : TOOL_INFO[t].name;
     }
   }
 
@@ -276,15 +289,25 @@ export class UI {
   }
 
   // The card for a node clicked in the tree: how a discovered element is
-  // made, or the hint for an undiscovered one.
-  showCard(id) {
+  // made, or the hint for an undiscovered one. In hard mode only things still
+  // to make get a card, with the tree's link into them (`link`): the process
+  // and one ingredient, but not the hint, which would give the rest away.
+  showCard(id, link = null) {
     const { progress } = this.game;
     const d = DEFS[id];
     const known = progress.freePlay || progress.has(id);
     const close = `<button type="button" class="tree-card-close" data-close aria-label="Close">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.1L8 6.6l4.5-4.5 1.4 1.4L9.4 8l4.5 4.5-1.4 1.4L8 9.4l-4.5 4.5-1.4-1.4L6.6 8 2.1 3.5z"/></svg></button>`;
     let body;
-    if (known) {
+    if (progress.hard) {
+      if (known || !link) { this.hideCard(); return; }
+      const shown = clue(link);
+      const recipe = shown === null ? '?' : `${DEFS[shown].name}${' + ?'.repeat(link.inputs.length - 1)}`;
+      body = `<div class="inspect-head">${mini(d)}
+          <div><div class="inspect-title">${esc(d.name)}</div><div class="inspect-sub">No. ${d.number} · Not made yet</div></div>${close}</div>
+        <div class="tree-card-label">${esc(processName(RULES[link.rule]))}</div>
+        <p class="recipe-text">${esc(recipe)}</p>`;
+    } else if (known) {
       const how = d.start
         ? '<p class="desc">One of the four elements you start with.</p>'
         : `<div class="tree-card-label">Made by</div><ul class="tree-card-list">${this.knownRecipes(d)}</ul>`;
@@ -303,11 +326,13 @@ export class UI {
     card.innerHTML = body;
     card.hidden = false;
     this.cardId = id;
+    this.cardLink = link;
   }
 
   hideCard() {
     $('tree-card').hidden = true;
     this.cardId = null;
+    this.cardLink = null;
   }
 
   bindCard() {
@@ -329,7 +354,7 @@ export class UI {
     this.renderPalette();
     this.renderInspect();
     this.renderTreeCount();
-    if (this.cardId !== null) this.showCard(this.cardId);
+    if (this.cardId !== null) this.showCard(this.cardId, this.cardLink);
   }
 
   // ---- discovery toast ---------------------------------------------------

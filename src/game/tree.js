@@ -8,6 +8,11 @@
 // starters), so it has exactly one connection in. An undiscovered element
 // appears once every ingredient of one of its recipes has been found, as a
 // '?' with '?' for the process.
+//
+// Hard mode turns that round: found elements are blank boxes and the ones
+// to make next show their names, with the process but not the ingredients.
+// Focusing on one shows one of its ingredients (see clue). Each node's
+// `face` says how to draw it: 'name', '?' or 'blank'.
 
 import { DEFS, RULES, COLLECTIBLE, CATEGORIES } from '../sim/elements.js';
 
@@ -57,9 +62,18 @@ function shortest(id, col) {
   return best;
 }
 
+// The ingredient hard mode shows for something to make: always the first of
+// its recipe, so looking again never gives away another. None for a recipe
+// with only one ingredient, which would give the whole recipe away; the
+// process is all the player gets.
+export function clue(link) {
+  return link.inputs.length > 1 ? link.inputs[0] : null;
+}
+
 // known(id): discovered (everything, in free play).
 // revealed(id): the player asked to see this undiscovered element's recipe.
-export function buildTree({ known, revealed = () => false }) {
+// hard: hard mode (see the top of this file).
+export function buildTree({ known, revealed = () => false, hard = false }) {
   const found = COLLECTIBLE.filter((d) => known(d.id)).map((d) => d.id);
   const col = new Map();
   const via = new Map();
@@ -91,14 +105,18 @@ export function buildTree({ known, revealed = () => false }) {
     via.set(id, b.rule);
   }
 
-  const nodes = [...col].map(([id, c]) => ({ id, known: known(id), col: c, row: 0, x: 0, y: 0 }));
+  const nodes = [...col].map(([id, c]) => {
+    const k = known(id);
+    const face = hard ? (k ? 'blank' : 'name') : (k ? 'name' : '?');
+    return { id, known: k, face, col: c, row: 0, x: 0, y: 0 };
+  });
   const links = [...via].map(([id, k]) => ({
     output: id,
     inputs: RULES[k].inputs,
     rule: k,
-    label: known(id) || revealed(id) ? processName(RULES[k]) : '?',
+    label: hard || known(id) || revealed(id) ? processName(RULES[k]) : '?',
   }));
-  return arrange(nodes, links);
+  return { ...arrange(nodes, links), hard };
 }
 
 // Narrow a tree from buildTree down to one element: the recipes behind it,
@@ -191,10 +209,20 @@ export function focusTree(tree, id) {
     for (const l of links.values()) if (l.inputs.includes(n)) first = Math.min(first, col.get(l.output));
     if (first < Infinity) col.set(n, first - 1);
   }
+  // In hard mode, something still to make shows one of its ingredients.
+  const into = links.get(id);
+  const hint = tree.hard && !shown.get(id).known && into ? clue(into) : null;
   const nodes = [...role].map(([n, r]) => ({
-    id: n, known: shown.get(n).known, role: r, col: col.get(n), row: 0, x: 0, y: 0,
+    id: n,
+    known: shown.get(n).known,
+    face: n === hint ? 'name' : shown.get(n).face,
+    role: r,
+    col: col.get(n),
+    row: 0,
+    x: 0,
+    y: 0,
   }));
-  return arrange(nodes, [...links.values()]);
+  return { ...arrange(nodes, [...links.values()]), hard: tree.hard };
 }
 
 // Place nodes (each with a col) in rows: table order to start with, then

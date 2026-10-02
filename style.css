@@ -434,7 +434,7 @@ kbd {
   min-height: 0;
 }
 
-.tools { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; } /* two rows of four */
 .tool {
   display: flex;
   flex-direction: column;
@@ -452,6 +452,13 @@ kbd {
 .tool svg { width: 18px; height: 18px; fill: none; stroke: var(--tool, currentColor); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .tool:hover { border-color: var(--line-strong); color: var(--text); }
 .tool[aria-pressed='true'] { border-color: var(--brass); background: var(--brass-soft); color: var(--brass); }
+/* Hard mode takes these away: dimmed and struck through. */
+.tool.blocked { position: relative; opacity: 0.45; cursor: not-allowed; }
+.tool.blocked:hover { border-color: var(--line); color: var(--muted); }
+.tool.blocked::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--danger) calc(50% - 1px), var(--danger) calc(50% + 1px), transparent calc(50% + 1px));
+}
 
 .brush { display: flex; align-items: center; gap: 10px; }
 .brush label {
@@ -816,13 +823,15 @@ kbd {
 @media (max-width: 560px) {
   .app { padding: 10px 16px 16px; }
   .wordmark { font-size: 19px; }
-  .controls { width: 100%; }
+  .controls { width: 100%; position: relative; }
+  /* The menu spans the controls rather than hanging off the screen edge. */
+  .menu-wrap { position: static; }
+  .menu { left: 0; right: 0; width: auto; }
   .btn span { display: none; }
   .btn { padding: 0 9px; }
   .segmented { flex: 1 1 100%; order: 1; } /* its own row under the buttons */
   .segmented button { flex: 1; padding: 0 6px; }
   .tip { position: static; max-width: none; margin-top: 8px; font-size: 12.5px; }
-  .tools { grid-template-columns: repeat(4, 1fr); }
   .zoom { right: 8px; bottom: 8px; }
   .zoom button { min-width: 28px; height: 26px; padding: 0 6px; }
   .viewport .minimap { right: 8px; bottom: 42px; width: 80px; height: 48px; }

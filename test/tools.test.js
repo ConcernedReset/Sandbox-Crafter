@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
-import { makeWorld, fillRect, countOf, run } from './helpers.js';
+import { makeWorld, fillRect, wallBox, countOf, run } from './helpers.js';
 
 test('a radius-0 brush paints one cell; square and round brushes cover their shapes', () => {
   const w = makeWorld(60, 40);
@@ -68,4 +68,34 @@ test('Replace paints over whatever is in the way; without it, only empty cells a
   w.replace = true;
   w.paintArea((fn) => w.forRect(0, 0, 19, 19, fn), ID.STONE);
   assert.equal(w.temp[7 * 20 + 7], 500);
+});
+
+test('Mix shuffles everything under the brush but the walls, keeping every cell', () => {
+  const w = makeWorld(40, 40);
+  wallBox(w, 5, 5, 26, 26);
+  fillRect(w, 6, 6, 25, 15, ID.SAND); // sand over water
+  fillRect(w, 6, 16, 25, 25, ID.WATER);
+  const walls = [];
+  for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.WALL) walls.push(i);
+  const sand = countOf(w, ID.SAND), water = countOf(w, ID.WATER);
+  w.mixArea((fn) => w.forRect(5, 5, 26, 26, fn)); // the box, walls and all
+  assert.equal(countOf(w, ID.SAND), sand);
+  assert.equal(countOf(w, ID.WATER), water);
+  assert.ok(walls.every((i) => w.type[i] === ID.WALL), 'the walls stay put');
+  // One go already blends them: plenty of each in the other's half.
+  let waterUp = 0, sandDown = 0;
+  w.forRect(6, 6, 25, 15, (i) => { if (w.type[i] === ID.WATER) waterUp++; });
+  w.forRect(6, 16, 25, 25, (i) => { if (w.type[i] === ID.SAND) sandDown++; });
+  assert.ok(waterUp > water * 0.2, `${waterUp} water in the top half`);
+  assert.ok(sandDown > sand * 0.2, `${sandDown} sand in the bottom half`);
+});
+
+test('Mix carries temperature with the cell it moves', () => {
+  const w = makeWorld(20, 20);
+  fillRect(w, 0, 0, 19, 9, ID.STONE);
+  w.forRect(0, 0, 19, 9, (i) => { w.temp[i] = 500; });
+  w.mixArea((fn) => w.forRect(0, 0, 19, 19, fn));
+  for (let i = 0; i < w.type.length; i++) {
+    if (w.type[i] === ID.STONE) assert.equal(w.temp[i], 500);
+  }
 });

@@ -433,9 +433,16 @@ export class TreeView {
     ctx.globalAlpha = n.role === 'partner' && !lit ? 0.6 : 1;
     ctx.beginPath();
     ctx.roundRect(x, y, NODE_W, NODE_H, 7);
-    if (n.known) {
+    if (n.face === 'blank') {
+      // Hard mode: something found, with nothing to say what.
+      ctx.fillStyle = c.panel2;
+      ctx.fill();
+      ctx.strokeStyle = lit ? c.brass : c.lineStrong;
+      ctx.lineWidth = Math.max(lit ? 2 : 1, 1 / zoom);
+      ctx.stroke();
+    } else if (n.face === 'name') {
       // A wash of the element's own colour and a stripe of its category's,
-      // like the palette tiles.
+      // like the palette tiles. Dashed if it hasn't been made yet (hard mode).
       const s = this.look(d);
       ctx.fillStyle = c.panel2;
       ctx.fill();
@@ -443,9 +450,11 @@ export class TreeView {
       ctx.fill();
       ctx.fillStyle = s.cat;
       ctx.fillRect(x, y + 6, 3, NODE_H - 12);
-      ctx.strokeStyle = lit ? c.brass : s.edge;
+      if (!n.known) ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = lit ? c.brass : n.known ? s.edge : s.cat;
       ctx.lineWidth = Math.max(lit ? 2 : 1, 1 / zoom);
       ctx.stroke();
+      ctx.setLineDash([]);
       if (zoom >= TEXT_ZOOM) {
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'center';

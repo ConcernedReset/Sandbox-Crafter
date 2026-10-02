@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,340 tests, all passing, in a few seconds
+npm test    # node --test: about 1,350 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -92,7 +92,20 @@ else; `test/build.test.js` checks the bundle runs.
   known recipe, their partner ingredients, and onward); recipe loops such as
   carbon dioxide and dry ice are cut where they close. The tree
   only redraws when something changes, so call `setTree` after progress
-  changes (main.js does this for discoveries, free play, reset and reveals).
+  changes (main.js does this for discoveries, free play, hard mode, reset
+  and reveals).
+- **Hard mode** (`progress.hard`, saved; kept by reset): `HARD_BLOCKED` in
+  `input.js` lists the tools it takes away (`Input.act` ignores them, the
+  tool bar crosses them out). The Mix tool (`World.mixArea`) stays: it swaps
+  random cells under the brush, never indestructible ones, and never touches
+  the air. `buildTree({ hard })` gives each node a
+  `face` ('name', '?' or 'blank'): found elements are blank, things to make
+  are named, every link shows its process. `focusTree` on something to make
+  names one ingredient, `clue(link)` (the first input; none when there is
+  only one, which would give the whole recipe away), and the card uses
+  the same link from the whole tree so the two always agree. Card hints are
+  skipped because they spell out recipes, and palette picks don't refocus
+  the tree, since what an element makes gives its partners away.
 - **Gravity is a table, not "y + 1".** Movement reads `world.gravity`'s
   per-air-block arrays: `gx, gy` (pull in g), `ux, uy` (unit vector), `mag`,
   and `dirA/dirB/mix` (the two nearest of the 8 neighbour directions, ring

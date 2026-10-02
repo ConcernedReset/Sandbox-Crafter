@@ -11,6 +11,7 @@ export class Progress {
     this.discovered = new Set(STARTERS);
     this.revealed = new Set(); // hints the player chose to reveal
     this.freePlay = false;
+    this.hard = false; // hard mode: fewer tools, a tree of targets (see tree.js)
     this.tipDismissed = false;
     this.load();
   }
@@ -24,6 +25,7 @@ export class Progress {
       for (const k of data.discovered ?? []) if (valid.has(k)) this.discovered.add(k);
       for (const k of data.revealed ?? []) if (valid.has(k)) this.revealed.add(k);
       this.freePlay = !!data.freePlay;
+      this.hard = !!data.hard;
       this.tipDismissed = !!data.tipDismissed;
     } catch {
       // Unreadable or unavailable storage: keep the defaults.
@@ -36,6 +38,7 @@ export class Progress {
         discovered: [...this.discovered],
         revealed: [...this.revealed],
         freePlay: this.freePlay,
+        hard: this.hard,
         tipDismissed: this.tipDismissed,
       }));
     } catch {
@@ -67,6 +70,7 @@ export class Progress {
     this.save();
   }
 
+  // Hard mode is a choice of how to play, so it stays on.
   reset() {
     this.discovered = new Set(STARTERS);
     this.revealed.clear();

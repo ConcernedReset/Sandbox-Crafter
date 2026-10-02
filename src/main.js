@@ -5,7 +5,7 @@ import { World } from './sim/world.js';
 import { DEFS, ID } from './sim/elements.js';
 import { Renderer } from './render/renderer.js';
 import { TreeView } from './render/tree-view.js';
-import { Input, MAX_BRUSH } from './game/input.js';
+import { Input, MAX_BRUSH, HARD_BLOCKED } from './game/input.js';
 import { Camera } from './game/camera.js';
 import { Progress } from './game/progress.js';
 import { loadDemoScene } from './game/scene.js';
@@ -29,6 +29,7 @@ const game = {
   brushShape: 'circle',
   paused: false,
   replace: false, // painting overwrites what's in the way
+  get hard() { return progress.hard; },
   select(sel) {
     this.selection = sel;
     ui.renderPalette();
@@ -57,21 +58,24 @@ new PhysicsPanel(world);
 
 const treeView = new TreeView($('tree'));
 let focusId = null; // the element the tree is narrowed to, if any
+let whole = null; // the whole tree, focused or not
 
 // Rebuild the tree from the player's progress; `flash` lists new discoveries.
 // While an element is singled out, only its part of the tree is shown.
 function refreshTree(flash = []) {
-  const whole = buildTree({
+  whole = buildTree({
     known: (id) => progress.freePlay || progress.has(id),
     revealed: (id) => progress.revealed.has(DEFS[id].key),
+    hard: progress.hard,
   });
   const part = focusId === null ? null : focusTree(whole, focusId);
   if (part === null) focusId = null;
   treeView.setTree(part ?? whole, flash);
   treeView.select(focusId);
-  const known = focusId !== null && (progress.freePlay || progress.has(focusId));
-  $('tree-focus').hidden = focusId === null;
-  $('tree-focus').textContent = focusId === null ? '' : known ? DEFS[focusId].name : '?';
+  // Name what's singled out, unless it's one of hard mode's blank boxes.
+  const face = focusId === null ? 'blank' : treeView.node(focusId).face;
+  $('tree-focus').hidden = face === 'blank';
+  $('tree-focus').textContent = face === 'name' ? DEFS[focusId].name : '?';
   $('tree-back').hidden = focusId === null;
 }
 
@@ -93,22 +97,30 @@ function unfocus() {
 
 // Clicking a node singles it out, shows how it's made, and picks a discovered
 // element up to paint with. Clicking empty space goes back to the whole tree.
+// In hard mode a blank box only narrows the tree, and something still to
+// make gets a card with the whole tree's recipe for it, the same one
+// focusing on it shows.
 treeView.onPick = (node) => {
   if (!node) {
     ui.hideCard();
     unfocus();
     return;
   }
-  if (node.known && progress.usable(node.id)) game.select({ kind: 'element', id: node.id });
-  ui.showCard(node.id);
+  if (progress.hard) {
+    ui.showCard(node.id, whole.links.find((l) => l.output === node.id) ?? null);
+  } else {
+    if (node.known && progress.usable(node.id)) game.select({ kind: 'element', id: node.id });
+    ui.showCard(node.id);
+  }
   if (node.id !== focusId) focusOn(node.id);
 };
 ui.onReveal = () => refreshTree();
 
 // Picking an element from the palette singles it out in the tree, and moves
-// an open card along to it.
+// an open card along to it. Not in hard mode, where what it makes would give
+// away what goes into things still to make.
 function followSelection(sel) {
-  if (sel.kind !== 'element') return;
+  if (sel.kind !== 'element' || progress.hard) return;
   if (ui.cardId !== null && ui.cardId !== sel.id) ui.showCard(sel.id);
   if (focusId !== sel.id) focusOn(sel.id);
 }
@@ -249,6 +261,19 @@ $('menu-freeplay').addEventListener('change', (e) => {
     game.selection = { kind: 'element', id: ID.SAND };
   }
   ui.refresh();
+  refreshTree();
+});
+$('menu-hard').checked = progress.hard;
+$('menu-hard').addEventListener('change', (e) => {
+  progress.hard = e.target.checked;
+  progress.save();
+  const sel = game.selection;
+  if (progress.hard && sel.kind === 'tool' && HARD_BLOCKED.has(sel.id)) {
+    game.selection = { kind: 'element', id: ID.SAND };
+  }
+  ui.hideCard();
+  ui.refresh();
+  focusId = null;
   refreshTree();
 });
 $('menu-reset').addEventListener('click', () => { $('menu-confirm').hidden = false; });

@@ -33,6 +33,8 @@ import { Gravity, DX8, DY8 } from './gravity.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
+// What the Mix tool leaves where it is (see mixArea).
+const FIXED = Uint8Array.from(DEFS, (d) => (d.indestructible ? 1 : 0));
 
 // An air block is sealed once this many of its 16 cells are airtight solid:
 // any unbroken line of strong solid across it.
@@ -1160,6 +1162,22 @@ export class World {
       seen.add(a);
       this.air.addVelocity(a, dx, dy);
     });
+  }
+
+  // The Mix tool: shuffle the cells under the brush, about one swap per cell
+  // each frame, so layers blend within a few frames. Whole cells move
+  // (element, temperature, speed...), empty ones too; walls and anything
+  // else indestructible stay put. The air is left alone, so mixing builds
+  // no pressure.
+  mixArea(area) {
+    const cells = this.mixCells ??= [];
+    cells.length = 0;
+    area((i) => { if (!FIXED[this.type[i]]) cells.push(i); });
+    const n = cells.length;
+    for (let k = 0; k < n && n > 1; k++) {
+      const i = cells[k], j = cells[(this.rand() * n) | 0];
+      if (i !== j) this.swap(i, j);
+    }
   }
 
   paint(cx, cy, r, t, density = 1) { this.paintArea(this.brushArea(cx, cy, r), t, density); }

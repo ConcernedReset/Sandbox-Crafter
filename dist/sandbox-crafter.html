@@ -444,7 +444,7 @@ kbd {
   min-height: 0;
 }
 
-.tools { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; } /* two rows of four */
 .tool {
   display: flex;
   flex-direction: column;
@@ -462,6 +462,13 @@ kbd {
 .tool svg { width: 18px; height: 18px; fill: none; stroke: var(--tool, currentColor); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .tool:hover { border-color: var(--line-strong); color: var(--text); }
 .tool[aria-pressed='true'] { border-color: var(--brass); background: var(--brass-soft); color: var(--brass); }
+/* Hard mode takes these away: dimmed and struck through. */
+.tool.blocked { position: relative; opacity: 0.45; cursor: not-allowed; }
+.tool.blocked:hover { border-color: var(--line); color: var(--muted); }
+.tool.blocked::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--danger) calc(50% - 1px), var(--danger) calc(50% + 1px), transparent calc(50% + 1px));
+}
 
 .brush { display: flex; align-items: center; gap: 10px; }
 .brush label {
@@ -826,13 +833,15 @@ kbd {
 @media (max-width: 560px) {
   .app { padding: 10px 16px 16px; }
   .wordmark { font-size: 19px; }
-  .controls { width: 100%; }
+  .controls { width: 100%; position: relative; }
+  /* The menu spans the controls rather than hanging off the screen edge. */
+  .menu-wrap { position: static; }
+  .menu { left: 0; right: 0; width: auto; }
   .btn span { display: none; }
   .btn { padding: 0 9px; }
   .segmented { flex: 1 1 100%; order: 1; } /* its own row under the buttons */
   .segmented button { flex: 1; padding: 0 6px; }
   .tip { position: static; max-width: none; margin-top: 8px; font-size: 12.5px; }
-  .tools { grid-template-columns: repeat(4, 1fr); }
   .zoom { right: 8px; bottom: 8px; }
   .zoom button { min-width: 28px; height: 26px; padding: 0 6px; }
   .viewport .minimap { right: 8px; bottom: 42px; width: 80px; height: 48px; }
@@ -887,6 +896,7 @@ kbd {
         <div class="menu" id="menu" hidden>
           <button type="button" id="menu-scene">Load the starting scene</button>
           <label class="menu-toggle"><input type="checkbox" id="menu-freeplay"> Free play: unlock every element</label>
+          <label class="menu-toggle" title="No heat, cool, wind, pressure or vacuum tools. The recipe tree shows what to make next, not what you've found."><input type="checkbox" id="menu-hard"> Hard mode: fewer tools, a vaguer tree</label>
           <button type="button" id="menu-reset" class="danger">Reset discoveries…</button>
           <div class="menu-confirm" id="menu-confirm" hidden>
             <p>Forget every element you've discovered?</p>
@@ -8607,6 +8617,8 @@ const { Gravity, DX8, DY8 } = __modules["src/sim/gravity.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
+// What the Mix tool leaves where it is (see mixArea).
+const FIXED = Uint8Array.from(DEFS, (d) => (d.indestructible ? 1 : 0));
 
 // An air block is sealed once this many of its 16 cells are airtight solid:
 // any unbroken line of strong solid across it.
@@ -9736,6 +9748,22 @@ class World {
     });
   }
 
+  // The Mix tool: shuffle the cells under the brush, about one swap per cell
+  // each frame, so layers blend within a few frames. Whole cells move
+  // (element, temperature, speed...), empty ones too; walls and anything
+  // else indestructible stay put. The air is left alone, so mixing builds
+  // no pressure.
+  mixArea(area) {
+    const cells = this.mixCells ??= [];
+    cells.length = 0;
+    area((i) => { if (!FIXED[this.type[i]]) cells.push(i); });
+    const n = cells.length;
+    for (let k = 0; k < n && n > 1; k++) {
+      const i = cells[k], j = cells[(this.rand() * n) | 0];
+      if (i !== j) this.swap(i, j);
+    }
+  }
+
   paint(cx, cy, r, t, density = 1) { this.paintArea(this.brushArea(cx, cy, r), t, density); }
   erase(cx, cy, r) { this.eraseArea(this.brushArea(cx, cy, r)); }
   heat(cx, cy, r, amount) { this.heatArea(this.brushArea(cx, cy, r), amount); }
@@ -10293,6 +10321,11 @@ __modules["src/game/tree.js"] = (() => {
 // starters), so it has exactly one connection in. An undiscovered element
 // appears once every ingredient of one of its recipes has been found, as a
 // '?' with '?' for the process.
+//
+// Hard mode turns that round: found elements are blank boxes and the ones
+// to make next show their names, with the process but not the ingredients.
+// Focusing on one shows one of its ingredients (see clue). Each node's
+// `face` says how to draw it: 'name', '?' or 'blank'.
 
 const { DEFS, RULES, COLLECTIBLE, CATEGORIES } = __modules["src/sim/elements.js"];
 
@@ -10342,9 +10375,18 @@ function shortest(id, col) {
   return best;
 }
 
+// The ingredient hard mode shows for something to make: always the first of
+// its recipe, so looking again never gives away another. None for a recipe
+// with only one ingredient, which would give the whole recipe away; the
+// process is all the player gets.
+function clue(link) {
+  return link.inputs.length > 1 ? link.inputs[0] : null;
+}
+
 // known(id): discovered (everything, in free play).
 // revealed(id): the player asked to see this undiscovered element's recipe.
-function buildTree({ known, revealed = () => false }) {
+// hard: hard mode (see the top of this file).
+function buildTree({ known, revealed = () => false, hard = false }) {
   const found = COLLECTIBLE.filter((d) => known(d.id)).map((d) => d.id);
   const col = new Map();
   const via = new Map();
@@ -10376,14 +10418,18 @@ function buildTree({ known, revealed = () => false }) {
     via.set(id, b.rule);
   }
 
-  const nodes = [...col].map(([id, c]) => ({ id, known: known(id), col: c, row: 0, x: 0, y: 0 }));
+  const nodes = [...col].map(([id, c]) => {
+    const k = known(id);
+    const face = hard ? (k ? 'blank' : 'name') : (k ? 'name' : '?');
+    return { id, known: k, face, col: c, row: 0, x: 0, y: 0 };
+  });
   const links = [...via].map(([id, k]) => ({
     output: id,
     inputs: RULES[k].inputs,
     rule: k,
-    label: known(id) || revealed(id) ? processName(RULES[k]) : '?',
+    label: hard || known(id) || revealed(id) ? processName(RULES[k]) : '?',
   }));
-  return arrange(nodes, links);
+  return { ...arrange(nodes, links), hard };
 }
 
 // Narrow a tree from buildTree down to one element: the recipes behind it,
@@ -10476,10 +10522,20 @@ function focusTree(tree, id) {
     for (const l of links.values()) if (l.inputs.includes(n)) first = Math.min(first, col.get(l.output));
     if (first < Infinity) col.set(n, first - 1);
   }
+  // In hard mode, something still to make shows one of its ingredients.
+  const into = links.get(id);
+  const hint = tree.hard && !shown.get(id).known && into ? clue(into) : null;
   const nodes = [...role].map(([n, r]) => ({
-    id: n, known: shown.get(n).known, role: r, col: col.get(n), row: 0, x: 0, y: 0,
+    id: n,
+    known: shown.get(n).known,
+    face: n === hint ? 'name' : shown.get(n).face,
+    role: r,
+    col: col.get(n),
+    row: 0,
+    x: 0,
+    y: 0,
   }));
-  return arrange(nodes, [...links.values()]);
+  return { ...arrange(nodes, [...links.values()]), hard: tree.hard };
 }
 
 // Place nodes (each with a col) in rows: table order to start with, then
@@ -10527,7 +10583,7 @@ function arrange(nodes, links) {
   return { nodes, links, columns: columns.length };
 }
 
-return { NODE_W, NODE_H, JOIN, COL_W, ROW_H, processName, buildTree, focusTree };
+return { NODE_W, NODE_H, JOIN, COL_W, ROW_H, processName, clue, buildTree, focusTree };
 })();
 
 __modules["src/render/tree-view.js"] = (() => {
@@ -10966,9 +11022,16 @@ class TreeView {
     ctx.globalAlpha = n.role === 'partner' && !lit ? 0.6 : 1;
     ctx.beginPath();
     ctx.roundRect(x, y, NODE_W, NODE_H, 7);
-    if (n.known) {
+    if (n.face === 'blank') {
+      // Hard mode: something found, with nothing to say what.
+      ctx.fillStyle = c.panel2;
+      ctx.fill();
+      ctx.strokeStyle = lit ? c.brass : c.lineStrong;
+      ctx.lineWidth = Math.max(lit ? 2 : 1, 1 / zoom);
+      ctx.stroke();
+    } else if (n.face === 'name') {
       // A wash of the element's own colour and a stripe of its category's,
-      // like the palette tiles.
+      // like the palette tiles. Dashed if it hasn't been made yet (hard mode).
       const s = this.look(d);
       ctx.fillStyle = c.panel2;
       ctx.fill();
@@ -10976,9 +11039,11 @@ class TreeView {
       ctx.fill();
       ctx.fillStyle = s.cat;
       ctx.fillRect(x, y + 6, 3, NODE_H - 12);
-      ctx.strokeStyle = lit ? c.brass : s.edge;
+      if (!n.known) ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = lit ? c.brass : n.known ? s.edge : s.cat;
       ctx.lineWidth = Math.max(lit ? 2 : 1, 1 / zoom);
       ctx.stroke();
+      ctx.setLineDash([]);
       if (zoom >= TEXT_ZOOM) {
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'center';
@@ -11043,7 +11108,10 @@ const WIND_STRENGTH = 0.6;
 // neutrons...) are sprayed instead, this densely (see World.paintArea).
 const PARTICLE_DENSITY = 0.6;
 
-const TOOLS = ['erase', 'wall', 'heat', 'cool', 'wind', 'pressure', 'vacuum'];
+const TOOLS = ['erase', 'wall', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum'];
+// The tools hard mode takes away: heat, cold and pressure have to come from
+// the elements themselves.
+const HARD_BLOCKED = new Set(['heat', 'cool', 'wind', 'pressure', 'vacuum']);
 const MAX_BRUSH = 72;
 
 class Input {
@@ -11263,6 +11331,7 @@ class Input {
       world.paintArea(area, sel.id, DEFS[sel.id].projectile ? PARTICLE_DENSITY : 1);
       return;
     }
+    if (this.state.hard && HARD_BLOCKED.has(sel.id)) return;
     switch (sel.id) {
       case 'erase': world.eraseArea(area); break;
       case 'wall': world.paintArea(area, ID.WALL, 1); break;
@@ -11270,6 +11339,7 @@ class Input {
       case 'cool': world.heatArea(area, -HEAT_RATE); break;
       case 'pressure': world.pressurizeArea(area, PRESSURE_RATE); break;
       case 'vacuum': world.pressurizeArea(area, -PRESSURE_RATE); break;
+      case 'mix': world.mixArea(area); break;
       case 'wind':
         if (dx || dy) {
           const len = Math.hypot(dx, dy);
@@ -11282,7 +11352,7 @@ class Input {
   }
 }
 
-return { HEAT_RATE, PRESSURE_RATE, TOOLS, MAX_BRUSH, Input };
+return { HEAT_RATE, PRESSURE_RATE, TOOLS, HARD_BLOCKED, MAX_BRUSH, Input };
 })();
 
 __modules["src/game/camera.js"] = (() => {
@@ -11372,6 +11442,7 @@ class Progress {
     this.discovered = new Set(STARTERS);
     this.revealed = new Set(); // hints the player chose to reveal
     this.freePlay = false;
+    this.hard = false; // hard mode: fewer tools, a tree of targets (see tree.js)
     this.tipDismissed = false;
     this.load();
   }
@@ -11385,6 +11456,7 @@ class Progress {
       for (const k of data.discovered ?? []) if (valid.has(k)) this.discovered.add(k);
       for (const k of data.revealed ?? []) if (valid.has(k)) this.revealed.add(k);
       this.freePlay = !!data.freePlay;
+      this.hard = !!data.hard;
       this.tipDismissed = !!data.tipDismissed;
     } catch {
       // Unreadable or unavailable storage: keep the defaults.
@@ -11397,6 +11469,7 @@ class Progress {
         discovered: [...this.discovered],
         revealed: [...this.revealed],
         freePlay: this.freePlay,
+        hard: this.hard,
         tipDismissed: this.tipDismissed,
       }));
     } catch {
@@ -11428,6 +11501,7 @@ class Progress {
     this.save();
   }
 
+  // Hard mode is a choice of how to play, so it stays on.
   reset() {
     this.discovered = new Set(STARTERS);
     this.revealed.clear();
@@ -11497,7 +11571,8 @@ __modules["src/game/ui.js"] = (() => {
 // the HUD. The tree itself is drawn by src/render/tree-view.js.
 
 const { DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor, halfLife } = __modules["src/sim/elements.js"];
-const { TOOLS, HEAT_RATE } = __modules["src/game/input.js"];
+const { TOOLS, HARD_BLOCKED, HEAT_RATE } = __modules["src/game/input.js"];
+const { clue, processName } = __modules["src/game/tree.js"];
 const { AIRTIGHT, HIGH_PHASE, LOW_PHASE } = __modules["src/sim/lookups.js"];
 
 const $ = (id) => document.getElementById(id);
@@ -11545,6 +11620,11 @@ const TOOL_INFO = {
     icon: '<path d="M3 7.5h9.5a2.5 2.5 0 1 0-2.5-2.5M3 11h12a2.5 2.5 0 1 1-2.5 2.5M3 14.5h5"/>',
     desc: 'Drag to blow air in that direction. Gases and light powders follow the wind.',
   },
+  mix: {
+    name: 'Mix', color: '#c39bff',
+    icon: '<path d="M3 6h3c2 0 3 1 4 4s2 4 4 4h3M3 14h3c2 0 3-1 4-4s2-4 4-4h3M14.5 3.5L17 6l-2.5 2.5M14.5 11.5L17 14l-2.5 2.5"/>',
+    desc: 'Stirs whatever is under the brush, swapping cells at random so layers blend in moments. Walls stay put, and the air is left alone.',
+  },
   pressure: {
     name: 'Pressure', color: '#ff6b5a',
     icon: '<path d="M10 2v5M7.5 4.5L10 7l2.5-2.5M10 18v-5M7.5 15.5L10 13l2.5 2.5M2 10h5M4.5 7.5L7 10l-2.5 2.5M18 10h-5M15.5 7.5L13 10l2.5 2.5"/>',
@@ -11586,6 +11666,7 @@ class UI {
     this.fresh = new Set();
     this.filter = '';
     this.cardId = null; // the element whose card is open under the tree
+    this.cardLink = null; // and the tree's link into it (hard mode)
     this.onReveal = null; // called with an element id after its recipe is revealed
     this.buildMeter();
     this.buildTools();
@@ -11679,7 +11760,13 @@ class UI {
     if (hadFocus) $('palette').querySelector('[aria-pressed="true"]')?.focus();
 
     for (const b of $('tools').children) {
-      b.setAttribute('aria-pressed', String(selection.kind === 'tool' && selection.id === b.dataset.tool));
+      const t = b.dataset.tool;
+      b.setAttribute('aria-pressed', String(selection.kind === 'tool' && selection.id === t));
+      // Hard mode crosses out the tools it takes away.
+      const blocked = progress.hard && HARD_BLOCKED.has(t);
+      b.disabled = blocked;
+      b.classList.toggle('blocked', blocked);
+      b.title = blocked ? `${TOOL_INFO[t].name}: not in hard mode` : TOOL_INFO[t].name;
     }
   }
 
@@ -11768,15 +11855,25 @@ class UI {
   }
 
   // The card for a node clicked in the tree: how a discovered element is
-  // made, or the hint for an undiscovered one.
-  showCard(id) {
+  // made, or the hint for an undiscovered one. In hard mode only things still
+  // to make get a card, with the tree's link into them (`link`): the process
+  // and one ingredient, but not the hint, which would give the rest away.
+  showCard(id, link = null) {
     const { progress } = this.game;
     const d = DEFS[id];
     const known = progress.freePlay || progress.has(id);
     const close = `<button type="button" class="tree-card-close" data-close aria-label="Close">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.1L8 6.6l4.5-4.5 1.4 1.4L9.4 8l4.5 4.5-1.4 1.4L8 9.4l-4.5 4.5-1.4-1.4L6.6 8 2.1 3.5z"/></svg></button>`;
     let body;
-    if (known) {
+    if (progress.hard) {
+      if (known || !link) { this.hideCard(); return; }
+      const shown = clue(link);
+      const recipe = shown === null ? '?' : `${DEFS[shown].name}${' + ?'.repeat(link.inputs.length - 1)}`;
+      body = `<div class="inspect-head">${mini(d)}
+          <div><div class="inspect-title">${esc(d.name)}</div><div class="inspect-sub">No. ${d.number} · Not made yet</div></div>${close}</div>
+        <div class="tree-card-label">${esc(processName(RULES[link.rule]))}</div>
+        <p class="recipe-text">${esc(recipe)}</p>`;
+    } else if (known) {
       const how = d.start
         ? '<p class="desc">One of the four elements you start with.</p>'
         : `<div class="tree-card-label">Made by</div><ul class="tree-card-list">${this.knownRecipes(d)}</ul>`;
@@ -11795,11 +11892,13 @@ class UI {
     card.innerHTML = body;
     card.hidden = false;
     this.cardId = id;
+    this.cardLink = link;
   }
 
   hideCard() {
     $('tree-card').hidden = true;
     this.cardId = null;
+    this.cardLink = null;
   }
 
   bindCard() {
@@ -11821,7 +11920,7 @@ class UI {
     this.renderPalette();
     this.renderInspect();
     this.renderTreeCount();
-    if (this.cardId !== null) this.showCard(this.cardId);
+    if (this.cardId !== null) this.showCard(this.cardId, this.cardLink);
   }
 
   // ---- discovery toast ---------------------------------------------------
@@ -12035,7 +12134,7 @@ const { World } = __modules["src/sim/world.js"];
 const { DEFS, ID } = __modules["src/sim/elements.js"];
 const { Renderer } = __modules["src/render/renderer.js"];
 const { TreeView } = __modules["src/render/tree-view.js"];
-const { Input, MAX_BRUSH } = __modules["src/game/input.js"];
+const { Input, MAX_BRUSH, HARD_BLOCKED } = __modules["src/game/input.js"];
 const { Camera } = __modules["src/game/camera.js"];
 const { Progress } = __modules["src/game/progress.js"];
 const { loadDemoScene } = __modules["src/game/scene.js"];
@@ -12059,6 +12158,7 @@ const game = {
   brushShape: 'circle',
   paused: false,
   replace: false, // painting overwrites what's in the way
+  get hard() { return progress.hard; },
   select(sel) {
     this.selection = sel;
     ui.renderPalette();
@@ -12087,21 +12187,24 @@ new PhysicsPanel(world);
 
 const treeView = new TreeView($('tree'));
 let focusId = null; // the element the tree is narrowed to, if any
+let whole = null; // the whole tree, focused or not
 
 // Rebuild the tree from the player's progress; `flash` lists new discoveries.
 // While an element is singled out, only its part of the tree is shown.
 function refreshTree(flash = []) {
-  const whole = buildTree({
+  whole = buildTree({
     known: (id) => progress.freePlay || progress.has(id),
     revealed: (id) => progress.revealed.has(DEFS[id].key),
+    hard: progress.hard,
   });
   const part = focusId === null ? null : focusTree(whole, focusId);
   if (part === null) focusId = null;
   treeView.setTree(part ?? whole, flash);
   treeView.select(focusId);
-  const known = focusId !== null && (progress.freePlay || progress.has(focusId));
-  $('tree-focus').hidden = focusId === null;
-  $('tree-focus').textContent = focusId === null ? '' : known ? DEFS[focusId].name : '?';
+  // Name what's singled out, unless it's one of hard mode's blank boxes.
+  const face = focusId === null ? 'blank' : treeView.node(focusId).face;
+  $('tree-focus').hidden = face === 'blank';
+  $('tree-focus').textContent = face === 'name' ? DEFS[focusId].name : '?';
   $('tree-back').hidden = focusId === null;
 }
 
@@ -12123,22 +12226,30 @@ function unfocus() {
 
 // Clicking a node singles it out, shows how it's made, and picks a discovered
 // element up to paint with. Clicking empty space goes back to the whole tree.
+// In hard mode a blank box only narrows the tree, and something still to
+// make gets a card with the whole tree's recipe for it, the same one
+// focusing on it shows.
 treeView.onPick = (node) => {
   if (!node) {
     ui.hideCard();
     unfocus();
     return;
   }
-  if (node.known && progress.usable(node.id)) game.select({ kind: 'element', id: node.id });
-  ui.showCard(node.id);
+  if (progress.hard) {
+    ui.showCard(node.id, whole.links.find((l) => l.output === node.id) ?? null);
+  } else {
+    if (node.known && progress.usable(node.id)) game.select({ kind: 'element', id: node.id });
+    ui.showCard(node.id);
+  }
   if (node.id !== focusId) focusOn(node.id);
 };
 ui.onReveal = () => refreshTree();
 
 // Picking an element from the palette singles it out in the tree, and moves
-// an open card along to it.
+// an open card along to it. Not in hard mode, where what it makes would give
+// away what goes into things still to make.
 function followSelection(sel) {
-  if (sel.kind !== 'element') return;
+  if (sel.kind !== 'element' || progress.hard) return;
   if (ui.cardId !== null && ui.cardId !== sel.id) ui.showCard(sel.id);
   if (focusId !== sel.id) focusOn(sel.id);
 }
@@ -12279,6 +12390,19 @@ $('menu-freeplay').addEventListener('change', (e) => {
     game.selection = { kind: 'element', id: ID.SAND };
   }
   ui.refresh();
+  refreshTree();
+});
+$('menu-hard').checked = progress.hard;
+$('menu-hard').addEventListener('change', (e) => {
+  progress.hard = e.target.checked;
+  progress.save();
+  const sel = game.selection;
+  if (progress.hard && sel.kind === 'tool' && HARD_BLOCKED.has(sel.id)) {
+    game.selection = { kind: 'element', id: ID.SAND };
+  }
+  ui.hideCard();
+  ui.refresh();
+  focusId = null;
   refreshTree();
 });
 $('menu-reset').addEventListener('click', () => { $('menu-confirm').hidden = false; });

@@ -67,7 +67,9 @@ back to system ones; progress is saved per file location.)
   overwrites whatever is in the way, Wall included, instead of only filling
   empty space. Painting an element over itself leaves it alone.
 - **Tools:** Erase, Wall (indestructible and airtight), Heat, Cool, Wind (drag
-  to blow), Pressure and Vacuum.
+  to blow), Mix, Pressure and Vacuum. Mix stirs whatever is under the brush,
+  swapping cells at random so layers blend within a few frames; walls stay
+  put and the air is left alone.
 - **Views:** Normal, Heat (a thermal camera) and Pressure (the air grid).
 - **Keys:** `Space` pause, `.` step one frame, `[` `]` brush size, `1` `2` `3` views,
   `R` replace, `+` `-` `0` zoom, arrows pan.
@@ -84,7 +86,19 @@ back to system ones; progress is saved per file location.)
   hint and, if you're stuck, the recipe. Click empty space, press `Esc` or
   use **Whole tree** to go back.
 - Discoveries are saved in your browser. The `⋯` menu has a free-play mode
-  that unlocks everything, and a reset.
+  that unlocks everything, hard mode, and a reset.
+- **Hard mode** (in the `⋯` menu) takes away the Heat, Cool, Wind, Pressure
+  and Vacuum tools, which are crossed out: heat, cold and pressure have to
+  come from the elements themselves. Mix still works. It also turns the
+  recipe tree round.
+  Everything you've found is a blank box, and the elements you could make
+  next show their names, with only the process (Mix, Heat, Cool...) under
+  the line into them. Click one of them and one of its ingredients appears,
+  always the same one; the rest stay blank, and the card skips the hint.
+  Something made from a single ingredient shows only its process. The
+  boxes never go away, so once you've found everything the tree still shows
+  its whole shape. Picking an element in the palette doesn't move the tree
+  in hard mode. Resetting discoveries keeps hard mode on.
 
 There are eight ways to combine things (the tree calls contact Mix, and
 particle hits Bombard or Collide):
@@ -511,12 +525,16 @@ open the stone around it while a pinch only pops, hot protons heating and
 lighting what they pass through, colliding protons making neutrons, magnets,
 decay, and radioactive elements staying still until pressure or particles
 disturb them.
-The tools tests cover brush shapes, boxes, Replace and particle impacts, and
+The tools tests cover brush shapes, boxes, Replace, Mix (blending layers, keeping every cell, the
+walls and temperatures) and particle impacts, and
 the camera tests cover zooming and panning. The Physics panel tests cover
 reading the strength box, turning the dial and saving the settings; the
 build test checks the single-file build runs. The tree tests cover which elements the
 recipe tree shows, one connection into each, columns, overlap, free play and
-process names. The machine tests
+process names. The hard mode tests cover blank boxes and named targets, the
+one ingredient shown (the same every time, and none for a single-ingredient
+recipe), the tree keeping every box, the blocked tools, Mix still working and
+the setting being saved. The machine tests
 cover coloured reflections and coloured glass, mirrors of metal behind glass, beams turned by
 diagonal mirrors, beam splitters, and every control and machine. The mechanics
 tests cover X-rays, gamma rays, ultraviolet and microwaves, gadgets
@@ -539,7 +557,7 @@ settling once it cools, hot air pushing out and being drawn back in the open,
 a full loop in a closed box (markers carried up come
 back down to the base), the Heat and Cool tools warming and chilling the
 air, and a sealed fire still going out. The recipe tests
-run all 1200 production rules in the real simulation. About 1,340 tests in
+run all 1200 production rules in the real simulation. About 1,350 tests in
 all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with
