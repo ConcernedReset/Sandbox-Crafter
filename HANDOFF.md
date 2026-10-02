@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,350 tests, all passing, in a few seconds
+npm test    # node --test: about 1,360 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -86,6 +86,13 @@ else; `test/build.test.js` checks the bundle runs.
   `particles.js`), which uses the particle up, so only fission multiplies
   neutrons. Constants are in `constants.js`. Their `decay` compiles to rule
   kind `'decay'` ("X + Decay"), and the recipe lab for it pumps pressure.
+- **Spark is a tool, not a discovery** (`always: true`, like Wall). The
+  Spark tool is `World.sparkArea`: empty cells get a spark, anything else
+  gets `zap`, what a spark touching it would do (conductors pulse,
+  switches press, machines power, explosives light, gases glow, and a
+  Spark contact reaction runs its half via `reactOther`). In the tree,
+  always-available inputs aren't boxes (`PARTS` in `tree.js`), and a
+  recipe needing Spark is labelled "Spark".
 - **Recipe tree:** each element is shown with its shortest known recipe;
   process names come from `processName` in `src/game/tree.js`. Clicking an
   element narrows the tree with `focusTree` (its sources, its products by any
@@ -94,9 +101,11 @@ else; `test/build.test.js` checks the bundle runs.
   only redraws when something changes, so call `setTree` after progress
   changes (main.js does this for discoveries, free play, hard mode, reset
   and reveals).
-- **Hard mode** (`progress.hard`, saved; kept by reset): `HARD_BLOCKED` in
+- **Hard mode** (`progress.hard`, saved; kept by reset) hands out every
+  Machines-category element (`progress.given`): `usable` and `known`
+  (the tree) include them, `has` and the meter don't. `HARD_BLOCKED` in
   `input.js` lists the tools it takes away (`Input.act` ignores them, the
-  tool bar crosses them out). The Mix tool (`World.mixArea`) stays: it swaps
+  tool bar crosses them out). Spark stays, and the Mix tool (`World.mixArea`): it swaps
   random cells under the brush, never indestructible ones, and never touches
   the air. `buildTree({ hard })` gives each node a
   `face` ('name', '?' or 'blank'): found elements are blank, things to make

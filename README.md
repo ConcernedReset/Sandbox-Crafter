@@ -66,10 +66,16 @@ back to system ones; progress is saved per file location.)
 - **Replace** (next to the view buttons, or `R`): while it's on, painting
   overwrites whatever is in the way, Wall included, instead of only filling
   empty space. Painting an element over itself leaves it alone.
-- **Tools:** Erase, Wall (indestructible and airtight), Heat, Cool, Wind (drag
-  to blow), Mix, Pressure and Vacuum. Mix stirs whatever is under the brush,
-  swapping cells at random so layers blend within a few frames; walls stay
-  put and the air is left alone.
+- **Tools:** Erase, Wall (indestructible and airtight), Spark, Heat, Cool,
+  Wind (drag to blow), Mix, Pressure and Vacuum.
+  - **Spark** is electricity. It fills empty space with sparks, and works
+    inside things as well as on them: metal and wires carry a pulse from
+    wherever you click, switches flip, machines run, explosives go off,
+    neon glows, and anything that reacts to electricity reacts (water splits,
+    nitrogen turns to nitrogen dioxide). Anything else is left alone.
+  - **Mix** stirs whatever is under the brush, swapping cells at random so
+    layers blend within a few frames; walls stay put and the air is left
+    alone.
 - **Views:** Normal, Heat (a thermal camera) and Pressure (the air grid).
 - **Keys:** `Space` pause, `.` step one frame, `[` `]` brush size, `1` `2` `3` views,
   `R` replace, `+` `-` `0` zoom, arrows pan.
@@ -89,8 +95,11 @@ back to system ones; progress is saved per file location.)
   that unlocks everything, hard mode, and a reset.
 - **Hard mode** (in the `⋯` menu) takes away the Heat, Cool, Wind, Pressure
   and Vacuum tools, which are crossed out: heat, cold and pressure have to
-  come from the elements themselves. Mix still works. It also turns the
-  recipe tree round.
+  come from the elements themselves. Spark and Mix still work, and in
+  their place you get every machine (Switch, Clock, Heater, Cooler, Fan,
+  Door, the lamps...) to paint with from the start. They count as found in
+  the recipe tree, but only the ones you craft count on the discovery meter.
+  It also turns the recipe tree round.
   Everything you've found is a blank box, and the elements you could make
   next show their names, with only the process (Mix, Heat, Cool...) under
   the line into them. Click one of them and one of its ingredients appears,
@@ -100,8 +109,8 @@ back to system ones; progress is saved per file location.)
   its whole shape. Picking an element in the palette doesn't move the tree
   in hard mode. Resetting discoveries keeps hard mode on.
 
-There are eight ways to combine things (the tree calls contact Mix, and
-particle hits Bombard or Collide):
+There are eight ways to combine things (the tree calls contact Mix, or Spark
+when it needs a spark, and particle hits Bombard or Collide):
 
 | Method   | Example                                          |
 | -------- | ------------------------------------------------ |
@@ -386,8 +395,8 @@ run on power:
 
 | Control | On while... |
 | ------- | ----------- |
-| Switch | you've flipped it on (paint Spark on it; paint again to flip it off) |
-| Button | for a second and a half after you paint Spark on it |
+| Switch | you've flipped it on (Spark it; Spark it again to flip it off) |
+| Button | for a second and a half after you Spark it |
 | Clock | a moment each second: it sends one pulse a second |
 | Pressure Plate | anything rests on it: sand, water, a creature, a block |
 | Photocell | light shines on it (it turns light into current, not heat) |
@@ -526,15 +535,17 @@ lighting what they pass through, colliding protons making neutrons, magnets,
 decay, and radioactive elements staying still until pressure or particles
 disturb them.
 The tools tests cover brush shapes, boxes, Replace, Mix (blending layers, keeping every cell, the
-walls and temperatures) and particle impacts, and
+walls and temperatures), the Spark tool inside nitrogen, water, metal and
+stone, and particle impacts, and
 the camera tests cover zooming and panning. The Physics panel tests cover
 reading the strength box, turning the dial and saving the settings; the
 build test checks the single-file build runs. The tree tests cover which elements the
 recipe tree shows, one connection into each, columns, overlap, free play and
-process names. The hard mode tests cover blank boxes and named targets, the
+process names, and Spark shown as a process. The hard mode tests cover blank boxes and named targets, the
 one ingredient shown (the same every time, and none for a single-ingredient
 recipe), the tree keeping every box, the blocked tools, Mix still working and
-the setting being saved. The machine tests
+the setting being saved, Spark working in hard mode, and the machines it
+hands out (found in the tree, not on the meter). The machine tests
 cover coloured reflections and coloured glass, mirrors of metal behind glass, beams turned by
 diagonal mirrors, beam splitters, and every control and machine. The mechanics
 tests cover X-rays, gamma rays, ultraviolet and microwaves, gadgets
@@ -557,7 +568,7 @@ settling once it cools, hot air pushing out and being drawn back in the open,
 a full loop in a closed box (markers carried up come
 back down to the base), the Heat and Cool tools warming and chilling the
 air, and a sealed fire still going out. The recipe tests
-run all 1200 production rules in the real simulation. About 1,350 tests in
+run all 1200 production rules in the real simulation. About 1,360 tests in
 all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with
@@ -593,543 +604,542 @@ Regenerate the table below after changing recipes with
 | 27 | Methane | Permafrost + Heat · Liquid Methane + Heat · Plant + Mud |
 | 28 | Gunpowder | Coal + Salt |
 | 29 | Battery | Metal + Salt Water |
-| 30 | Spark | Battery + Metal |
-| 31 | Hydrogen | Proton + Time · Liquid Hydrogen + Heat · Quark-Gluon Plasma + Time · Water + Spark · Sodium + Water · Potassium + Water · Lithium + Water · Cesium + Water · Cesium + Ice · Calcium + Water · Rubidium + Water · Francium + Water · Zinc + Acid · NaK + Water · Metal + Acid · Magnesium + Acid · Aluminum + Acid · Sodium + Acid · Lye + Aluminum · Barium + Water · Strontium + Water · Brittle Aluminum + Water · Sodium Vapour + Water · Water + Electron · Electron + Proton |
-| 32 | Acid | Chlorine + Hydrogen · Chlorine + Water |
-| 33 | Cloud | Steam + Smoke |
-| 34 | Lightning | Cloud + Spark |
-| 35 | Plasma | Steam + Heat · Plutonium + Neutron · Star + Metal |
-| 36 | Thermite | Rust + Gunpowder · Aluminum + Rust |
-| 37 | Nitro | Oil + Acid |
-| 38 | Cryo | Nitrogen + Cold · Salt + Snow |
-| 39 | Clone | Dispenser + Pressure · Diamond + Plasma |
-| 40 | Void | Diamond + Pressure · Drain + Pressure |
-| 41 | Oxygen | Ozone + Time · Liquid Oxygen + Heat · Hydrogen Peroxide + Heat · Hydrogen Peroxide + Time · Aurora + Time · Water + Spark · Fluorine + Water · Fluorine + Glass · Hydrogen Peroxide + Pyrolusite · Freon + Ozone · Nitrogen + Alpha Particle · Algae + Photon |
-| 42 | Nitrogen | Cryo + Time |
-| 43 | Ozone | Oxygen + Spark · Oxygen + Photon |
-| 44 | Carbon Dioxide | Dry Ice + Heat · Carbon Monoxide + Fire · Soda Water + Time · Cola + Time · Smoke + Oxygen · Acid + Limestone · Limestone + Spark · Acid + Marble · Baking Soda + Vinegar · Yeast + Sugar · Dry Ice + Water · Chalk + Acid · Seashell + Acid · Baking Soda + Acid · Washing Soda + Acid · Acid + Fossil · Acid Rain + Limestone · Vinegar + Limestone · Vinegar + Chalk · Vinegar + Seashell · Vinegar + Marble · Vinegar + Pearl · Lemon + Baking Soda · Fire + Baking Soda · Diamond + Oxygen · Microplastic + Bacteria |
-| 45 | Dry Ice | Carbon Dioxide + Cold |
-| 46 | Liquid Oxygen | Oxygen + Cold |
-| 47 | Clay | Mud + Sand · Mica + Water |
-| 48 | Gravel | Stone + Pressure · Concrete + Pressure · Reinforced Concrete + Pressure · Roman Concrete + Pressure |
-| 49 | Quartz | Sand + Pressure · Opal + Heat · Citrine + Heat · Smoky Quartz + Heat · Rose Quartz + Heat · Clock + Pressure |
-| 50 | Granite | Lava + Pressure |
-| 51 | Sulfur | Lava + Steam |
-| 52 | Copper | Verdigris + Heat · Photocell + Pressure · Chalcopyrite + Heat · Metal + Copper Sulfate · Malachite + Coal |
-| 53 | Verdigris | Copper + Water · Turquoise + Acid |
-| 54 | Limestone | Coral + Heat · Salt Water + Stone · Slaked Lime + Carbon Dioxide · Washing Soda + Slaked Lime |
-| 55 | Cement | Limestone + Heat |
-| 56 | Wet Concrete | Cement + Water |
-| 57 | Concrete | Wet Concrete + Time |
-| 58 | Propane | Oil + Heat |
-| 59 | Gasoline | Oil + Hydrogen |
-| 60 | Plastic | Propane + Pressure · Glowstick + Time · Acetylene + Acid |
-| 61 | Sodium | Salt + Spark · Molten Salt + Spark |
-| 62 | Chlorine | Aqua Regia + Heat · Salt + Spark · Bleach + Acid · Molten Salt + Spark |
-| 63 | Lye | Sodium + Water · Potassium + Water · Cesium + Water · Cesium + Ice · Rubidium + Water · Francium + Water · NaK + Water · Washing Soda + Slaked Lime · Barium + Water · Strontium + Water · Sodium Vapour + Water |
-| 64 | Soap | Lye + Oil · Lye + Butter |
-| 65 | Bubbles | Soap + Water · Hydrogen Peroxide + Blood · Cola + Mint Candy |
-| 66 | Napalm | Gasoline + Soap |
-| 67 | Potassium | Ash + Spark |
-| 68 | Magnesium | Salt Water + Spark |
-| 69 | Aluminum | Clay + Spark · Bauxite + Lye |
-| 70 | Silicon | Moissanite + Heat · Sand + Magnesium |
-| 71 | Titanium | Stone + Magnesium |
-| 72 | Boron | Glass + Magnesium |
-| 73 | Graphite | Moissanite + Heat · Fullerene + Heat · Coal + Spark |
-| 74 | Steel | Reinforced Concrete + Pressure · Pressure Plate + Pressure · Door + Pressure · Metal + Coal |
-| 75 | Magnet | Fan + Pressure · Metal + Lightning |
-| 76 | Ferrofluid | Oil + Rust |
-| 77 | Tungsten | Light Bulb + Pressure · Wolframite + Aluminum |
-| 78 | Ammonia | Nitrogen + Hydrogen |
-| 79 | Fertilizer | Ammonia + Acid |
-| 80 | ANFO | Fertilizer + Oil |
-| 81 | Dynamite | Nitro + Clay |
-| 82 | C4 | Plastic + Nitro |
-| 83 | Fuse | Wood + Gunpowder |
-| 84 | Firework | Gunpowder + Copper |
-| 85 | Glitter | Firework + Fire |
-| 86 | Ruby | Clay + Pressure · Red Lamp + Pressure |
-| 87 | Laser | Laser Emitter + Pressure · Ruby + Spark |
-| 88 | Cinnabar | Sulfur + Granite |
-| 89 | Mercury | Cinnabar + Heat · Mercury Vapour + Cold · Vermilion + Heat · Thermostat + Pressure |
-| 90 | Lithium | Granite + Acid |
-| 91 | Grass | Dirt + Plant |
-| 92 | Moss | Stone + Plant |
-| 93 | Fungus | Wood + Mud |
-| 94 | Algae | Plant + Salt Water |
-| 95 | Photon | Higgs Boson + Time · Plasma + Glass · Star + Hydrogen · Carbon Dioxide + Magnesium · Black Hole + White Hole · Neon + Electron · Heavy Water + Neutrino · Fluorite + Ultraviolet · Europium + Ultraviolet · Terbium + Ultraviolet · Phosphor + Ultraviolet · Chlorophyll + Ultraviolet · Uranium Glass + Ultraviolet |
-| 96 | Flower | Epsom Salt + Plant · Plant + Photon |
-| 97 | Fruit | Flower + Time · Butterfly + Flower |
-| 98 | Seed | Fruit + Time |
-| 99 | Alcohol | Fruit + Time · Perfume + Cold · Wine + Heat · Wine + Cold · Mead + Heat · Yeast + Sugar |
-| 100 | Electron | Muon + Time · Metal + Photon · Cesium + Photon · Hydrogen + Photon · Lead + Photon · Heavy Water + Neutrino · Neutron + Time |
-| 101 | Proton | Hydrogen + Photon · Nitrogen + Alpha Particle · Neutron + Time |
-| 102 | Neutron | Polonium + Beryllium · Tritium + Deuterium · Metal + Proton · Lead + Proton · Tungsten + Proton · Beryllium + Alpha Particle · Deuterium + Muon · Proton + Proton |
-| 103 | Neutrino | Muon + Time · Pion + Time · Neutron + Time |
-| 104 | Pitchblende | Granite + Pressure |
-| 105 | Yellowcake | Pitchblende + Heat |
-| 106 | Uranium | Protactinium + Decay · Yellowcake + Hydrogen |
-| 107 | Plutonium | Curium + Decay · RTG + Pressure · Uranium + Neutron |
-| 108 | Thorium | Actinium + Decay · Pitchblende + Acid · Monazite + Acid |
-| 109 | Nuclear Waste | Corium + Cold · Uranium + Neutron |
-| 110 | Cesium | Uranium + Neutron |
-| 111 | Fallout | Plutonium + Neutron |
-| 112 | Corium | Uranium + Heat · Plutonium + Heat |
-| 113 | Radium | Francium + Decay · Radium Paint + Time · Pitchblende + Spark |
-| 114 | Radon | Radium + Decay |
-| 115 | Helium | Radium + Decay · Radon + Decay · Polonium + Decay · Superfluid + Time · Tritium + Decay · Alpha Particle + Time · Quark-Gluon Plasma + Time · Tritium + Deuterium · Star + Hydrogen · Lithium + Proton · Lithium + Neutron · Deuterium + Muon |
-| 116 | Polonium | Radon + Decay · Astatine + Decay |
-| 117 | Lead | Nuclear Waste + Decay · Polonium + Decay · Galena + Heat · Golden Rain + Heat |
-| 118 | Silver | Tarnish + Heat · Beam Splitter + Pressure · Lead + Acid · Tarnish + Baking Soda · Silver Chloride + Photon |
-| 119 | Mirror | Silver + Glass |
-| 120 | Positron | Lead + Photon |
-| 121 | Antimatter | Cryo + Positron |
-| 122 | Neon | Geiger Tube + Pressure · Helium + Plasma |
-| 123 | Geiger Tube | Neon + Chlorine |
-| 124 | Superfluid | Helium + Cold |
-| 125 | Deuterium | Hydrogen + Neutron |
-| 126 | Heavy Water | Deuterium + Fire · Heavy Ice + Heat |
-| 127 | Tritium | Lithium + Neutron |
-| 128 | Cobalt-60 | Metal + Neutron |
-| 129 | Gold | Calaverite + Heat · Dissolved Gold + Heat · Supernova + Time · Mercury + Neutron |
-| 130 | Philosopher's Stone | Gold + Mercury |
-| 131 | Emerald | Green Lamp + Pressure · Quartz + Verdigris |
-| 132 | Beryllium | Emerald + Acid |
-| 133 | Amethyst | Geode + Pressure · Quartz + Neutron |
-| 134 | Virus | Fungus + Neutron |
-| 135 | Star | Hydrogen + Pressure |
-| 136 | Neutronium | Lead + Pressure · Supernova + Time |
-| 137 | Black Hole | Neutronium + Void |
-| 138 | White Hole | Black Hole + Antimatter |
-| 139 | Strange Matter | Neutronium + Proton |
-| 140 | Dark Matter | Void + Neutrino |
-| 141 | Fluorine | Topaz + Heat · Fluorite + Spark |
-| 142 | Phosphorus | Bone + Coal |
-| 143 | Red Phosphorus | Phosphorus + Photon |
-| 144 | Argon | Nitrogen + Magnesium |
-| 145 | Bromine | Salt Water + Chlorine |
-| 146 | Krypton | Argon + Cryo |
-| 147 | Xenon | Xenon Difluoride + Heat · Krypton + Cryo |
-| 148 | Xenon Difluoride | Xenon + Fluorine |
-| 149 | Iodine | Iodine Vapour + Cold · Kelp + Acid |
-| 150 | Iodine Vapour | Iodine + Heat · Golden Rain + Heat |
-| 151 | Selenium | Photocell + Pressure · Copper + Acid |
-| 152 | Arsenic | Realgar + Heat |
-| 153 | Germanium | Sphalerite + Acid |
-| 154 | Tellurium | Calaverite + Heat · Cooler + Pressure |
-| 155 | Calcium | Calcium Ion + Time · Fluorite + Spark · Limestone + Spark |
-| 156 | Rubidium | Lepidolite + Spark |
-| 157 | Strontium | Celestine + Spark |
-| 158 | Barium | Barite + Spark |
-| 159 | Vanadium | Vanadinite + Acid |
-| 160 | Chromium | Chromite + Aluminum |
-| 161 | Manganese | Pyrolusite + Aluminum |
-| 162 | Nickel | Meteorite + Acid |
-| 163 | Zinc | Sphalerite + Coal |
-| 164 | Zirconium | Zircon + Magnesium |
-| 165 | Niobium | Coltan + Acid |
-| 166 | Molybdenum | Molybdenite + Heat |
-| 167 | Technetium | Molybdenum + Neutron |
-| 168 | Ruthenium | Technetium + Decay |
-| 169 | Rhodium | Platinum Ore + Nitric Acid |
-| 170 | Palladium | Platinum Ore + Nitric Acid |
-| 171 | Cadmium | Sphalerite + Heat |
-| 172 | Hafnium | Zircon + Acid |
-| 173 | Tantalum | Coltan + Spark |
-| 174 | Rhenium | Molybdenite + Acid |
-| 175 | Osmium | Platinum Ore + Aqua Regia |
-| 176 | Iridium | Platinum Ore + Aqua Regia |
-| 177 | Platinum | Platinum Ore + Aqua Regia |
-| 178 | Gallium | Liquid Gallium + Cold · Bauxite + Lye |
-| 179 | Liquid Gallium | Gallium + Heat |
-| 180 | Brittle Aluminum | Liquid Gallium + Aluminum · Galinstan + Aluminum |
-| 181 | Indium | Sphalerite + Spark |
-| 182 | Tin | Grey Tin + Heat · Cassiterite + Coal |
-| 183 | Grey Tin | Tin + Cold |
-| 184 | Antimony | Stibnite + Metal |
-| 185 | Thallium | Pyrite + Acid |
-| 186 | Bismuth | Cooler + Pressure · Galena + Coal |
-| 187 | Molten Bismuth | Bismuth + Heat · Bismuth Crystal + Heat |
-| 188 | Bismuth Crystal | Molten Bismuth + Cold |
-| 189 | Rare Earths | Monazite + Acid |
-| 190 | Didymium | Rare Earths + Acid |
-| 191 | Scandium | Ytterbium + Spark |
-| 192 | Yttrium | Ytterbite + Acid |
-| 193 | Lanthanum | Rare Earths + Spark |
-| 194 | Cerium | Rare Earths + Oxygen |
-| 195 | Praseodymium | Didymium + Spark |
-| 196 | Neodymium | Didymium + Spark · Neodymium Magnet + Acid |
-| 197 | Promethium | Neodymium + Neutron |
-| 198 | Samarium | Didymium + Heat · Promethium + Time |
-| 199 | Europium | Samarium + Zinc |
-| 200 | Gadolinium | Samarium + Acid |
-| 201 | Terbium | Yttrium + Acid |
-| 202 | Dysprosium | Holmium + Acid |
-| 203 | Holmium | Erbium + Acid |
-| 204 | Erbium | Yttrium + Acid |
-| 205 | Thulium | Erbium + Acid |
-| 206 | Ytterbium | Erbium + Heat |
-| 207 | Lutetium | Ytterbium + Acid |
-| 208 | Ferrocerium | Cerium + Metal |
-| 209 | Neodymium Magnet | Neodymium + Metal |
-| 210 | Actinium | Radium + Neutron |
-| 211 | Francium | Actinium + Decay |
-| 212 | Astatine | Bismuth + Alpha Particle |
-| 213 | Protactinium | Neptunium + Decay · Thorium + Neutron |
-| 214 | Neptunium | Americium + Decay |
-| 215 | Americium | Plutonium + Neutron |
-| 216 | Curium | Americium + Neutron · Plutonium + Alpha Particle |
-| 217 | Berkelium | Einsteinium + Decay · Curium + Neutron · Americium + Alpha Particle |
-| 218 | Californium | Berkelium + Decay · Fermium + Decay · Curium + Alpha Particle |
-| 219 | Einsteinium | Mendelevium + Decay · Californium + Neutron |
-| 220 | Fermium | Nobelium + Decay · Einsteinium + Neutron |
-| 221 | Mendelevium | Lawrencium + Decay · Einsteinium + Alpha Particle |
-| 222 | Nobelium | Rutherfordium + Decay |
-| 223 | Lawrencium | Dubnium + Decay |
-| 224 | Rutherfordium | Seaborgium + Decay |
-| 225 | Dubnium | Bohrium + Decay |
-| 226 | Seaborgium | Hassium + Decay |
-| 227 | Bohrium | Meitnerium + Decay |
-| 228 | Hassium | Darmstadtium + Decay |
-| 229 | Meitnerium | Roentgenium + Decay |
-| 230 | Darmstadtium | Copernicium + Decay |
-| 231 | Roentgenium | Nihonium + Decay |
-| 232 | Copernicium | Flerovium + Decay |
-| 233 | Nihonium | Moscovium + Decay |
-| 234 | Flerovium | Livermorium + Decay · Plutonium + Calcium Ion |
-| 235 | Moscovium | Tennessine + Decay · Americium + Calcium Ion |
-| 236 | Livermorium | Oganesson + Decay · Curium + Calcium Ion |
-| 237 | Tennessine | Berkelium + Calcium Ion |
-| 238 | Oganesson | Californium + Calcium Ion |
-| 239 | Alpha Particle | Americium + Decay · Nobelium + Decay · Lawrencium + Decay · Rutherfordium + Decay · Dubnium + Decay · Seaborgium + Decay · Bohrium + Decay · Hassium + Decay · Meitnerium + Decay · Darmstadtium + Decay · Roentgenium + Decay · Copernicium + Decay · Nihonium + Decay · Flerovium + Decay · Moscovium + Decay · Livermorium + Decay · Tennessine + Decay · Oganesson + Decay |
-| 240 | Calcium Ion | Calcium + Plasma |
-| 241 | Fluorite | Steam + Limestone |
-| 242 | Galena | Lead + Sulfur |
-| 243 | Sphalerite | Sulfur + Limestone |
-| 244 | Pyrite | Metal + Sulfur |
-| 245 | Cassiterite | Steam + Granite |
-| 246 | Stibnite | Sulfur + Quartz |
-| 247 | Barite | Sulfur + Salt Water · Barium + Sulfuric Acid |
-| 248 | Celestine | Gypsum + Salt Water |
-| 249 | Gypsum | Salt Water + Limestone |
-| 250 | Realgar | Sulfur + Steam |
-| 251 | Chromite | Peridot + Rust |
-| 252 | Peridot | Magnesium + Lava |
-| 253 | Pyrolusite | Salt Water + Gravel |
-| 254 | Bauxite | Clay + Water · Brittle Aluminum + Water |
-| 255 | Meteorite | Meteor + Time |
-| 256 | Vanadinite | Galena + Oxygen |
-| 257 | Molybdenite | Graphite + Sulfur |
-| 258 | Coltan | Cassiterite + Granite |
-| 259 | Zircon | Lava + Sand |
-| 260 | Lepidolite | Lithium + Granite |
-| 261 | Calaverite | Gold + Quartz |
-| 262 | Monazite | Granite + Water |
-| 263 | Ytterbite | Quartz + Granite |
-| 264 | Platinum Ore | Gold + Sand |
-| 265 | Nitrogen Dioxide | Nitric Acid + Heat · Aqua Regia + Heat · Nitrogen + Spark · Nitric Acid + Copper |
-| 266 | Nitric Acid | Nitrogen Dioxide + Water |
-| 267 | Aqua Regia | Nitric Acid + Acid |
-| 268 | Dissolved Gold | Gold + Aqua Regia |
-| 269 | Hydrofluoric Acid | Fluorine + Water · Fluorine + Hydrogen |
-| 270 | Sulfur Dioxide | Sulfur + Fire · Pyrite + Heat · Sulfuric Acid + Heat · Hydrogen Sulfide + Fire · Tarnish + Heat · Chalcopyrite + Heat |
-| 271 | Sulfuric Acid | Sulfur Dioxide + Water |
-| 272 | Acid Rain | Sulfur Dioxide + Cloud · Smog + Cloud |
-| 273 | Hydrogen Peroxide | Water + Ozone |
-| 274 | Elephant Toothpaste | Hydrogen Peroxide + Yeast |
-| 275 | Bleach | Lye + Chlorine |
-| 276 | Vinegar | Alcohol + Oxygen · Wine + Bacteria |
-| 277 | Baking Soda | Salt Water + Carbon Dioxide |
-| 278 | Washing Soda | Baking Soda + Heat |
-| 279 | Sodium Acetate | Hot Ice + Heat · Baking Soda + Vinegar · Vinegar + Lye |
-| 280 | Hot Ice | Sodium Acetate + Cold |
-| 281 | Quicklime | Calcium + Fire · Slaked Lime + Heat · Pearl + Heat · Marble + Heat · Chalk + Heat · Seashell + Heat |
-| 282 | Slaked Lime | Limewater + Heat · Calcium + Water · Quicklime + Water · Calcium Carbide + Water |
-| 283 | Limewater | Slaked Lime + Water |
-| 284 | Plaster of Paris | Gypsum + Heat · Desert Rose + Heat · Plaster + Heat |
-| 285 | Wet Plaster | Plaster of Paris + Water |
-| 286 | Borax | Boron + Salt Water |
-| 287 | Starch | Potato + Water |
-| 288 | Oobleck | Stiff Oobleck + Time · Starch + Water |
-| 289 | Stiff Oobleck | Oobleck + Pressure |
-| 290 | Super Absorbent | Plastic + Lye |
-| 291 | Instant Snow | Super Absorbent + Water |
-| 292 | Luminol | Ammonia + Coal |
-| 293 | Cold Light | Luminol + Hydrogen Peroxide · Luminol + Blood |
-| 294 | Phosphor | Zinc + Sulfur |
-| 295 | Radium Paint | Radium + Phosphor |
-| 296 | Copper Sulfate | Copper + Sulfuric Acid · White Copper Sulfate + Water |
-| 297 | Silver Chloride | Silver + Chlorine |
-| 298 | Carbon Monoxide | Carbon Dioxide + Coal |
-| 299 | Hydrogen Sulfide | Egg + Time · Ultramarine + Acid |
-| 300 | Tarnish | Silver + Hydrogen Sulfide · Silver + Sulfur |
-| 301 | Acetone | Quicklime + Vinegar |
-| 302 | Antifreeze | Alcohol + Water |
-| 303 | Kerosene | Oil + Clay |
-| 304 | Tar | Asphalt + Heat · Oil + Oxygen |
-| 305 | Soot | Carbon Snake + Pressure · Ink + Heat · Smoke + Metal · Carbon Dioxide + Magnesium |
-| 306 | Calcium Carbide | Quicklime + Graphite |
-| 307 | Acetylene | Calcium Carbide + Water |
-| 308 | Charcoal | Toast + Fire · Fries + Fire · Steak + Fire · Tofu + Fire · Nitrogen + Wood |
-| 309 | Activated Charcoal | Steam + Charcoal |
-| 310 | Coke | Nitrogen + Coal |
-| 311 | Carbon Snake | Sulfuric Acid + Sugar |
-| 312 | Mercury Vapour | Mercury + Heat |
-| 313 | Sodium Vapour | Sodium + Neon |
-| 314 | Smog | Nitrogen Dioxide + Smoke · Fog + Smoke |
-| 315 | Freon | Fluorine + Methane |
-| 316 | Waterglass | Sand + Lye |
-| 317 | Crystal Garden | Waterglass + Copper Sulfate |
-| 318 | Golden Rain | Lead + Iodine |
-| 319 | Silica Gel | Waterglass + Acid · Crystal Garden + Acid |
-| 320 | Epsom Salt | Magnesium + Sulfuric Acid |
-| 321 | Molten Salt | Salt + Heat |
-| 322 | Prussian Blue | Rust + Blood |
-| 323 | Vermilion | Cinnabar + Pressure |
-| 324 | Ochre | Clay + Rust |
-| 325 | Ultramarine | Lapis Lazuli + Pressure |
-| 326 | Indigo | Flower + Bacteria |
-| 327 | Tyrian Purple | Seashell + Salt Water |
-| 328 | Chlorophyll | Plant + Alcohol |
-| 329 | Perfume | Flower + Alcohol |
-| 330 | Sunscreen | Titanium + Oil |
-| 331 | Sapphire | Blue Lamp + Pressure · Ruby + Titanium |
-| 332 | Topaz | Granite + Fluorine |
-| 333 | Opal | Quartz + Water |
-| 334 | Jade | Peridot + Water |
-| 335 | Turquoise | Verdigris + Clay |
-| 336 | Lapis Lazuli | Marble + Sulfur |
-| 337 | Malachite | Azurite + Time · Verdigris + Limestone |
-| 338 | Azurite | Copper + Carbon Dioxide |
-| 339 | Citrine | Amethyst + Heat |
-| 340 | Smoky Quartz | Quartz + Gamma Ray |
-| 341 | Rose Quartz | Quartz + Manganese |
-| 342 | Garnet | Slate + Heat |
-| 343 | Spinel | Magnesium + Ruby |
-| 344 | Alexandrite | Beryllium + Chromium |
-| 345 | Tourmaline | Granite + Boron |
-| 346 | Moissanite | Silicon + Graphite |
-| 347 | Pearl | Seashell + Sand |
-| 348 | Amber | Resin + Pressure |
-| 349 | Hematite | Rust + Pressure · Ochre + Heat · Lodestone + Heat |
-| 350 | Lodestone | Hematite + Lightning |
-| 351 | Marble | Limestone + Pressure |
-| 352 | Shale | Mud + Pressure |
-| 353 | Slate | Shale + Pressure |
-| 354 | Sandstone | Sand + Limestone |
-| 355 | Chalk | Seashell + Pressure · Limewater + Carbon Dioxide |
-| 356 | Flint | Chalk + Quartz |
-| 357 | Pumice | Lava + Carbon Dioxide |
-| 358 | Basalt | Lava + Salt Water |
-| 359 | Geode | Basalt + Amethyst |
-| 360 | Desert Rose | Gypsum + Sand |
-| 361 | Kimberlite | Peridot + Pressure |
-| 362 | Mica | Granite + Potassium |
-| 363 | Talc | Peridot + Steam |
-| 364 | Kaolin | Clay + Acid |
-| 365 | Fulgurite | Sand + Lightning |
-| 366 | Fossil | Bone + Pressure |
-| 367 | Petrified Wood | Wood + Waterglass |
-| 368 | Resin | Wood + Fungus |
-| 369 | Peat | Moss + Water |
-| 370 | Lignite | Peat + Pressure |
-| 371 | Bronze | Copper + Tin |
-| 372 | Brass | Copper + Zinc |
-| 373 | Pewter | Tin + Antimony |
-| 374 | Solder | Tin + Lead |
-| 375 | Electrum | Gold + Silver |
-| 376 | Rose Gold | Gold + Copper |
-| 377 | White Gold | Gold + Palladium |
-| 378 | Sterling Silver | Silver + Copper |
-| 379 | Stainless Steel | Steel + Chromium |
-| 380 | Galvanized Steel | Steel + Zinc |
-| 381 | Invar | Metal + Nickel |
-| 382 | Nitinol | Nickel + Titanium |
-| 383 | Amalgam | Mercury + Silver |
-| 384 | Galinstan | Liquid Gallium + Tin |
-| 385 | NaK | Sodium + Potassium |
-| 386 | Wood's Metal | Bismuth + Lead |
-| 387 | Duralumin | Aluminum + Copper |
-| 388 | Tungsten Carbide | Tungsten + Graphite |
-| 389 | Orichalcum | Brass + Gold |
-| 390 | Frosted Glass | Hydrofluoric Acid + Glass |
-| 391 | Borosilicate Glass | Glass + Boron |
-| 392 | Lead Crystal | Glass + Lead |
-| 393 | Stained Glass | Glass + Copper |
-| 394 | Uranium Glass | Glass + Yellowcake |
-| 395 | Cranberry Glass | Glass + Gold |
-| 396 | Fiberglass | Glass + Plastic |
-| 397 | Reinforced Concrete | Wet Concrete + Steel |
-| 398 | Roman Concrete | Pumice + Slaked Lime |
-| 399 | Adobe | Mud + Grass |
-| 400 | Plaster | Wet Plaster + Time |
-| 401 | Porcelain | Talc + Heat · Kaolin + Heat · Heater + Pressure |
-| 402 | Asphalt | Tar + Gravel |
-| 403 | Glue | Steam + Bone |
-| 404 | Slime | Borax + Glue |
-| 405 | Styrofoam | Plastic + Propane |
-| 406 | Goo | Plastic + Heat · Nylon + Heat · Rubber + Heat · Acetone + Styrofoam |
-| 407 | Teflon | Plastic + Fluorine |
-| 408 | Silicone | Silicon + Oil |
-| 409 | Nylon | Plastic + Ammonia |
-| 410 | Wax | Oil + Cold · Molten Wax + Cold |
-| 411 | Molten Wax | Wax + Heat |
-| 412 | Candle | Wax + Cotton |
-| 413 | Ink | Squid + Water · Soot + Glue |
-| 414 | Pulp | Wood + Lye · Paper + Water · Cardboard + Water |
-| 415 | Paper | Pulp + Heat · Pulp + Pressure |
-| 416 | Cardboard | Paper + Glue |
-| 417 | Photo Paper | Paper + Silver Chloride |
-| 418 | Photograph | Rainbow + Photo Paper · Photo Paper + Photon · Photo Paper + X-Ray · Photo Paper + Tachyon |
-| 419 | Cotton | Flower + Cloud |
-| 420 | Cloth | Cotton + Pressure |
-| 421 | Silk | Spider + Time |
-| 422 | Latex | Wood + Milk |
-| 423 | Rubber | Latex + Heat |
-| 424 | Vulcanized Rubber | Rubber + Sulfur |
-| 425 | Match | Red Phosphorus + Wood |
-| 426 | Sponge | Wet Sponge + Pressure · Plastic + Bubbles |
-| 427 | Wet Sponge | Sponge + Water |
-| 428 | Aerogel | Sand + Alcohol |
-| 429 | Carbon Fiber | Graphite + Plastic |
-| 430 | Graphene | Graphite + Glue |
-| 431 | Fullerene | Graphite + Laser |
-| 432 | Steel Wool | Steel + Cotton |
-| 433 | Bioplastic | Starch + Vinegar |
-| 434 | Microplastic | Plastic + Pressure · Teflon + Pressure |
-| 435 | Light Bulb | Glass + Tungsten |
-| 436 | LED | Silicon + Gallium |
-| 437 | Electromagnet | Fan + Pressure · Metal + Copper |
-| 438 | Nichrome | Heater + Pressure · Nickel + Chromium |
-| 439 | Potato Battery | Potato + Zinc |
-| 440 | RTG | Plutonium + Germanium |
-| 441 | Glowstick | Plastic + Cold Light |
-| 442 | Sparkler | Fuse + Metal |
-| 443 | Road Flare | Strontium + Fuse |
-| 444 | Cactus | Plant + Sand |
-| 445 | Kelp | Algae + Stone |
-| 446 | Coral | Algae + Limestone |
-| 447 | Lichen | Fungus + Algae |
-| 448 | Seashell | Snail + Time · Firefly + Snail |
-| 449 | Yeast | Fungus + Fruit |
-| 450 | Bacteria | Meat + Time · Mud + Sugar |
-| 451 | Mold | Bread + Time |
-| 452 | Slime Mold | Fungus + Slime |
-| 453 | Penicillin | Mold + Water |
-| 454 | Wheat | Grass + Seed |
-| 455 | Sugarcane | Grass + Steam |
-| 456 | Flour | Wheat + Pressure |
-| 457 | Dough | Flour + Water |
-| 458 | Bread | Dough + Heat |
-| 459 | Toast | Bread + Heat |
-| 460 | Corn | Grass + Fertilizer |
-| 461 | Popcorn | Corn + Fire |
-| 462 | Potato | Potato Battery + Time · Fruit + Dirt |
-| 463 | Fries | Oil + Potato |
-| 464 | Lemon | Fruit + Acid |
-| 465 | Sugar | Sugarcane + Pressure |
-| 466 | Caramel | Sugar + Heat · Candy + Heat · Mint Candy + Heat · Cotton Candy + Heat · Syrup + Heat · Honey + Heat · Jam + Heat · Marshmallow + Fire |
-| 467 | Candy | Caramel + Cold |
-| 468 | Mint Candy | Candy + Plant |
-| 469 | Cotton Candy | Caramel + Cloud |
-| 470 | Syrup | Cola + Time · Jelly + Heat · Sugar + Water · Candy + Water · Cotton Candy + Water |
-| 471 | Honey | Bee + Flower |
-| 472 | Jam | Fruit + Sugar |
-| 473 | Cocoa | Seed + Yeast |
-| 474 | Chocolate | Melted Chocolate + Cold · Cocoa + Sugar |
-| 475 | Melted Chocolate | Chocolate + Heat |
-| 476 | Milk | Ice Cream + Heat · Seed + Water |
-| 477 | Curds | Milk + Heat · Milk + Vinegar · Lemon + Milk |
-| 478 | Cheese | Curds + Pressure · Yogurt + Pressure |
-| 479 | Butter | Milk + Pressure |
-| 480 | Yogurt | Milk + Bacteria |
-| 481 | Ice Cream | Milk + Snow |
-| 482 | Egg | Bird + Seed · Bird + Fruit · Bird + Ant · Bird + Worm · Bird + Locust · Seed + Limestone |
-| 483 | Fried Egg | Egg + Heat · Naked Egg + Heat · Egg + Microwave |
-| 484 | Naked Egg | Egg + Vinegar |
-| 485 | Meat | Fish + Time · Electric Eel + Time · Squid + Time · Frog + Time |
-| 486 | Steak | Meat + Heat |
-| 487 | Blood | Meat + Pressure |
-| 488 | Bone | Fish + Time |
-| 489 | Feather | Bird + Time |
-| 490 | Wine | Yeast + Fruit |
-| 491 | Soda Water | Water + Carbon Dioxide |
-| 492 | Cola | Soda Water + Caramel |
-| 493 | Marshmallow | Sugar + Egg |
-| 494 | Tofu | Milk + Salt |
-| 495 | Jelly | Glue + Sugar |
-| 496 | Jerky | Meat + Salt |
-| 497 | Plankton | Algae + Salt Water |
-| 498 | Jellyfish | Plankton + Slime |
-| 499 | Fish | Egg + Salt Water |
-| 500 | Electric Eel | Fish + Battery |
-| 501 | Bird | Egg + Cloud |
-| 502 | Worm | Mud + Fruit |
-| 503 | Snail | Worm + Limestone |
-| 504 | Squid | Jellyfish + Ink |
-| 505 | Frog | Fish + Mud |
-| 506 | Ant | Dirt + Sugar |
-| 507 | Termite | Ant + Wood |
-| 508 | Spider | Ant + Glue |
-| 509 | Locust | Ant + Grass |
-| 510 | Bee | Ant + Flower |
-| 511 | Butterfly | Worm + Flower |
-| 512 | Firefly | Bee + Phosphor |
-| 513 | Tardigrade | Lichen + Water · Tun + Water |
-| 514 | Phoenix | Bird + Fire |
-| 515 | Fog | Dry Ice + Water |
-| 516 | Hail | Ice + Cloud |
-| 517 | Permafrost | Mud + Cold · Dirt + Ice |
-| 518 | Glacier Ice | Snow + Pressure |
-| 519 | Liquid Hydrogen | Hydrogen + Cold |
-| 520 | Quicksand | Sand + Clay |
-| 521 | Aurora | Oxygen + Electron |
-| 522 | Ball Lightning | Plasma + Cloud |
-| 523 | Rainbow | Cloud + Photon |
-| 524 | Meteor | Star + Gravel |
-| 525 | Supernova | Star + Metal |
-| 526 | Pulsar | Neutronium + Magnet |
-| 527 | Quark-Gluon Plasma | Neutronium + Plasma |
-| 528 | Time Crystal | Quartz + Dark Matter |
-| 529 | Ice-Nine | Ice + Strange Matter |
-| 530 | Grey Goo | Graphene + Virus |
-| 531 | Elixir of Life | Philosopher's Stone + Water |
-| 532 | Greek Fire | Tar + Quicklime |
-| 533 | Gamma Ray | Black Hole + White Hole · Electron + Positron |
-| 534 | X-Ray | Pulsar + Star · Tungsten + Electron |
-| 535 | Ultraviolet | Mercury Vapour + Electron |
-| 536 | Microwave | Magnet + Spark |
-| 537 | Muon | Pion + Time |
-| 538 | Pion | Proton + Proton |
-| 539 | Higgs Boson | Muon + Muon |
-| 540 | Tachyon | Dark Matter + Neutrino |
-| 541 | Switch | Brass + Plastic |
-| 542 | Button | Switch + Rubber |
-| 543 | Clock | Quartz + Battery · Time Crystal + Switch |
-| 544 | Pressure Plate | Button + Steel |
-| 545 | Photocell | Selenium + Copper |
-| 546 | Thermostat | Switch + Mercury |
-| 547 | Door | Steel + Electromagnet |
-| 548 | Lamp | LED + Plastic |
-| 549 | Red Lamp | Lamp + Ruby |
-| 550 | Green Lamp | Lamp + Emerald |
-| 551 | Blue Lamp | Lamp + Sapphire |
-| 552 | Laser Emitter | Laser + Switch |
-| 553 | Heater | Nichrome + Porcelain |
-| 554 | Cooler | Bismuth + Tellurium |
-| 555 | Fan | Electromagnet + Magnet |
-| 556 | Dispenser | Clone + Switch |
-| 557 | Drain | Void + Switch |
-| 558 | Beam Splitter | Mirror + Quartz |
-| 559 | Chalcopyrite | Lava + Sulfur |
-| 560 | Wolframite | Steam + Quartz |
-| 561 | White Copper Sulfate | Copper Sulfate + Heat |
-| 562 | Liquid Methane | Methane + Cold |
-| 563 | Heavy Ice | Heavy Water + Cold |
-| 564 | Sawdust | Termite + Wood |
-| 565 | Tun | Tardigrade + Cold |
-| 566 | Mead | Honey + Yeast |
-| 567 | Denim | Indigo + Cloth |
+| 30 | Hydrogen | Proton + Time · Liquid Hydrogen + Heat · Quark-Gluon Plasma + Time · Water + Spark · Sodium + Water · Potassium + Water · Lithium + Water · Cesium + Water · Cesium + Ice · Calcium + Water · Rubidium + Water · Francium + Water · Zinc + Acid · NaK + Water · Metal + Acid · Magnesium + Acid · Aluminum + Acid · Sodium + Acid · Lye + Aluminum · Barium + Water · Strontium + Water · Brittle Aluminum + Water · Sodium Vapour + Water · Water + Electron · Electron + Proton |
+| 31 | Acid | Chlorine + Hydrogen · Chlorine + Water |
+| 32 | Cloud | Steam + Smoke |
+| 33 | Lightning | Cloud + Spark |
+| 34 | Plasma | Steam + Heat · Plutonium + Neutron · Star + Metal |
+| 35 | Thermite | Rust + Gunpowder · Aluminum + Rust |
+| 36 | Nitro | Oil + Acid |
+| 37 | Cryo | Nitrogen + Cold · Salt + Snow |
+| 38 | Clone | Dispenser + Pressure · Diamond + Plasma |
+| 39 | Void | Diamond + Pressure · Drain + Pressure |
+| 40 | Oxygen | Ozone + Time · Liquid Oxygen + Heat · Hydrogen Peroxide + Heat · Hydrogen Peroxide + Time · Aurora + Time · Water + Spark · Fluorine + Water · Fluorine + Glass · Hydrogen Peroxide + Pyrolusite · Freon + Ozone · Nitrogen + Alpha Particle · Algae + Photon |
+| 41 | Nitrogen | Cryo + Time |
+| 42 | Ozone | Oxygen + Spark · Oxygen + Photon |
+| 43 | Carbon Dioxide | Dry Ice + Heat · Carbon Monoxide + Fire · Soda Water + Time · Cola + Time · Smoke + Oxygen · Acid + Limestone · Limestone + Spark · Acid + Marble · Baking Soda + Vinegar · Yeast + Sugar · Dry Ice + Water · Chalk + Acid · Seashell + Acid · Baking Soda + Acid · Washing Soda + Acid · Acid + Fossil · Acid Rain + Limestone · Vinegar + Limestone · Vinegar + Chalk · Vinegar + Seashell · Vinegar + Marble · Vinegar + Pearl · Lemon + Baking Soda · Fire + Baking Soda · Diamond + Oxygen · Microplastic + Bacteria |
+| 44 | Dry Ice | Carbon Dioxide + Cold |
+| 45 | Liquid Oxygen | Oxygen + Cold |
+| 46 | Clay | Mud + Sand · Mica + Water |
+| 47 | Gravel | Stone + Pressure · Concrete + Pressure · Reinforced Concrete + Pressure · Roman Concrete + Pressure |
+| 48 | Quartz | Sand + Pressure · Opal + Heat · Citrine + Heat · Smoky Quartz + Heat · Rose Quartz + Heat · Clock + Pressure |
+| 49 | Granite | Lava + Pressure |
+| 50 | Sulfur | Lava + Steam |
+| 51 | Copper | Verdigris + Heat · Photocell + Pressure · Chalcopyrite + Heat · Metal + Copper Sulfate · Malachite + Coal |
+| 52 | Verdigris | Copper + Water · Turquoise + Acid |
+| 53 | Limestone | Coral + Heat · Salt Water + Stone · Slaked Lime + Carbon Dioxide · Washing Soda + Slaked Lime |
+| 54 | Cement | Limestone + Heat |
+| 55 | Wet Concrete | Cement + Water |
+| 56 | Concrete | Wet Concrete + Time |
+| 57 | Propane | Oil + Heat |
+| 58 | Gasoline | Oil + Hydrogen |
+| 59 | Plastic | Propane + Pressure · Glowstick + Time · Acetylene + Acid |
+| 60 | Sodium | Salt + Spark · Molten Salt + Spark |
+| 61 | Chlorine | Aqua Regia + Heat · Salt + Spark · Bleach + Acid · Molten Salt + Spark |
+| 62 | Lye | Sodium + Water · Potassium + Water · Cesium + Water · Cesium + Ice · Rubidium + Water · Francium + Water · NaK + Water · Washing Soda + Slaked Lime · Barium + Water · Strontium + Water · Sodium Vapour + Water |
+| 63 | Soap | Lye + Oil · Lye + Butter |
+| 64 | Bubbles | Soap + Water · Hydrogen Peroxide + Blood · Cola + Mint Candy |
+| 65 | Napalm | Gasoline + Soap |
+| 66 | Potassium | Ash + Spark |
+| 67 | Magnesium | Salt Water + Spark |
+| 68 | Aluminum | Clay + Spark · Bauxite + Lye |
+| 69 | Silicon | Moissanite + Heat · Sand + Magnesium |
+| 70 | Titanium | Stone + Magnesium |
+| 71 | Boron | Glass + Magnesium |
+| 72 | Graphite | Moissanite + Heat · Fullerene + Heat · Coal + Spark |
+| 73 | Steel | Reinforced Concrete + Pressure · Pressure Plate + Pressure · Door + Pressure · Metal + Coal |
+| 74 | Magnet | Fan + Pressure · Metal + Lightning |
+| 75 | Ferrofluid | Oil + Rust |
+| 76 | Tungsten | Light Bulb + Pressure · Wolframite + Aluminum |
+| 77 | Ammonia | Nitrogen + Hydrogen |
+| 78 | Fertilizer | Ammonia + Acid |
+| 79 | ANFO | Fertilizer + Oil |
+| 80 | Dynamite | Nitro + Clay |
+| 81 | C4 | Plastic + Nitro |
+| 82 | Fuse | Wood + Gunpowder |
+| 83 | Firework | Gunpowder + Copper |
+| 84 | Glitter | Firework + Fire |
+| 85 | Ruby | Clay + Pressure · Red Lamp + Pressure |
+| 86 | Laser | Laser Emitter + Pressure · Ruby + Spark |
+| 87 | Cinnabar | Sulfur + Granite |
+| 88 | Mercury | Cinnabar + Heat · Mercury Vapour + Cold · Vermilion + Heat · Thermostat + Pressure |
+| 89 | Lithium | Granite + Acid |
+| 90 | Grass | Dirt + Plant |
+| 91 | Moss | Stone + Plant |
+| 92 | Fungus | Wood + Mud |
+| 93 | Algae | Plant + Salt Water |
+| 94 | Photon | Higgs Boson + Time · Plasma + Glass · Star + Hydrogen · Carbon Dioxide + Magnesium · Black Hole + White Hole · Neon + Electron · Heavy Water + Neutrino · Fluorite + Ultraviolet · Europium + Ultraviolet · Terbium + Ultraviolet · Phosphor + Ultraviolet · Chlorophyll + Ultraviolet · Uranium Glass + Ultraviolet |
+| 95 | Flower | Epsom Salt + Plant · Plant + Photon |
+| 96 | Fruit | Flower + Time · Butterfly + Flower |
+| 97 | Seed | Fruit + Time |
+| 98 | Alcohol | Fruit + Time · Perfume + Cold · Wine + Heat · Wine + Cold · Mead + Heat · Yeast + Sugar |
+| 99 | Electron | Muon + Time · Metal + Photon · Cesium + Photon · Hydrogen + Photon · Lead + Photon · Heavy Water + Neutrino · Neutron + Time |
+| 100 | Proton | Hydrogen + Photon · Nitrogen + Alpha Particle · Neutron + Time |
+| 101 | Neutron | Polonium + Beryllium · Tritium + Deuterium · Metal + Proton · Lead + Proton · Tungsten + Proton · Beryllium + Alpha Particle · Deuterium + Muon · Proton + Proton |
+| 102 | Neutrino | Muon + Time · Pion + Time · Neutron + Time |
+| 103 | Pitchblende | Granite + Pressure |
+| 104 | Yellowcake | Pitchblende + Heat |
+| 105 | Uranium | Protactinium + Decay · Yellowcake + Hydrogen |
+| 106 | Plutonium | Curium + Decay · RTG + Pressure · Uranium + Neutron |
+| 107 | Thorium | Actinium + Decay · Pitchblende + Acid · Monazite + Acid |
+| 108 | Nuclear Waste | Corium + Cold · Uranium + Neutron |
+| 109 | Cesium | Uranium + Neutron |
+| 110 | Fallout | Plutonium + Neutron |
+| 111 | Corium | Uranium + Heat · Plutonium + Heat |
+| 112 | Radium | Francium + Decay · Radium Paint + Time · Pitchblende + Spark |
+| 113 | Radon | Radium + Decay |
+| 114 | Helium | Radium + Decay · Radon + Decay · Polonium + Decay · Superfluid + Time · Tritium + Decay · Alpha Particle + Time · Quark-Gluon Plasma + Time · Tritium + Deuterium · Star + Hydrogen · Lithium + Proton · Lithium + Neutron · Deuterium + Muon |
+| 115 | Polonium | Radon + Decay · Astatine + Decay |
+| 116 | Lead | Nuclear Waste + Decay · Polonium + Decay · Galena + Heat · Golden Rain + Heat |
+| 117 | Silver | Tarnish + Heat · Beam Splitter + Pressure · Lead + Acid · Tarnish + Baking Soda · Silver Chloride + Photon |
+| 118 | Mirror | Silver + Glass |
+| 119 | Positron | Lead + Photon |
+| 120 | Antimatter | Cryo + Positron |
+| 121 | Neon | Geiger Tube + Pressure · Helium + Plasma |
+| 122 | Geiger Tube | Neon + Chlorine |
+| 123 | Superfluid | Helium + Cold |
+| 124 | Deuterium | Hydrogen + Neutron |
+| 125 | Heavy Water | Deuterium + Fire · Heavy Ice + Heat |
+| 126 | Tritium | Lithium + Neutron |
+| 127 | Cobalt-60 | Metal + Neutron |
+| 128 | Gold | Calaverite + Heat · Dissolved Gold + Heat · Supernova + Time · Mercury + Neutron |
+| 129 | Philosopher's Stone | Gold + Mercury |
+| 130 | Emerald | Green Lamp + Pressure · Quartz + Verdigris |
+| 131 | Beryllium | Emerald + Acid |
+| 132 | Amethyst | Geode + Pressure · Quartz + Neutron |
+| 133 | Virus | Fungus + Neutron |
+| 134 | Star | Hydrogen + Pressure |
+| 135 | Neutronium | Lead + Pressure · Supernova + Time |
+| 136 | Black Hole | Neutronium + Void |
+| 137 | White Hole | Black Hole + Antimatter |
+| 138 | Strange Matter | Neutronium + Proton |
+| 139 | Dark Matter | Void + Neutrino |
+| 140 | Fluorine | Topaz + Heat · Fluorite + Spark |
+| 141 | Phosphorus | Bone + Coal |
+| 142 | Red Phosphorus | Phosphorus + Photon |
+| 143 | Argon | Nitrogen + Magnesium |
+| 144 | Bromine | Salt Water + Chlorine |
+| 145 | Krypton | Argon + Cryo |
+| 146 | Xenon | Xenon Difluoride + Heat · Krypton + Cryo |
+| 147 | Xenon Difluoride | Xenon + Fluorine |
+| 148 | Iodine | Iodine Vapour + Cold · Kelp + Acid |
+| 149 | Iodine Vapour | Iodine + Heat · Golden Rain + Heat |
+| 150 | Selenium | Photocell + Pressure · Copper + Acid |
+| 151 | Arsenic | Realgar + Heat |
+| 152 | Germanium | Sphalerite + Acid |
+| 153 | Tellurium | Calaverite + Heat · Cooler + Pressure |
+| 154 | Calcium | Calcium Ion + Time · Fluorite + Spark · Limestone + Spark |
+| 155 | Rubidium | Lepidolite + Spark |
+| 156 | Strontium | Celestine + Spark |
+| 157 | Barium | Barite + Spark |
+| 158 | Vanadium | Vanadinite + Acid |
+| 159 | Chromium | Chromite + Aluminum |
+| 160 | Manganese | Pyrolusite + Aluminum |
+| 161 | Nickel | Meteorite + Acid |
+| 162 | Zinc | Sphalerite + Coal |
+| 163 | Zirconium | Zircon + Magnesium |
+| 164 | Niobium | Coltan + Acid |
+| 165 | Molybdenum | Molybdenite + Heat |
+| 166 | Technetium | Molybdenum + Neutron |
+| 167 | Ruthenium | Technetium + Decay |
+| 168 | Rhodium | Platinum Ore + Nitric Acid |
+| 169 | Palladium | Platinum Ore + Nitric Acid |
+| 170 | Cadmium | Sphalerite + Heat |
+| 171 | Hafnium | Zircon + Acid |
+| 172 | Tantalum | Coltan + Spark |
+| 173 | Rhenium | Molybdenite + Acid |
+| 174 | Osmium | Platinum Ore + Aqua Regia |
+| 175 | Iridium | Platinum Ore + Aqua Regia |
+| 176 | Platinum | Platinum Ore + Aqua Regia |
+| 177 | Gallium | Liquid Gallium + Cold · Bauxite + Lye |
+| 178 | Liquid Gallium | Gallium + Heat |
+| 179 | Brittle Aluminum | Liquid Gallium + Aluminum · Galinstan + Aluminum |
+| 180 | Indium | Sphalerite + Spark |
+| 181 | Tin | Grey Tin + Heat · Cassiterite + Coal |
+| 182 | Grey Tin | Tin + Cold |
+| 183 | Antimony | Stibnite + Metal |
+| 184 | Thallium | Pyrite + Acid |
+| 185 | Bismuth | Cooler + Pressure · Galena + Coal |
+| 186 | Molten Bismuth | Bismuth + Heat · Bismuth Crystal + Heat |
+| 187 | Bismuth Crystal | Molten Bismuth + Cold |
+| 188 | Rare Earths | Monazite + Acid |
+| 189 | Didymium | Rare Earths + Acid |
+| 190 | Scandium | Ytterbium + Spark |
+| 191 | Yttrium | Ytterbite + Acid |
+| 192 | Lanthanum | Rare Earths + Spark |
+| 193 | Cerium | Rare Earths + Oxygen |
+| 194 | Praseodymium | Didymium + Spark |
+| 195 | Neodymium | Didymium + Spark · Neodymium Magnet + Acid |
+| 196 | Promethium | Neodymium + Neutron |
+| 197 | Samarium | Didymium + Heat · Promethium + Time |
+| 198 | Europium | Samarium + Zinc |
+| 199 | Gadolinium | Samarium + Acid |
+| 200 | Terbium | Yttrium + Acid |
+| 201 | Dysprosium | Holmium + Acid |
+| 202 | Holmium | Erbium + Acid |
+| 203 | Erbium | Yttrium + Acid |
+| 204 | Thulium | Erbium + Acid |
+| 205 | Ytterbium | Erbium + Heat |
+| 206 | Lutetium | Ytterbium + Acid |
+| 207 | Ferrocerium | Cerium + Metal |
+| 208 | Neodymium Magnet | Neodymium + Metal |
+| 209 | Actinium | Radium + Neutron |
+| 210 | Francium | Actinium + Decay |
+| 211 | Astatine | Bismuth + Alpha Particle |
+| 212 | Protactinium | Neptunium + Decay · Thorium + Neutron |
+| 213 | Neptunium | Americium + Decay |
+| 214 | Americium | Plutonium + Neutron |
+| 215 | Curium | Americium + Neutron · Plutonium + Alpha Particle |
+| 216 | Berkelium | Einsteinium + Decay · Curium + Neutron · Americium + Alpha Particle |
+| 217 | Californium | Berkelium + Decay · Fermium + Decay · Curium + Alpha Particle |
+| 218 | Einsteinium | Mendelevium + Decay · Californium + Neutron |
+| 219 | Fermium | Nobelium + Decay · Einsteinium + Neutron |
+| 220 | Mendelevium | Lawrencium + Decay · Einsteinium + Alpha Particle |
+| 221 | Nobelium | Rutherfordium + Decay |
+| 222 | Lawrencium | Dubnium + Decay |
+| 223 | Rutherfordium | Seaborgium + Decay |
+| 224 | Dubnium | Bohrium + Decay |
+| 225 | Seaborgium | Hassium + Decay |
+| 226 | Bohrium | Meitnerium + Decay |
+| 227 | Hassium | Darmstadtium + Decay |
+| 228 | Meitnerium | Roentgenium + Decay |
+| 229 | Darmstadtium | Copernicium + Decay |
+| 230 | Roentgenium | Nihonium + Decay |
+| 231 | Copernicium | Flerovium + Decay |
+| 232 | Nihonium | Moscovium + Decay |
+| 233 | Flerovium | Livermorium + Decay · Plutonium + Calcium Ion |
+| 234 | Moscovium | Tennessine + Decay · Americium + Calcium Ion |
+| 235 | Livermorium | Oganesson + Decay · Curium + Calcium Ion |
+| 236 | Tennessine | Berkelium + Calcium Ion |
+| 237 | Oganesson | Californium + Calcium Ion |
+| 238 | Alpha Particle | Americium + Decay · Nobelium + Decay · Lawrencium + Decay · Rutherfordium + Decay · Dubnium + Decay · Seaborgium + Decay · Bohrium + Decay · Hassium + Decay · Meitnerium + Decay · Darmstadtium + Decay · Roentgenium + Decay · Copernicium + Decay · Nihonium + Decay · Flerovium + Decay · Moscovium + Decay · Livermorium + Decay · Tennessine + Decay · Oganesson + Decay |
+| 239 | Calcium Ion | Calcium + Plasma |
+| 240 | Fluorite | Steam + Limestone |
+| 241 | Galena | Lead + Sulfur |
+| 242 | Sphalerite | Sulfur + Limestone |
+| 243 | Pyrite | Metal + Sulfur |
+| 244 | Cassiterite | Steam + Granite |
+| 245 | Stibnite | Sulfur + Quartz |
+| 246 | Barite | Sulfur + Salt Water · Barium + Sulfuric Acid |
+| 247 | Celestine | Gypsum + Salt Water |
+| 248 | Gypsum | Salt Water + Limestone |
+| 249 | Realgar | Sulfur + Steam |
+| 250 | Chromite | Peridot + Rust |
+| 251 | Peridot | Magnesium + Lava |
+| 252 | Pyrolusite | Salt Water + Gravel |
+| 253 | Bauxite | Clay + Water · Brittle Aluminum + Water |
+| 254 | Meteorite | Meteor + Time |
+| 255 | Vanadinite | Galena + Oxygen |
+| 256 | Molybdenite | Graphite + Sulfur |
+| 257 | Coltan | Cassiterite + Granite |
+| 258 | Zircon | Lava + Sand |
+| 259 | Lepidolite | Lithium + Granite |
+| 260 | Calaverite | Gold + Quartz |
+| 261 | Monazite | Granite + Water |
+| 262 | Ytterbite | Quartz + Granite |
+| 263 | Platinum Ore | Gold + Sand |
+| 264 | Nitrogen Dioxide | Nitric Acid + Heat · Aqua Regia + Heat · Nitrogen + Spark · Nitric Acid + Copper |
+| 265 | Nitric Acid | Nitrogen Dioxide + Water |
+| 266 | Aqua Regia | Nitric Acid + Acid |
+| 267 | Dissolved Gold | Gold + Aqua Regia |
+| 268 | Hydrofluoric Acid | Fluorine + Water · Fluorine + Hydrogen |
+| 269 | Sulfur Dioxide | Sulfur + Fire · Pyrite + Heat · Sulfuric Acid + Heat · Hydrogen Sulfide + Fire · Tarnish + Heat · Chalcopyrite + Heat |
+| 270 | Sulfuric Acid | Sulfur Dioxide + Water |
+| 271 | Acid Rain | Sulfur Dioxide + Cloud · Smog + Cloud |
+| 272 | Hydrogen Peroxide | Water + Ozone |
+| 273 | Elephant Toothpaste | Hydrogen Peroxide + Yeast |
+| 274 | Bleach | Lye + Chlorine |
+| 275 | Vinegar | Alcohol + Oxygen · Wine + Bacteria |
+| 276 | Baking Soda | Salt Water + Carbon Dioxide |
+| 277 | Washing Soda | Baking Soda + Heat |
+| 278 | Sodium Acetate | Hot Ice + Heat · Baking Soda + Vinegar · Vinegar + Lye |
+| 279 | Hot Ice | Sodium Acetate + Cold |
+| 280 | Quicklime | Calcium + Fire · Slaked Lime + Heat · Pearl + Heat · Marble + Heat · Chalk + Heat · Seashell + Heat |
+| 281 | Slaked Lime | Limewater + Heat · Calcium + Water · Quicklime + Water · Calcium Carbide + Water |
+| 282 | Limewater | Slaked Lime + Water |
+| 283 | Plaster of Paris | Gypsum + Heat · Desert Rose + Heat · Plaster + Heat |
+| 284 | Wet Plaster | Plaster of Paris + Water |
+| 285 | Borax | Boron + Salt Water |
+| 286 | Starch | Potato + Water |
+| 287 | Oobleck | Stiff Oobleck + Time · Starch + Water |
+| 288 | Stiff Oobleck | Oobleck + Pressure |
+| 289 | Super Absorbent | Plastic + Lye |
+| 290 | Instant Snow | Super Absorbent + Water |
+| 291 | Luminol | Ammonia + Coal |
+| 292 | Cold Light | Luminol + Hydrogen Peroxide · Luminol + Blood |
+| 293 | Phosphor | Zinc + Sulfur |
+| 294 | Radium Paint | Radium + Phosphor |
+| 295 | Copper Sulfate | Copper + Sulfuric Acid · White Copper Sulfate + Water |
+| 296 | Silver Chloride | Silver + Chlorine |
+| 297 | Carbon Monoxide | Carbon Dioxide + Coal |
+| 298 | Hydrogen Sulfide | Egg + Time · Ultramarine + Acid |
+| 299 | Tarnish | Silver + Hydrogen Sulfide · Silver + Sulfur |
+| 300 | Acetone | Quicklime + Vinegar |
+| 301 | Antifreeze | Alcohol + Water |
+| 302 | Kerosene | Oil + Clay |
+| 303 | Tar | Asphalt + Heat · Oil + Oxygen |
+| 304 | Soot | Carbon Snake + Pressure · Ink + Heat · Smoke + Metal · Carbon Dioxide + Magnesium |
+| 305 | Calcium Carbide | Quicklime + Graphite |
+| 306 | Acetylene | Calcium Carbide + Water |
+| 307 | Charcoal | Toast + Fire · Fries + Fire · Steak + Fire · Tofu + Fire · Nitrogen + Wood |
+| 308 | Activated Charcoal | Steam + Charcoal |
+| 309 | Coke | Nitrogen + Coal |
+| 310 | Carbon Snake | Sulfuric Acid + Sugar |
+| 311 | Mercury Vapour | Mercury + Heat |
+| 312 | Sodium Vapour | Sodium + Neon |
+| 313 | Smog | Nitrogen Dioxide + Smoke · Fog + Smoke |
+| 314 | Freon | Fluorine + Methane |
+| 315 | Waterglass | Sand + Lye |
+| 316 | Crystal Garden | Waterglass + Copper Sulfate |
+| 317 | Golden Rain | Lead + Iodine |
+| 318 | Silica Gel | Waterglass + Acid · Crystal Garden + Acid |
+| 319 | Epsom Salt | Magnesium + Sulfuric Acid |
+| 320 | Molten Salt | Salt + Heat |
+| 321 | Prussian Blue | Rust + Blood |
+| 322 | Vermilion | Cinnabar + Pressure |
+| 323 | Ochre | Clay + Rust |
+| 324 | Ultramarine | Lapis Lazuli + Pressure |
+| 325 | Indigo | Flower + Bacteria |
+| 326 | Tyrian Purple | Seashell + Salt Water |
+| 327 | Chlorophyll | Plant + Alcohol |
+| 328 | Perfume | Flower + Alcohol |
+| 329 | Sunscreen | Titanium + Oil |
+| 330 | Sapphire | Blue Lamp + Pressure · Ruby + Titanium |
+| 331 | Topaz | Granite + Fluorine |
+| 332 | Opal | Quartz + Water |
+| 333 | Jade | Peridot + Water |
+| 334 | Turquoise | Verdigris + Clay |
+| 335 | Lapis Lazuli | Marble + Sulfur |
+| 336 | Malachite | Azurite + Time · Verdigris + Limestone |
+| 337 | Azurite | Copper + Carbon Dioxide |
+| 338 | Citrine | Amethyst + Heat |
+| 339 | Smoky Quartz | Quartz + Gamma Ray |
+| 340 | Rose Quartz | Quartz + Manganese |
+| 341 | Garnet | Slate + Heat |
+| 342 | Spinel | Magnesium + Ruby |
+| 343 | Alexandrite | Beryllium + Chromium |
+| 344 | Tourmaline | Granite + Boron |
+| 345 | Moissanite | Silicon + Graphite |
+| 346 | Pearl | Seashell + Sand |
+| 347 | Amber | Resin + Pressure |
+| 348 | Hematite | Rust + Pressure · Ochre + Heat · Lodestone + Heat |
+| 349 | Lodestone | Hematite + Lightning |
+| 350 | Marble | Limestone + Pressure |
+| 351 | Shale | Mud + Pressure |
+| 352 | Slate | Shale + Pressure |
+| 353 | Sandstone | Sand + Limestone |
+| 354 | Chalk | Seashell + Pressure · Limewater + Carbon Dioxide |
+| 355 | Flint | Chalk + Quartz |
+| 356 | Pumice | Lava + Carbon Dioxide |
+| 357 | Basalt | Lava + Salt Water |
+| 358 | Geode | Basalt + Amethyst |
+| 359 | Desert Rose | Gypsum + Sand |
+| 360 | Kimberlite | Peridot + Pressure |
+| 361 | Mica | Granite + Potassium |
+| 362 | Talc | Peridot + Steam |
+| 363 | Kaolin | Clay + Acid |
+| 364 | Fulgurite | Sand + Lightning |
+| 365 | Fossil | Bone + Pressure |
+| 366 | Petrified Wood | Wood + Waterglass |
+| 367 | Resin | Wood + Fungus |
+| 368 | Peat | Moss + Water |
+| 369 | Lignite | Peat + Pressure |
+| 370 | Bronze | Copper + Tin |
+| 371 | Brass | Copper + Zinc |
+| 372 | Pewter | Tin + Antimony |
+| 373 | Solder | Tin + Lead |
+| 374 | Electrum | Gold + Silver |
+| 375 | Rose Gold | Gold + Copper |
+| 376 | White Gold | Gold + Palladium |
+| 377 | Sterling Silver | Silver + Copper |
+| 378 | Stainless Steel | Steel + Chromium |
+| 379 | Galvanized Steel | Steel + Zinc |
+| 380 | Invar | Metal + Nickel |
+| 381 | Nitinol | Nickel + Titanium |
+| 382 | Amalgam | Mercury + Silver |
+| 383 | Galinstan | Liquid Gallium + Tin |
+| 384 | NaK | Sodium + Potassium |
+| 385 | Wood's Metal | Bismuth + Lead |
+| 386 | Duralumin | Aluminum + Copper |
+| 387 | Tungsten Carbide | Tungsten + Graphite |
+| 388 | Orichalcum | Brass + Gold |
+| 389 | Frosted Glass | Hydrofluoric Acid + Glass |
+| 390 | Borosilicate Glass | Glass + Boron |
+| 391 | Lead Crystal | Glass + Lead |
+| 392 | Stained Glass | Glass + Copper |
+| 393 | Uranium Glass | Glass + Yellowcake |
+| 394 | Cranberry Glass | Glass + Gold |
+| 395 | Fiberglass | Glass + Plastic |
+| 396 | Reinforced Concrete | Wet Concrete + Steel |
+| 397 | Roman Concrete | Pumice + Slaked Lime |
+| 398 | Adobe | Mud + Grass |
+| 399 | Plaster | Wet Plaster + Time |
+| 400 | Porcelain | Talc + Heat · Kaolin + Heat · Heater + Pressure |
+| 401 | Asphalt | Tar + Gravel |
+| 402 | Glue | Steam + Bone |
+| 403 | Slime | Borax + Glue |
+| 404 | Styrofoam | Plastic + Propane |
+| 405 | Goo | Plastic + Heat · Nylon + Heat · Rubber + Heat · Acetone + Styrofoam |
+| 406 | Teflon | Plastic + Fluorine |
+| 407 | Silicone | Silicon + Oil |
+| 408 | Nylon | Plastic + Ammonia |
+| 409 | Wax | Oil + Cold · Molten Wax + Cold |
+| 410 | Molten Wax | Wax + Heat |
+| 411 | Candle | Wax + Cotton |
+| 412 | Ink | Squid + Water · Soot + Glue |
+| 413 | Pulp | Wood + Lye · Paper + Water · Cardboard + Water |
+| 414 | Paper | Pulp + Heat · Pulp + Pressure |
+| 415 | Cardboard | Paper + Glue |
+| 416 | Photo Paper | Paper + Silver Chloride |
+| 417 | Photograph | Rainbow + Photo Paper · Photo Paper + Photon · Photo Paper + X-Ray · Photo Paper + Tachyon |
+| 418 | Cotton | Flower + Cloud |
+| 419 | Cloth | Cotton + Pressure |
+| 420 | Silk | Spider + Time |
+| 421 | Latex | Wood + Milk |
+| 422 | Rubber | Latex + Heat |
+| 423 | Vulcanized Rubber | Rubber + Sulfur |
+| 424 | Match | Red Phosphorus + Wood |
+| 425 | Sponge | Wet Sponge + Pressure · Plastic + Bubbles |
+| 426 | Wet Sponge | Sponge + Water |
+| 427 | Aerogel | Sand + Alcohol |
+| 428 | Carbon Fiber | Graphite + Plastic |
+| 429 | Graphene | Graphite + Glue |
+| 430 | Fullerene | Graphite + Laser |
+| 431 | Steel Wool | Steel + Cotton |
+| 432 | Bioplastic | Starch + Vinegar |
+| 433 | Microplastic | Plastic + Pressure · Teflon + Pressure |
+| 434 | Light Bulb | Glass + Tungsten |
+| 435 | LED | Silicon + Gallium |
+| 436 | Electromagnet | Fan + Pressure · Metal + Copper |
+| 437 | Nichrome | Heater + Pressure · Nickel + Chromium |
+| 438 | Potato Battery | Potato + Zinc |
+| 439 | RTG | Plutonium + Germanium |
+| 440 | Glowstick | Plastic + Cold Light |
+| 441 | Sparkler | Fuse + Metal |
+| 442 | Road Flare | Strontium + Fuse |
+| 443 | Cactus | Plant + Sand |
+| 444 | Kelp | Algae + Stone |
+| 445 | Coral | Algae + Limestone |
+| 446 | Lichen | Fungus + Algae |
+| 447 | Seashell | Snail + Time · Firefly + Snail |
+| 448 | Yeast | Fungus + Fruit |
+| 449 | Bacteria | Meat + Time · Mud + Sugar |
+| 450 | Mold | Bread + Time |
+| 451 | Slime Mold | Fungus + Slime |
+| 452 | Penicillin | Mold + Water |
+| 453 | Wheat | Grass + Seed |
+| 454 | Sugarcane | Grass + Steam |
+| 455 | Flour | Wheat + Pressure |
+| 456 | Dough | Flour + Water |
+| 457 | Bread | Dough + Heat |
+| 458 | Toast | Bread + Heat |
+| 459 | Corn | Grass + Fertilizer |
+| 460 | Popcorn | Corn + Fire |
+| 461 | Potato | Potato Battery + Time · Fruit + Dirt |
+| 462 | Fries | Oil + Potato |
+| 463 | Lemon | Fruit + Acid |
+| 464 | Sugar | Sugarcane + Pressure |
+| 465 | Caramel | Sugar + Heat · Candy + Heat · Mint Candy + Heat · Cotton Candy + Heat · Syrup + Heat · Honey + Heat · Jam + Heat · Marshmallow + Fire |
+| 466 | Candy | Caramel + Cold |
+| 467 | Mint Candy | Candy + Plant |
+| 468 | Cotton Candy | Caramel + Cloud |
+| 469 | Syrup | Cola + Time · Jelly + Heat · Sugar + Water · Candy + Water · Cotton Candy + Water |
+| 470 | Honey | Bee + Flower |
+| 471 | Jam | Fruit + Sugar |
+| 472 | Cocoa | Seed + Yeast |
+| 473 | Chocolate | Melted Chocolate + Cold · Cocoa + Sugar |
+| 474 | Melted Chocolate | Chocolate + Heat |
+| 475 | Milk | Ice Cream + Heat · Seed + Water |
+| 476 | Curds | Milk + Heat · Milk + Vinegar · Lemon + Milk |
+| 477 | Cheese | Curds + Pressure · Yogurt + Pressure |
+| 478 | Butter | Milk + Pressure |
+| 479 | Yogurt | Milk + Bacteria |
+| 480 | Ice Cream | Milk + Snow |
+| 481 | Egg | Bird + Seed · Bird + Fruit · Bird + Ant · Bird + Worm · Bird + Locust · Seed + Limestone |
+| 482 | Fried Egg | Egg + Heat · Naked Egg + Heat · Egg + Microwave |
+| 483 | Naked Egg | Egg + Vinegar |
+| 484 | Meat | Fish + Time · Electric Eel + Time · Squid + Time · Frog + Time |
+| 485 | Steak | Meat + Heat |
+| 486 | Blood | Meat + Pressure |
+| 487 | Bone | Fish + Time |
+| 488 | Feather | Bird + Time |
+| 489 | Wine | Yeast + Fruit |
+| 490 | Soda Water | Water + Carbon Dioxide |
+| 491 | Cola | Soda Water + Caramel |
+| 492 | Marshmallow | Sugar + Egg |
+| 493 | Tofu | Milk + Salt |
+| 494 | Jelly | Glue + Sugar |
+| 495 | Jerky | Meat + Salt |
+| 496 | Plankton | Algae + Salt Water |
+| 497 | Jellyfish | Plankton + Slime |
+| 498 | Fish | Egg + Salt Water |
+| 499 | Electric Eel | Fish + Battery |
+| 500 | Bird | Egg + Cloud |
+| 501 | Worm | Mud + Fruit |
+| 502 | Snail | Worm + Limestone |
+| 503 | Squid | Jellyfish + Ink |
+| 504 | Frog | Fish + Mud |
+| 505 | Ant | Dirt + Sugar |
+| 506 | Termite | Ant + Wood |
+| 507 | Spider | Ant + Glue |
+| 508 | Locust | Ant + Grass |
+| 509 | Bee | Ant + Flower |
+| 510 | Butterfly | Worm + Flower |
+| 511 | Firefly | Bee + Phosphor |
+| 512 | Tardigrade | Lichen + Water · Tun + Water |
+| 513 | Phoenix | Bird + Fire |
+| 514 | Fog | Dry Ice + Water |
+| 515 | Hail | Ice + Cloud |
+| 516 | Permafrost | Mud + Cold · Dirt + Ice |
+| 517 | Glacier Ice | Snow + Pressure |
+| 518 | Liquid Hydrogen | Hydrogen + Cold |
+| 519 | Quicksand | Sand + Clay |
+| 520 | Aurora | Oxygen + Electron |
+| 521 | Ball Lightning | Plasma + Cloud |
+| 522 | Rainbow | Cloud + Photon |
+| 523 | Meteor | Star + Gravel |
+| 524 | Supernova | Star + Metal |
+| 525 | Pulsar | Neutronium + Magnet |
+| 526 | Quark-Gluon Plasma | Neutronium + Plasma |
+| 527 | Time Crystal | Quartz + Dark Matter |
+| 528 | Ice-Nine | Ice + Strange Matter |
+| 529 | Grey Goo | Graphene + Virus |
+| 530 | Elixir of Life | Philosopher's Stone + Water |
+| 531 | Greek Fire | Tar + Quicklime |
+| 532 | Gamma Ray | Black Hole + White Hole · Electron + Positron |
+| 533 | X-Ray | Pulsar + Star · Tungsten + Electron |
+| 534 | Ultraviolet | Mercury Vapour + Electron |
+| 535 | Microwave | Magnet + Spark |
+| 536 | Muon | Pion + Time |
+| 537 | Pion | Proton + Proton |
+| 538 | Higgs Boson | Muon + Muon |
+| 539 | Tachyon | Dark Matter + Neutrino |
+| 540 | Switch | Brass + Plastic |
+| 541 | Button | Switch + Rubber |
+| 542 | Clock | Quartz + Battery · Time Crystal + Switch |
+| 543 | Pressure Plate | Button + Steel |
+| 544 | Photocell | Selenium + Copper |
+| 545 | Thermostat | Switch + Mercury |
+| 546 | Door | Steel + Electromagnet |
+| 547 | Lamp | LED + Plastic |
+| 548 | Red Lamp | Lamp + Ruby |
+| 549 | Green Lamp | Lamp + Emerald |
+| 550 | Blue Lamp | Lamp + Sapphire |
+| 551 | Laser Emitter | Laser + Switch |
+| 552 | Heater | Nichrome + Porcelain |
+| 553 | Cooler | Bismuth + Tellurium |
+| 554 | Fan | Electromagnet + Magnet |
+| 555 | Dispenser | Clone + Switch |
+| 556 | Drain | Void + Switch |
+| 557 | Beam Splitter | Mirror + Quartz |
+| 558 | Chalcopyrite | Lava + Sulfur |
+| 559 | Wolframite | Steam + Quartz |
+| 560 | White Copper Sulfate | Copper Sulfate + Heat |
+| 561 | Liquid Methane | Methane + Cold |
+| 562 | Heavy Ice | Heavy Water + Cold |
+| 563 | Sawdust | Termite + Wood |
+| 564 | Tun | Tardigrade + Cold |
+| 565 | Mead | Honey + Yeast |
+| 566 | Denim | Indigo + Cloth |
 
 </details>

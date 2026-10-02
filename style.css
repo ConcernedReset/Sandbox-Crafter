@@ -434,7 +434,7 @@ kbd {
   min-height: 0;
 }
 
-.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; } /* two rows of four */
+.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } /* three rows of three */
 .tool {
   display: flex;
   flex-direction: column;

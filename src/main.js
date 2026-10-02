@@ -64,7 +64,7 @@ let whole = null; // the whole tree, focused or not
 // While an element is singled out, only its part of the tree is shown.
 function refreshTree(flash = []) {
   whole = buildTree({
-    known: (id) => progress.freePlay || progress.has(id),
+    known: (id) => progress.known(id),
     revealed: (id) => progress.revealed.has(DEFS[id].key),
     hard: progress.hard,
   });
@@ -267,8 +267,9 @@ $('menu-hard').checked = progress.hard;
 $('menu-hard').addEventListener('change', (e) => {
   progress.hard = e.target.checked;
   progress.save();
+  // Hard mode takes tools away, and leaving it takes back its machines.
   const sel = game.selection;
-  if (progress.hard && sel.kind === 'tool' && HARD_BLOCKED.has(sel.id)) {
+  if (sel.kind === 'tool' ? progress.hard && HARD_BLOCKED.has(sel.id) : !progress.usable(sel.id)) {
     game.selection = { kind: 'element', id: ID.SAND };
   }
   ui.hideCard();

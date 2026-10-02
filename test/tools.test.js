@@ -99,3 +99,33 @@ test('Mix carries temperature with the cell it moves', () => {
     if (w.type[i] === ID.STONE) assert.equal(w.temp[i], 500);
   }
 });
+
+test('the Spark tool works inside things, not just on their surface', () => {
+  const inside = (t, frames = 20) => {
+    const w = makeWorld(40, 40);
+    const box = wallBox(w, 5, 5, 30, 30);
+    fillRect(w, box.x0, box.y0, box.x1, box.y1, t);
+    for (let f = 0; f < frames; f++) {
+      w.sparkArea(w.brushArea(18, 18, 3));
+      if (frames > 1) w.step();
+    }
+    return w;
+  };
+  // A box full of nitrogen, sparked in the middle, makes nitrogen dioxide...
+  assert.ok(countOf(inside(ID.NITROGEN), ID.NITROGEN_DIOXIDE) > 10, 'nitrogen dioxide');
+  // ...water splits...
+  const water = inside(ID.WATER);
+  assert.ok(countOf(water, ID.HYDROGEN) + countOf(water, ID.OXYGEN) > 10, 'hydrogen and oxygen');
+  // ...metal carries a pulse from deep inside...
+  assert.ok(countOf(inside(ID.METAL, 1), ID.SPARK) > 10, 'sparks in the metal');
+  // ...and stone, which nothing electric happens to, is left alone.
+  const stone = inside(ID.STONE);
+  assert.equal(countOf(stone, ID.STONE), 24 * 24);
+  assert.equal(countOf(stone, ID.SPARK), 0);
+});
+
+test('the Spark tool still puts sparks into empty space', () => {
+  const w = makeWorld(40, 40);
+  w.sparkArea(w.brushArea(20, 20, 2));
+  assert.ok(countOf(w, ID.SPARK) > 5);
+});

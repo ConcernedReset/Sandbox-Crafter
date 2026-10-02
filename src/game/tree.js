@@ -9,12 +9,15 @@
 // appears once every ingredient of one of its recipes has been found, as a
 // '?' with '?' for the process.
 //
+// Things that are always to hand (Spark, which is a tool) aren't boxes: a
+// recipe that needs Spark shows it as the process, like Heat.
+//
 // Hard mode turns that round: found elements are blank boxes and the ones
 // to make next show their names, with the process but not the ingredients.
 // Focusing on one shows one of its ingredients (see clue). Each node's
 // `face` says how to draw it: 'name', '?' or 'blank'.
 
-import { DEFS, RULES, COLLECTIBLE, CATEGORIES } from '../sim/elements.js';
+import { DEFS, ID, RULES, COLLECTIBLE, CATEGORIES } from '../sim/elements.js';
 
 export const NODE_W = 136; // node size, in tree units (pixels at zoom 1)
 export const NODE_H = 40;
@@ -23,11 +26,14 @@ export const COL_W = NODE_W + JOIN + 40;
 export const ROW_H = 58;
 const SWEEPS = 5; // alternating passes to untangle the lines, ending left to right
 
+// The ingredients of each rule that get a box: all but the tools.
+const PARTS = RULES.map((r) => r.inputs.filter((i) => !DEFS[i].always));
 const MAKES = DEFS.map(() => []); // rule indices by the element they make
 const USES = DEFS.map(() => []); // rule indices by the elements that go into them
 RULES.forEach((r, k) => {
+  if (!PARTS[k].length) return;
   MAKES[r.output].push(k);
-  for (const i of r.inputs) USES[i].push(k);
+  for (const i of PARTS[k]) USES[i].push(k);
 });
 
 const CAT_ORDER = Object.fromEntries(CATEGORIES.map((c, k) => [c.key, k]));
@@ -42,6 +48,7 @@ const PROCESS = {
 // The word written under a connection.
 export function processName(rule) {
   if (rule.kind !== 'contact') return PROCESS[rule.kind];
+  if (rule.inputs.includes(ID.SPARK)) return 'Spark';
   const particles = rule.inputs.filter((i) => DEFS[i].projectile).length;
   return particles === 2 ? 'Collide' : particles === 1 ? 'Bombard' : 'Mix';
 }
@@ -52,7 +59,7 @@ function shortest(id, col) {
   let best = null;
   for (const k of MAKES[id]) {
     let c = 0;
-    for (const i of RULES[k].inputs) {
+    for (const i of PARTS[k]) {
       const ci = col.get(i);
       if (ci === undefined) { c = -1; break; }
       if (ci > c) c = ci;
@@ -112,7 +119,7 @@ export function buildTree({ known, revealed = () => false, hard = false }) {
   });
   const links = [...via].map(([id, k]) => ({
     output: id,
-    inputs: RULES[k].inputs,
+    inputs: PARTS[k],
     rule: k,
     label: hard || known(id) || revealed(id) ? processName(RULES[k]) : '?',
   }));
@@ -152,17 +159,17 @@ export function focusTree(tree, id) {
 
   // After: what it makes directly, by the tree's own recipe where that uses
   // it, otherwise by the first recipe that does.
-  const usable = (r) => r.inputs.every((i) => shown.get(i)?.known);
+  const usable = (k) => PARTS[k].every((i) => shown.get(i)?.known);
   const after = [];
   for (const k of USES[id]) {
     const r = RULES[k];
     const o = r.output;
-    if (!shown.has(o) || role.get(o) === 'source' || o === id || !usable(r)) continue;
+    if (!shown.has(o) || role.get(o) === 'source' || o === id || !usable(k)) continue;
     const own = inLink.get(o);
     if (own && own.inputs.includes(id)) links.set(o, own);
     else if (!links.has(o)) {
       const open = shown.get(o).known || own?.label !== '?';
-      links.set(o, { output: o, inputs: r.inputs, rule: k, label: open ? processName(r) : '?' });
+      links.set(o, { output: o, inputs: PARTS[k], rule: k, label: open ? processName(r) : '?' });
     }
     if (!role.has(o)) { role.set(o, 'product'); after.push(o); }
   }

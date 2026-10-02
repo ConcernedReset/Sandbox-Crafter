@@ -444,7 +444,7 @@ kbd {
   min-height: 0;
 }
 
-.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; } /* two rows of four */
+.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } /* three rows of three */
 .tool {
   display: flex;
   flex-direction: column;
@@ -862,7 +862,7 @@ kbd {
     <h1 class="wordmark">Sandbox <span>Crafter</span></h1>
 
     <div class="meter" id="meter" title="Elements discovered">
-      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">567</span> elements</div>
+      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">566</span> elements</div>
       <div class="meter-cells" id="meter-cells" aria-hidden="true"></div>
     </div>
 
@@ -5827,10 +5827,10 @@ const ELEMENT_LIST = [
     hint: 'Metal soaking in Salt Water holds a charge.',
   },
   {
-    key: 'SPARK', name: 'Spark', sym: 'Sp', cat: 'energy', state: ENERGY, fixed: true,
+    // Always available, as the Spark tool (World.sparkArea), not a discovery.
+    key: 'SPARK', name: 'Spark', sym: 'Sp', cat: 'energy', state: ENERGY, fixed: true, always: true,
     colors: ['#fff7a8', '#ffe96b'], life: [4, 4], behavior: 'spark', transparent: true,
-    desc: 'Electricity. Runs along metal. Paint it onto metal or into the air.',
-    hint: 'Touch a Battery to Metal.',
+    desc: 'Electricity. Runs along metal.',
   },
   {
     key: 'HYDROGEN', name: 'Hydrogen', sym: 'H', cat: 'gas', state: GAS,
@@ -9125,10 +9125,18 @@ class World {
   // Apply a contact reaction between i (at x, y) and its neighbour j.
   // Returns true if i itself changed.
   react(i, j, x, y, r) {
-    if (r.heat) {
-      this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + r.heat);
-      this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
-    }
+    if (r.heat) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + r.heat);
+    this.reactOther(j, x, y, r);
+    const s = r.self;
+    if (s.alt >= 0 && this.rand() < s.altChance) { this.convert(i, s.alt, r.keepSelf, s.altRule); return true; }
+    if (s.to >= 0) { this.convert(i, s.to, r.keepSelf, s.rule); return true; }
+    return false;
+  }
+
+  // The half of a contact reaction r that happens to the other party, j,
+  // and around (x, y): what j turns into, and anything given off.
+  reactOther(j, x, y, r) {
+    if (r.heat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
     const o = r.other;
     if (o.alt >= 0 && this.rand() < o.altChance) this.convert(j, o.alt, r.keepOther, o.altRule);
     else if (o.to >= 0) this.convert(j, o.to, r.keepOther, o.rule);
@@ -9138,10 +9146,6 @@ class World {
       this.record(e.id, e.rule);
     }
     if (r.explode) this.blast(x, y, r.explode);
-    const s = r.self;
-    if (s.alt >= 0 && this.rand() < s.altChance) { this.convert(i, s.alt, r.keepSelf, s.altRule); return true; }
-    if (s.to >= 0) { this.convert(i, s.to, r.keepSelf, s.rule); return true; }
-    return false;
   }
 
   // ---- movement -----------------------------------------------------------
@@ -9672,14 +9676,9 @@ class World {
       });
       return;
     }
+    if (t === SPARK) { this.sparkArea(area, density); return; }
     area((i) => {
       const u = this.type[i];
-      if (t === SPARK) {
-        // Spark painted onto a wire, a switch or a machine (or an open door).
-        if (CONDUCTOR[u]) { if (this.life[i] === 0) this.sparkAt(i); return; }
-        if (PRESSABLE[u]) { this.press(i); return; }
-        if (POWERED[u] || (u === 0 && this.doorTimer[i] !== 0)) { this.powerCell(i); return; }
-      }
       // With Replace on, whatever is in the way is overwritten (but painting
       // an element over itself leaves it be).
       if (u !== 0 && (!this.replace || u === t)) return;
@@ -9746,6 +9745,38 @@ class World {
       seen.add(a);
       this.air.addVelocity(a, dx, dy);
     });
+  }
+
+  // The Spark tool: each cell under the brush gets what a spark touching it
+  // would do, so it works inside things, not just on their surface. Wires
+  // carry a pulse, switches are pressed, machines (and open doorways)
+  // powered, explosives lit and gases like neon glow; anything else with a
+  // reaction to Spark has it at its usual rate, and the rest is left alone.
+  // Empty cells get a spark (`density` of them).
+  sparkArea(area, density = 1) {
+    area((i, x, y) => {
+      const u = this.type[i];
+      if (u === 0) {
+        if (this.doorTimer[i] !== 0) this.powerCell(i);
+        else if (density >= 1 || this.rand() < density) this.spawn(i, SPARK);
+      } else {
+        this.zap(i, x, y, u);
+      }
+    });
+  }
+
+  zap(i, x, y, u) {
+    if (CONDUCTOR[u]) { if (this.life[i] === 0) this.sparkAt(i); return; }
+    if (PRESSABLE[u]) { this.press(i); return; }
+    if (POWERED[u]) { this.powerCell(i); return; }
+    const d = DEFS[u];
+    if (d.explode > 0) { this.ignite(i, x, y); return; }
+    if (d.excite !== null) {
+      this.life[i] = 20;
+      if (this.rand() < 0.05) this.emitAt(d.excite.emit, x, y);
+    }
+    const r = REACT[SPARK * NUM + u];
+    if (r !== null && this.rand() < r.chance && this.temp[i] >= r.minTemp) this.reactOther(i, x, y, r);
   }
 
   // The Mix tool: shuffle the cells under the brush, about one swap per cell
@@ -10322,12 +10353,15 @@ __modules["src/game/tree.js"] = (() => {
 // appears once every ingredient of one of its recipes has been found, as a
 // '?' with '?' for the process.
 //
+// Things that are always to hand (Spark, which is a tool) aren't boxes: a
+// recipe that needs Spark shows it as the process, like Heat.
+//
 // Hard mode turns that round: found elements are blank boxes and the ones
 // to make next show their names, with the process but not the ingredients.
 // Focusing on one shows one of its ingredients (see clue). Each node's
 // `face` says how to draw it: 'name', '?' or 'blank'.
 
-const { DEFS, RULES, COLLECTIBLE, CATEGORIES } = __modules["src/sim/elements.js"];
+const { DEFS, ID, RULES, COLLECTIBLE, CATEGORIES } = __modules["src/sim/elements.js"];
 
 const NODE_W = 136; // node size, in tree units (pixels at zoom 1)
 const NODE_H = 40;
@@ -10336,11 +10370,14 @@ const COL_W = NODE_W + JOIN + 40;
 const ROW_H = 58;
 const SWEEPS = 5; // alternating passes to untangle the lines, ending left to right
 
+// The ingredients of each rule that get a box: all but the tools.
+const PARTS = RULES.map((r) => r.inputs.filter((i) => !DEFS[i].always));
 const MAKES = DEFS.map(() => []); // rule indices by the element they make
 const USES = DEFS.map(() => []); // rule indices by the elements that go into them
 RULES.forEach((r, k) => {
+  if (!PARTS[k].length) return;
   MAKES[r.output].push(k);
-  for (const i of r.inputs) USES[i].push(k);
+  for (const i of PARTS[k]) USES[i].push(k);
 });
 
 const CAT_ORDER = Object.fromEntries(CATEGORIES.map((c, k) => [c.key, k]));
@@ -10355,6 +10392,7 @@ const PROCESS = {
 // The word written under a connection.
 function processName(rule) {
   if (rule.kind !== 'contact') return PROCESS[rule.kind];
+  if (rule.inputs.includes(ID.SPARK)) return 'Spark';
   const particles = rule.inputs.filter((i) => DEFS[i].projectile).length;
   return particles === 2 ? 'Collide' : particles === 1 ? 'Bombard' : 'Mix';
 }
@@ -10365,7 +10403,7 @@ function shortest(id, col) {
   let best = null;
   for (const k of MAKES[id]) {
     let c = 0;
-    for (const i of RULES[k].inputs) {
+    for (const i of PARTS[k]) {
       const ci = col.get(i);
       if (ci === undefined) { c = -1; break; }
       if (ci > c) c = ci;
@@ -10425,7 +10463,7 @@ function buildTree({ known, revealed = () => false, hard = false }) {
   });
   const links = [...via].map(([id, k]) => ({
     output: id,
-    inputs: RULES[k].inputs,
+    inputs: PARTS[k],
     rule: k,
     label: hard || known(id) || revealed(id) ? processName(RULES[k]) : '?',
   }));
@@ -10465,17 +10503,17 @@ function focusTree(tree, id) {
 
   // After: what it makes directly, by the tree's own recipe where that uses
   // it, otherwise by the first recipe that does.
-  const usable = (r) => r.inputs.every((i) => shown.get(i)?.known);
+  const usable = (k) => PARTS[k].every((i) => shown.get(i)?.known);
   const after = [];
   for (const k of USES[id]) {
     const r = RULES[k];
     const o = r.output;
-    if (!shown.has(o) || role.get(o) === 'source' || o === id || !usable(r)) continue;
+    if (!shown.has(o) || role.get(o) === 'source' || o === id || !usable(k)) continue;
     const own = inLink.get(o);
     if (own && own.inputs.includes(id)) links.set(o, own);
     else if (!links.has(o)) {
       const open = shown.get(o).known || own?.label !== '?';
-      links.set(o, { output: o, inputs: r.inputs, rule: k, label: open ? processName(r) : '?' });
+      links.set(o, { output: o, inputs: PARTS[k], rule: k, label: open ? processName(r) : '?' });
     }
     if (!role.has(o)) { role.set(o, 'product'); after.push(o); }
   }
@@ -11108,7 +11146,7 @@ const WIND_STRENGTH = 0.6;
 // neutrons...) are sprayed instead, this densely (see World.paintArea).
 const PARTICLE_DENSITY = 0.6;
 
-const TOOLS = ['erase', 'wall', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum'];
+const TOOLS = ['erase', 'wall', 'spark', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum'];
 // The tools hard mode takes away: heat, cold and pressure have to come from
 // the elements themselves.
 const HARD_BLOCKED = new Set(['heat', 'cool', 'wind', 'pressure', 'vacuum']);
@@ -11335,6 +11373,7 @@ class Input {
     switch (sel.id) {
       case 'erase': world.eraseArea(area); break;
       case 'wall': world.paintArea(area, ID.WALL, 1); break;
+      case 'spark': world.sparkArea(area); break;
       case 'heat': world.heatArea(area, HEAT_RATE); break;
       case 'cool': world.heatArea(area, -HEAT_RATE); break;
       case 'pressure': world.pressurizeArea(area, PRESSURE_RATE); break;
@@ -11477,14 +11516,25 @@ class Progress {
     }
   }
 
+  // Found it (or never needed to: Wall and Spark are always to hand).
   has(id) {
-    return this.discovered.has(DEFS[id].key);
+    const d = DEFS[id];
+    return d.always || this.discovered.has(d.key);
+  }
+
+  // Hard mode hands out every machine, in place of the tools it takes away.
+  given(id) {
+    return this.hard && DEFS[id].cat === 'machine';
   }
 
   // Can the player paint with this element right now?
   usable(id) {
-    const d = DEFS[id];
-    return d.always || this.freePlay || this.discovered.has(d.key);
+    return this.freePlay || this.given(id) || this.has(id);
+  }
+
+  // Does the recipe tree count it as found? The same as usable.
+  known(id) {
+    return this.usable(id);
   }
 
   // Returns true if this was a new discovery.
@@ -11595,6 +11645,11 @@ function fmtDuration(seconds) {
 }
 
 const TOOL_INFO = {
+  spark: {
+    name: 'Spark', color: '#ffe96b',
+    icon: '<path d="M11.5 2L4.5 11h5l-1 7 7-9h-5z"/>',
+    desc: 'Electricity. Sends a pulse through metal and wires, presses switches and powers machines, even from inside them. Sparks whatever reacts to electricity, and fills empty space with sparks.',
+  },
   erase: {
     name: 'Erase', color: '#c9a39a',
     icon: '<path d="M8 17h9M3.6 12.4l7-7a1.5 1.5 0 0 1 2.1 0l2.9 2.9a1.5 1.5 0 0 1 0 2.1L9.5 16.5H6.6l-3-3a.8.8 0 0 1 0-1.1z"/>',
@@ -11834,8 +11889,8 @@ class UI {
   // Undiscovered elements whose ingredients the player already has.
   available() {
     const { progress } = this.game;
-    return COLLECTIBLE.filter((d) => !progress.has(d.id)
-      && rulesFor(d.id).some((r) => RULES[r].inputs.every((i) => progress.has(i))));
+    return COLLECTIBLE.filter((d) => !progress.known(d.id)
+      && rulesFor(d.id).some((r) => RULES[r].inputs.every((i) => progress.known(i))));
   }
 
   renderTreeCount() {
@@ -11849,7 +11904,7 @@ class UI {
   knownRecipes(d) {
     const { progress } = this.game;
     return rulesFor(d.id)
-      .filter((r) => progress.freePlay || RULES[r].inputs.every((i) => progress.has(i)))
+      .filter((r) => RULES[r].inputs.every((i) => progress.known(i)))
       .map((r) => `<li class="recipe-text">${esc(ruleLabel(RULES[r]))}</li>`)
       .join('');
   }
@@ -11861,7 +11916,7 @@ class UI {
   showCard(id, link = null) {
     const { progress } = this.game;
     const d = DEFS[id];
-    const known = progress.freePlay || progress.has(id);
+    const known = progress.known(id);
     const close = `<button type="button" class="tree-card-close" data-close aria-label="Close">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.1L8 6.6l4.5-4.5 1.4 1.4L9.4 8l4.5 4.5-1.4 1.4L8 9.4l-4.5 4.5-1.4-1.4L6.6 8 2.1 3.5z"/></svg></button>`;
     let body;
@@ -12193,7 +12248,7 @@ let whole = null; // the whole tree, focused or not
 // While an element is singled out, only its part of the tree is shown.
 function refreshTree(flash = []) {
   whole = buildTree({
-    known: (id) => progress.freePlay || progress.has(id),
+    known: (id) => progress.known(id),
     revealed: (id) => progress.revealed.has(DEFS[id].key),
     hard: progress.hard,
   });
@@ -12396,8 +12451,9 @@ $('menu-hard').checked = progress.hard;
 $('menu-hard').addEventListener('change', (e) => {
   progress.hard = e.target.checked;
   progress.save();
+  // Hard mode takes tools away, and leaving it takes back its machines.
   const sel = game.selection;
-  if (progress.hard && sel.kind === 'tool' && HARD_BLOCKED.has(sel.id)) {
+  if (sel.kind === 'tool' ? progress.hard && HARD_BLOCKED.has(sel.id) : !progress.usable(sel.id)) {
     game.selection = { kind: 'element', id: ID.SAND };
   }
   ui.hideCard();

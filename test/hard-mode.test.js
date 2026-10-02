@@ -110,3 +110,31 @@ test('hard mode is saved, and resetting discoveries keeps it', () => {
     delete globalThis.localStorage;
   }
 });
+
+test('the Spark tool works in hard mode', () => {
+  assert.ok(TOOLS.includes('spark') && !HARD_BLOCKED.has('spark'));
+  const w = makeWorld(20, 20);
+  const state = { selection: { kind: 'tool', id: 'spark' }, brush: 2, hard: true };
+  const input = new Input({ addEventListener() {} }, () => w, state, null);
+  input.act(w, w.brushArea(10, 10, 2), 0, 0, false);
+  assert.ok(w.type.includes(ID.SPARK));
+});
+
+test('hard mode hands out every machine, found in the tree but not on the meter', () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  try {
+    const p = new Progress();
+    const machines = COLLECTIBLE.filter((d) => d.cat === 'machine');
+    assert.equal(machines.length, 18);
+    assert.ok(machines.every((d) => !p.usable(d.id) && !p.known(d.id)), 'not before hard mode');
+    p.hard = true;
+    assert.ok(machines.every((d) => p.usable(d.id) && p.known(d.id) && !p.has(d.id)));
+    assert.equal(p.count, STARTERS.length, 'none counted as discovered');
+    const t = buildTree({ known: (id) => p.known(id), hard: true });
+    assert.equal(face(t, ID.SWITCH), 'blank', 'a found box');
+    assert.ok(!p.usable(ID.LED), 'devices are not machines');
+  } finally {
+    delete globalThis.localStorage;
+  }
+});

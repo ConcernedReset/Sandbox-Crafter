@@ -46,14 +46,25 @@ export class Progress {
     }
   }
 
+  // Found it (or never needed to: Wall and Spark are always to hand).
   has(id) {
-    return this.discovered.has(DEFS[id].key);
+    const d = DEFS[id];
+    return d.always || this.discovered.has(d.key);
+  }
+
+  // Hard mode hands out every machine, in place of the tools it takes away.
+  given(id) {
+    return this.hard && DEFS[id].cat === 'machine';
   }
 
   // Can the player paint with this element right now?
   usable(id) {
-    const d = DEFS[id];
-    return d.always || this.freePlay || this.discovered.has(d.key);
+    return this.freePlay || this.given(id) || this.has(id);
+  }
+
+  // Does the recipe tree count it as found? The same as usable.
+  known(id) {
+    return this.usable(id);
   }
 
   // Returns true if this was a new discovery.

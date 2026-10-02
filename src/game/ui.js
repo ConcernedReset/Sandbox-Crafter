@@ -29,6 +29,11 @@ function fmtDuration(seconds) {
 }
 
 const TOOL_INFO = {
+  spark: {
+    name: 'Spark', color: '#ffe96b',
+    icon: '<path d="M11.5 2L4.5 11h5l-1 7 7-9h-5z"/>',
+    desc: 'Electricity. Sends a pulse through metal and wires, presses switches and powers machines, even from inside them. Sparks whatever reacts to electricity, and fills empty space with sparks.',
+  },
   erase: {
     name: 'Erase', color: '#c9a39a',
     icon: '<path d="M8 17h9M3.6 12.4l7-7a1.5 1.5 0 0 1 2.1 0l2.9 2.9a1.5 1.5 0 0 1 0 2.1L9.5 16.5H6.6l-3-3a.8.8 0 0 1 0-1.1z"/>',
@@ -268,8 +273,8 @@ export class UI {
   // Undiscovered elements whose ingredients the player already has.
   available() {
     const { progress } = this.game;
-    return COLLECTIBLE.filter((d) => !progress.has(d.id)
-      && rulesFor(d.id).some((r) => RULES[r].inputs.every((i) => progress.has(i))));
+    return COLLECTIBLE.filter((d) => !progress.known(d.id)
+      && rulesFor(d.id).some((r) => RULES[r].inputs.every((i) => progress.known(i))));
   }
 
   renderTreeCount() {
@@ -283,7 +288,7 @@ export class UI {
   knownRecipes(d) {
     const { progress } = this.game;
     return rulesFor(d.id)
-      .filter((r) => progress.freePlay || RULES[r].inputs.every((i) => progress.has(i)))
+      .filter((r) => RULES[r].inputs.every((i) => progress.known(i)))
       .map((r) => `<li class="recipe-text">${esc(ruleLabel(RULES[r]))}</li>`)
       .join('');
   }
@@ -295,7 +300,7 @@ export class UI {
   showCard(id, link = null) {
     const { progress } = this.game;
     const d = DEFS[id];
-    const known = progress.freePlay || progress.has(id);
+    const known = progress.known(id);
     const close = `<button type="button" class="tree-card-close" data-close aria-label="Close">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.1L8 6.6l4.5-4.5 1.4 1.4L9.4 8l4.5 4.5-1.4 1.4L8 9.4l-4.5 4.5-1.4-1.4L6.6 8 2.1 3.5z"/></svg></button>`;
     let body;

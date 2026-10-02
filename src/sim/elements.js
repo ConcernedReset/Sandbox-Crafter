@@ -330,10 +330,10 @@ export const ELEMENT_LIST = [
     hint: 'Metal soaking in Salt Water holds a charge.',
   },
   {
-    key: 'SPARK', name: 'Spark', sym: 'Sp', cat: 'energy', state: ENERGY, fixed: true,
+    // Always available, as the Spark tool (World.sparkArea), not a discovery.
+    key: 'SPARK', name: 'Spark', sym: 'Sp', cat: 'energy', state: ENERGY, fixed: true, always: true,
     colors: ['#fff7a8', '#ffe96b'], life: [4, 4], behavior: 'spark', transparent: true,
-    desc: 'Electricity. Runs along metal. Paint it onto metal or into the air.',
-    hint: 'Touch a Battery to Metal.',
+    desc: 'Electricity. Runs along metal.',
   },
   {
     key: 'HYDROGEN', name: 'Hydrogen', sym: 'H', cat: 'gas', state: GAS,

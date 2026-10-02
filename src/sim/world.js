@@ -541,10 +541,18 @@ export class World {
   // Apply a contact reaction between i (at x, y) and its neighbour j.
   // Returns true if i itself changed.
   react(i, j, x, y, r) {
-    if (r.heat) {
-      this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + r.heat);
-      this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
-    }
+    if (r.heat) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + r.heat);
+    this.reactOther(j, x, y, r);
+    const s = r.self;
+    if (s.alt >= 0 && this.rand() < s.altChance) { this.convert(i, s.alt, r.keepSelf, s.altRule); return true; }
+    if (s.to >= 0) { this.convert(i, s.to, r.keepSelf, s.rule); return true; }
+    return false;
+  }
+
+  // The half of a contact reaction r that happens to the other party, j,
+  // and around (x, y): what j turns into, and anything given off.
+  reactOther(j, x, y, r) {
+    if (r.heat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
     const o = r.other;
     if (o.alt >= 0 && this.rand() < o.altChance) this.convert(j, o.alt, r.keepOther, o.altRule);
     else if (o.to >= 0) this.convert(j, o.to, r.keepOther, o.rule);
@@ -554,10 +562,6 @@ export class World {
       this.record(e.id, e.rule);
     }
     if (r.explode) this.blast(x, y, r.explode);
-    const s = r.self;
-    if (s.alt >= 0 && this.rand() < s.altChance) { this.convert(i, s.alt, r.keepSelf, s.altRule); return true; }
-    if (s.to >= 0) { this.convert(i, s.to, r.keepSelf, s.rule); return true; }
-    return false;
   }
 
   // ---- movement -----------------------------------------------------------
@@ -1088,14 +1092,9 @@ export class World {
       });
       return;
     }
+    if (t === SPARK) { this.sparkArea(area, density); return; }
     area((i) => {
       const u = this.type[i];
-      if (t === SPARK) {
-        // Spark painted onto a wire, a switch or a machine (or an open door).
-        if (CONDUCTOR[u]) { if (this.life[i] === 0) this.sparkAt(i); return; }
-        if (PRESSABLE[u]) { this.press(i); return; }
-        if (POWERED[u] || (u === 0 && this.doorTimer[i] !== 0)) { this.powerCell(i); return; }
-      }
       // With Replace on, whatever is in the way is overwritten (but painting
       // an element over itself leaves it be).
       if (u !== 0 && (!this.replace || u === t)) return;
@@ -1162,6 +1161,38 @@ export class World {
       seen.add(a);
       this.air.addVelocity(a, dx, dy);
     });
+  }
+
+  // The Spark tool: each cell under the brush gets what a spark touching it
+  // would do, so it works inside things, not just on their surface. Wires
+  // carry a pulse, switches are pressed, machines (and open doorways)
+  // powered, explosives lit and gases like neon glow; anything else with a
+  // reaction to Spark has it at its usual rate, and the rest is left alone.
+  // Empty cells get a spark (`density` of them).
+  sparkArea(area, density = 1) {
+    area((i, x, y) => {
+      const u = this.type[i];
+      if (u === 0) {
+        if (this.doorTimer[i] !== 0) this.powerCell(i);
+        else if (density >= 1 || this.rand() < density) this.spawn(i, SPARK);
+      } else {
+        this.zap(i, x, y, u);
+      }
+    });
+  }
+
+  zap(i, x, y, u) {
+    if (CONDUCTOR[u]) { if (this.life[i] === 0) this.sparkAt(i); return; }
+    if (PRESSABLE[u]) { this.press(i); return; }
+    if (POWERED[u]) { this.powerCell(i); return; }
+    const d = DEFS[u];
+    if (d.explode > 0) { this.ignite(i, x, y); return; }
+    if (d.excite !== null) {
+      this.life[i] = 20;
+      if (this.rand() < 0.05) this.emitAt(d.excite.emit, x, y);
+    }
+    const r = REACT[SPARK * NUM + u];
+    if (r !== null && this.rand() < r.chance && this.temp[i] >= r.minTemp) this.reactOther(i, x, y, r);
   }
 
   // The Mix tool: shuffle the cells under the brush, about one swap per cell

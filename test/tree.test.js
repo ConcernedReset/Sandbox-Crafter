@@ -142,3 +142,13 @@ test('each kind of recipe has a process name', () => {
   assert.equal(name('contact', ['URANIUM', 'NEUTRON']), 'Bombard');
   assert.equal(name('contact', ['ELECTRON', 'POSITRON']), 'Collide');
 });
+
+test('Spark is a tool, so recipes that need it show Spark as their process', () => {
+  const t = everything();
+  assert.ok(!t.nodes.some((n) => n.id === ID.SPARK), 'no Spark box');
+  assert.ok(t.links.every((l) => !l.inputs.includes(ID.SPARK)));
+  const [l] = linksTo(t, ID.LIGHTNING);
+  assert.deepEqual(l.inputs, [ID.CLOUD]);
+  assert.equal(l.label, 'Spark');
+  assert.equal(processName({ kind: 'contact', inputs: [ID.NITROGEN, ID.SPARK], output: 0 }), 'Spark');
+});

@@ -18,7 +18,7 @@ const WIND_STRENGTH = 0.6;
 // neutrons...) are sprayed instead, this densely (see World.paintArea).
 const PARTICLE_DENSITY = 0.6;
 
-export const TOOLS = ['erase', 'wall', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum'];
+export const TOOLS = ['erase', 'wall', 'spark', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum'];
 // The tools hard mode takes away: heat, cold and pressure have to come from
 // the elements themselves.
 export const HARD_BLOCKED = new Set(['heat', 'cool', 'wind', 'pressure', 'vacuum']);
@@ -245,6 +245,7 @@ export class Input {
     switch (sel.id) {
       case 'erase': world.eraseArea(area); break;
       case 'wall': world.paintArea(area, ID.WALL, 1); break;
+      case 'spark': world.sparkArea(area); break;
       case 'heat': world.heatArea(area, HEAT_RATE); break;
       case 'cool': world.heatArea(area, -HEAT_RATE); break;
       case 'pressure': world.pressurizeArea(area, PRESSURE_RATE); break;
