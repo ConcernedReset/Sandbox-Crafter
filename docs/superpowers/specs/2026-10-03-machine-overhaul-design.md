@@ -15,7 +15,7 @@ controls and wires, and handed out in hard mode.
 
 | Machine | Now | After |
 | ------- | --- | ----- |
-| Heater | +25 °C a frame while powered, stops at 1200 °C | +20 °C a frame while powered, no limit |
+| Heater | +25 °C a frame while powered, stops at 1200 °C | +20 °C a frame while powered, plus 0.1 °C more for every frame it has been on (it resets when the power stops), so it heats faster and faster with no limit and outruns the heat it loses |
 | Cooler | −25 °C a frame, stops at −150 °C | −20 °C a frame, down to absolute zero (−273 °C) |
 | Fan | blows out of every open face, push 0.25 | same, push retuned so it still moves smoke and dust in the thick air |
 
@@ -77,13 +77,14 @@ Machines that use it:
 
 - A network is a 4-connected group of Pipe and Pump cells.
 - Its **openings** are the air blocks of empty (or gas) cells touching it
-  that aren't sealed. An opening touching a Pump is that pump's intake.
+  that aren't sealed. An opening touching a Pump is that pump's intake. A
+  pump is shut while unpowered: its intake takes no part in the sharing.
 - Pipe and Pump cells are airtight, so they also wall off the air like any
   strong solid.
 - Each frame, for every network:
   - **Passive:** each opening's pressure moves 20 % of the way towards the
     average of all the network's openings. Pressure is shared, not created.
-  - **Pumping:** each powered pump moves up to 1.5 units of pressure a frame
+  - **Pumping:** each powered pump cell moves up to 4 units of pressure a frame
     from its intake blocks to the other openings, split evenly. The usual
     ±256 limit holds at both ends.
 - Pipe cells add themselves to a list as the frame's update reaches them.
