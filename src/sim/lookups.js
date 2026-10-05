@@ -33,7 +33,7 @@ for (const d of DEFS) {
   AIRTIGHT[d.id] = d.strength >= 25 && d.explode === 0 ? 1 : 0;
   const m = d.machine;
   MACHINE[d.id] = m ? 1 : 0;
-  POWERED[d.id] = ['door', 'lamp', 'laser', 'heater', 'cooler', 'fan', 'dispenser', 'drain'].includes(m) ? 1 : 0;
+  POWERED[d.id] = ['door', 'lamp', 'laser', 'heater', 'cooler', 'fan', 'dispenser', 'drain', 'pump', 'conveyor', 'piston', 'inverter', 'delay', 'igniter', 'neutron'].includes(m) ? 1 : 0;
   PRESSABLE[d.id] = m === 'switch' || m === 'button' ? 1 : 0;
   LIGHT_SENSOR[d.id] = m === 'photocell' ? 1 : 0;
   MIRROR_BACKING[d.id] = d.transparent && d.state === SOLID ? 1 : 0;

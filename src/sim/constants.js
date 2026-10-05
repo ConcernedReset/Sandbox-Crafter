@@ -4,8 +4,12 @@ export const State = { EMPTY: 0, SOLID: 1, POWDER: 2, LIQUID: 3, GAS: 4, ENERGY:
 
 export const AMBIENT = 22; // °C, room temperature
 
-export const MAX_TEMP = 9999;
+// There is no highest temperature: a star is millions of degrees, and quark-
+// gluon plasma trillions. There is a lowest, absolute zero.
 export const MIN_TEMP = -273;
+// What a plutonium split heats its cell to, at least (the heart of a nuclear
+// fireball is millions of degrees).
+export const FISSION_HOT = 1e6;
 export const GRAVITY = 0.12;
 
 // Radioactive elements (the Radioactive category) are stable until something

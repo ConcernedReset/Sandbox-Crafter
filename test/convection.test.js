@@ -93,8 +93,8 @@ test('rising air comes back down: in a box, the loop carries air up and back to 
   const heat = () => { for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.METAL) w.temp[i] = 1400; };
   w.setConvection(true);
   run(w, 300, heat);
-  // Markers that ride the air: count those that rise high and then return
-  // close to the hot block.
+  // Markers that ride the air: count those that rise high and then come back
+  // down into the bottom of the box.
   const a = w.air;
   const marks = [];
   for (let k = 0; k < 200; k++) marks.push({ x: 20 + (k % 20) * 6, y: 10 + Math.floor(k / 20) * 7, high: false, back: false });
@@ -102,14 +102,15 @@ test('rising air comes back down: in a box, the loop carries air up and back to 
     heat();
     for (const m of marks) {
       const b = a.at(Math.min(W - 1, Math.max(0, m.x | 0)), Math.min(H - 1, Math.max(0, m.y | 0)));
-      m.x += a.cvx(b) * 0.5;
-      m.y += a.cvy(b) * 0.5;
+      // Kept in the open air: the wall's own blocks have no flow to carry them.
+      m.x = Math.min(W - 5, Math.max(4, m.x + a.cvx(b) * 0.5));
+      m.y = Math.min(H - 5, Math.max(4, m.y + a.cvy(b) * 0.5));
       if (m.y < 30) m.high = true;
-      if (m.high && Math.hypot(m.x - 80, m.y - 84) < 20) m.back = true;
+      if (m.high && m.y > 70) m.back = true;
     }
   });
   const back = marks.filter((m) => m.back).length, high = marks.filter((m) => m.high).length;
-  assert.ok(back > high / 4, `${back} of ${high} markers that rose came back to the block`);
+  assert.ok(back > high / 2, `${back} of ${high} markers that rose came back down`);
   // The loop: up the middle, down both sides, in along the floor.
   const v = (x, y) => [a.cvx(a.at(x, y)), a.cvy(a.at(x, y))].map((n) => +n.toFixed(2));
   assert.ok(v(80, 60)[1] < -1, `rising over the block ${v(80, 60)}`);
@@ -158,9 +159,10 @@ test('in the open, hot air pushes out and is drawn back in as it cools', () => {
   const w = makeWorld(120, 80);
   w.setConvection(true);
   const a = w.air;
-  run(w, 60, () => w.heat(60, 40, 8, 30));
   let peak = 0;
-  run(w, 40, () => { peak = Math.max(peak, a.cvx(a.at(76, 40))); });
+  const watch = () => { peak = Math.max(peak, a.cvx(a.at(76, 40))); };
+  run(w, 60, () => { w.heat(60, 40, 8, 30); watch(); });
+  run(w, 40, watch);
   assert.ok(peak > 0.05, `air pushed out to the right while hot (${peak.toFixed(3)})`);
   let back = 0;
   run(w, 600, () => { back = Math.min(back, a.cvx(a.at(76, 40))); });

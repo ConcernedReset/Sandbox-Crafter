@@ -15,8 +15,10 @@ driving doors, lamps, laser emitters, heaters and more (see
 [Machines and circuits](#machines-and-circuits)).
 
 The physics is modelled on [The Powder Toy](https://powdertoy.co.uk/): sand
-piles, liquids level out, air pressure builds and tears things apart, fire
-uses up the air, and plutonium goes off like a Powder Toy nuke. A
+piles, liquids level out, air pressure builds and tears things apart (the air
+is thick and swirling, as in The Powder Toy), fire uses up the air, and
+plutonium goes off like a Powder Toy nuke. There's no top temperature: a Star
+burns at the 15 million °C of the Sun's heart. A
 [Physics panel](#physics-panel) lets you turn gravity any way you like, make
 it stronger or switch it off, turn on Newtonian gravity (mass pulls on mass)
 and convection (hot air rises in loops), and air pressure moves boiling and
@@ -76,7 +78,15 @@ back to system ones; progress is saved per file location.)
   - **Mix** stirs whatever is under the brush, swapping cells at random so
     layers blend within a few frames; walls stay put and the air is left
     alone.
-- **Views:** Normal, Heat (a thermal camera) and Pressure (the air grid).
+- **Gas** and **Glow** (next to Replace) are display effects, both on to
+  start with, and the game remembers your choice. Gas blurs gases, loose
+  flames and plasma into soft clouds, as in The Powder Toy, and hot gas
+  glows. Glow gives everything hot (lava, molten glass, red-hot metal, fire,
+  sparks) a wide soft halo that lingers for a moment. Both only change the
+  Normal view.
+- **Views:** Normal, Heat (a thermal camera) and Pressure (the air grid). In
+  the Heat view white is 6000 °C; past that it shades to violet for the
+  millions of degrees of a Star.
 - **Keys:** `Space` pause, `.` step one frame, `[` `]` brush size, `1` `2` `3` views,
   `R` replace, `+` `-` `0` zoom, arrows pan.
 - The **Recipe tree** under the simulation shows everything you've found,
@@ -121,7 +131,7 @@ when it needs a spark, and particle hits Bombard or Collide):
 | Fire     | Burning Wood leaves Ash and Smoke (fire needs air) |
 | Time     | A Plant that grows thick enough turns woody      |
 | Decay    | Squeezed or bombarded, Radium decays into Radon  |
-| Particles | A Neutron splits Uranium; light knocks Electrons out of Metal |
+| Particles | A Neutron splits Uranium; ultraviolet knocks Electrons out of Metal |
 
 ### Physics panel
 
@@ -186,12 +196,20 @@ Each frame (60 per second):
 3. **Heat** conducts between touching particles according to each element's
    conductivity (diamond and metal are fast, wall is a perfect insulator), and
    anything exposed to open air drifts slowly back to room temperature (with
-   convection on, towards the temperature of the air beside it instead).
+   convection on, it trades heat with the air beside it instead, much
+   faster). There is no highest temperature, only absolute zero at the
+   bottom: Lightning is 30,000 °C, Plasma 20,000 °C, a Star 15 million °C,
+   a Supernova a billion and Quark-Gluon Plasma 5.5 trillion, as hot as
+   the real thing. Above 10,000 °C things glow blue-white.
 4. **Air** is simulated on a coarse 4 × 4 grid of pressure and velocity cells
-   (`src/sim/air.js`). Pressure pushes air from high to low, walls block the
-   flow, and the map edges leak to zero. That's why a sealed Wall box can hold
-   the pressure needed to make diamonds, and why explosions send out a
-   visible shockwave in the Pressure view.
+   (`src/sim/air.js`), the way The Powder Toy does it. Pressure pushes air
+   from high to low, walls block the flow, and the map edges leak to zero.
+   Every frame the pressure and the flow are both blurred over each block
+   and its neighbours, which makes the air thick and viscous, and the flow
+   carries itself along, so gusts keep going and curl into eddies, and an
+   explosion pushes out a slow, smooth, rounded front instead of a sharp
+   ringing one. A sealed Wall box can hold the pressure needed to make
+   diamonds, and explosions send out a visible shockwave in the Pressure view.
 
    **Fire uses up air.** Every flame lowers the pressure around it a little,
    so a fire draws air (and smoke and dust) in towards it. In the open, air
@@ -214,13 +232,19 @@ Each frame (60 per second):
 
    **Convection** (when switched on) gives each air block a temperature.
    Particles next to empty cells trade heat with that air instead of with the
-   room; the air warms three times as fast as they cool, presses harder the
-   hotter it is (so heating the air in a sealed box raises its pressure until
-   it cools again, and in the open hot air pushes outwards and is drawn back
-   as it cools), is pushed against gravity in proportion to how
-   much warmer it is than the air around it (so air that has cooled below its
-   surroundings sinks), is carried along by the wind, and loses its heat to
-   the room. The loop this makes is the convection current.
+   room, the better they conduct the faster (lava at one end of a sealed box
+   melts ice at the other in a few seconds); the air warms three times as
+   fast as they cool, presses harder the hotter it is (so heating the air in
+   a sealed box raises its pressure until it cools again, and in the open hot
+   air pushes outwards and is drawn back as it cools; the extra pressure
+   levels off at +40, however hot), is pushed against gravity in proportion
+   to how much warmer it is than the air around it (so air that has cooled
+   below its surroundings sinks), is carried along by the wind, spreads its
+   heat to the air beside it, and loses its heat to the room. The loop this
+   makes is the convection current. Very hot air radiates its heat away fast
+   (radiation grows steeply with temperature), and air can only take up so
+   much heat from a surface each frame, so the air beside a Star is searing
+   but its heat doesn't flood the whole world.
 
    **Pressure moves boiling and melting points.** Ten units of pressure
    count as one atmosphere. Boiling points follow the chemists' rule of
@@ -302,7 +326,9 @@ Each frame (60 per second):
      bounce off anything else solid, powdery or liquid, and every bounce
      batters what they hit: it heats up (about 300 °C), the air kicks, a
      solid may have a piece knocked loose as debris, and a loose grain or
-     drop is shoved along. Lead and boron soak them up. Slow neutrons split
+     drop is shoved along. Boron, cadmium and the other control-rod metals
+     soak them up; lead doesn't (it's a gamma shield, and neutrons bounce off
+     it, as they do off real lead). Slow neutrons split
      uranium three times as readily as fast ones.
    - Protons fly straight through matter too, as in The Powder Toy, each
      carrying its own temperature: every cell one passes through moves a
@@ -318,10 +344,17 @@ Each frame (60 per second):
    - Alpha particles and heavy ions are stopped by the first solid or liquid
      they meet (a sheet of paper stops an alpha) and settle there as atoms.
    - Gamma rays get through most things; the denser the material, the more
-     it soaks up, so lead stops them and water barely does.
+     it soaks up (a cell of lead stops about half, like a centimetre of real
+     lead), so lead stops them and water barely does. A gamma ray passing a
+     lead nucleus can turn into an electron and a positron.
    - X-rays go straight through water, wood and flesh but not bone or metal.
    - Ultraviolet behaves like light except that ordinary glass blocks it
-     (quartz doesn't), and it makes fluorescent minerals glow.
+     (quartz doesn't), and it makes fluorescent minerals glow. It carries
+     more energy than visible light, so only ultraviolet knocks electrons
+     out of metal, splits hydrogen into a proton and an electron, and turns
+     oxygen into ozone; visible light frees electrons only from cesium. A
+     Star gives off some ultraviolet, as the Sun does, and so does a mercury
+     lamp.
    - Microwaves pass through almost everything, heat anything wet, and
      bounce off metal, sparking it.
    - Muons, pions, the Higgs and neutrinos are ghosts that fly through
@@ -376,7 +409,9 @@ once started depends on its size and what surrounds it:
   neutrons in (a neutron reflector) and runs hotter.
 - **Plutonium** behaves as it does in The Powder Toy. A ball of a few hundred
   grains sits there quietly until a neutron gets in. Then every split throws
-  out three neutrons and a proton, heats what's left to 9999 °C and adds a
+  out three neutrons and a proton, heats what's left to a million °C (in a
+  lump; a lone plutonium atom bred inside a uranium pile only adds 450 °C,
+  like uranium) and adds a
   big kick of air pressure, and the more pressure there is the more readily
   plutonium splits. So the chain feeds itself: the pressure climbs to the
   limit within a second, tears through stone and metal around it, and the
@@ -401,14 +436,25 @@ run on power:
 | Pressure Plate | anything rests on it: sand, water, a creature, a block |
 | Photocell | light shines on it (it turns light into current, not heat) |
 | Thermostat | it's hotter than 60 °C |
+| Barometer | the air pressure beside it is above +5 |
+| Smoke Detector | smoke, or any other gas, touches it |
+| Wind Turbine | the wind blows past it faster than 0.5 |
+| Inverter | nothing is powering it: a NOT gate (see below) |
+| Delay Line | current is creeping along it: a slow, one-way wire (see below) |
 
 | Machine | While powered it... |
 | ------- | ------------------- |
 | Door | opens (vanishes), and shuts again when the power stops, shoving loose things out of the doorway |
 | Lamp, Red / Green / Blue Lamp | lights up: a pixel you can switch |
 | Laser Emitter | fires a red laser beam out of every open face |
-| Heater / Cooler | heats itself to 1200 °C / chills itself to −150 °C |
+| Heater | heats up, faster and faster the longer it stays on (20 °C a frame, plus 0.1 °C more for every frame it's been on), with no limit |
+| Cooler | chills itself, down to absolute zero |
 | Fan | blows air out of every open face (mount it on a wall to aim it) |
+| Pump | sucks in the air beside it and blows it out of the far ends of the pipe it sits on, building up pressure there; unpowered, it's shut |
+| Conveyor | carries sand, liquids, debris and creatures resting on it along the belt, away from the end the power comes in at |
+| Piston | pushes out an arm up to 8 cells, shoving up to 16 things in a row (not walls); the arm pulls back when the power stops |
+| Igniter | sets anything flammable touching it alight, and throws little flames into the air beside it |
+| Neutron Source | fires neutrons out of its open faces: start a reactor with a switch |
 | Dispenser | pours out more of the first powder, liquid, gas or creature that touched it |
 | Drain | swallows the powders, liquids and gases touching it |
 
@@ -421,6 +467,28 @@ Machines stay on for a third of a second after the power stops, so they run
 steadily on a wire's pulses. The **Beam Splitter** is a half-silvered
 mirror that reflects half the light and passes the rest.
 
+Power knows which way it came in. A conveyor carries things away from the end
+it's powered from, a piston pushes away from the side its power comes in (a
+row of pistons fed from one side pushes together), and powered by the Spark
+tool, with no side, a piston pushes up. An **Inverter** answers on the side
+opposite its input: it powers what's there unless something powers it. Until
+it has been fed it works out which of its wires leads back to a switch or
+other control, and takes that as its input. Inverters, and wires joining
+inputs together, make any logic. A **Delay Line** carries current one cell
+every 4 frames, forwards only, so ten cells wait about two thirds of a second.
+
+Two machines need no power:
+
+- A **Pipe** is an airtight tube, one cell wide. Its open ends are linked: air
+  flows in at one and out at the others, even through walls, so the pressure
+  at its ends evens out. Put a Pump at one end to drive the air one way.
+- A **Safety Valve** is an airtight plug that opens by itself when the
+  pressure beside it passes +30 and lets the air through (even set into a
+  Wall), and shuts again once it's dropped below +10. Pressure can't crush
+  it, since it opens long before.
+
+Hard mode hands out all 30 machines.
+
 Some things to build:
 
 - **A door on a switch**: Switch → copper wire → Door. Flip the switch to open
@@ -430,8 +498,17 @@ Some things to build:
 - **A light show**: a Clock wired to a row of lamps, and mirror lines at 45°
   steering a laser around the screen, colouring it as it bounces off gold or
   copper.
+- **A pressure chamber**: a Wall box with a Pipe through its wall, a Pump on
+  the outside end, a Safety Valve in the wall, and a Barometer inside wired to
+  a lamp. Switch the pump on and watch the chamber fill until the valve
+  lets go.
+- **A fire alarm**: a Smoke Detector wired through a Delay Line to a Fan that
+  clears the smoke.
+- **A reactor you can start and stop**: a uranium pile with graphite rods, a
+  Neutron Source on a switch to start it, and boron to stop it.
 
-These are checked by tests in `test/machines.test.js`.
+These are checked by tests in `test/machines.test.js` and
+`test/machines-overhaul.test.js`.
 
 ## What's in the table
 
@@ -491,7 +568,7 @@ src/sim/machines.js            power, controls, doors and the other machines
 src/sim/air.js                 the pressure / wind grid, and air temperature for convection
 src/sim/gravity.js             gravity's direction and strength, and Newtonian gravity
 src/sim/fft.js                 fast Fourier transforms for the Newtonian gravity field
-src/render/renderer.js         draws the world, glow, particles, heat and pressure views
+src/render/renderer.js         draws the world, soft gas, glow, particles, heat and pressure views
 src/render/tree-view.js        draws the recipe tree; dragging, zooming and clicking it
 src/game/tree.js               lays out the recipe tree (which elements, which links, where)
 src/game/physics-panel.js      the Physics panel: gravity dial, strength, the two switches
@@ -566,9 +643,21 @@ rising plume, the plume turning with the arrow, air flowing in at its base,
 the hot block cooling, the pressure rising in a heated sealed box and
 settling once it cools, hot air pushing out and being drawn back in the open,
 a full loop in a closed box (markers carried up come
-back down to the base), the Heat and Cool tools warming and chilling the
-air, and a sealed fire still going out. The recipe tests
-run all 1200 production rules in the real simulation. About 1,360 tests in
+back down), the Heat and Cool tools warming and chilling the
+air, and a sealed fire still going out. The heat tests cover heat running
+along a metal bar, hot air carrying heat across a room, no top temperature,
+the hottest elements' real temperatures, plutonium being a million degrees
+only in a lump, the pressure from hot air levelling off and going as it
+cools, and a Star scorching the air around it without cooking the world. The
+machine overhaul tests cover power remembering which way it came, the Heater
+with no limit, the Cooler at absolute zero, the Fan in thick air, a pipe
+evening out two boxes, a pump filling one, a safety valve opening and
+shutting, a conveyor both ways, a piston pushing and pulling back (and
+stopping at a wall), an inverter and a delay line, the three sensors, an
+igniter and a neutron source. A
+pressure test checks the air is thick: a burst spreads as one smooth front
+instead of ringing. The recipe tests
+run all 1235 production rules in the real simulation. About 1,420 tests in
 all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with
@@ -586,7 +675,7 @@ Regenerate the table below after changing recipes with
 | 9 | Stone | Lava + Cold |
 | 10 | Obsidian | Lava + Water · Lava + Ice · Lava + Snow |
 | 11 | Molten Glass | Sand + Heat · Glass + Heat · Quartz + Heat · Borax + Heat · Silica Gel + Heat · Topaz + Heat · Jade + Heat · Flint + Heat · Petrified Wood + Heat · Frosted Glass + Heat · Borosilicate Glass + Heat · Lead Crystal + Heat · Stained Glass + Heat · Uranium Glass + Heat · Cranberry Glass + Heat |
-| 12 | Glass | Molten Glass + Cold · Geiger Tube + Pressure · Waterglass + Heat · Fiberglass + Fire · Light Bulb + Pressure · Beam Splitter + Pressure · Sand + Lightning |
+| 12 | Glass | Molten Glass + Cold · Geiger Tube + Pressure · Waterglass + Heat · Fiberglass + Fire · Light Bulb + Pressure · Barometer + Pressure · Beam Splitter + Pressure · Sand + Lightning |
 | 13 | Snow | Bubbles + Cold · Steam + Ice · Cloud + Cold |
 | 14 | Brick | Mud + Heat · Clay + Heat · Shale + Heat |
 | 15 | Plant | Mud + Water · Elixir of Life + Ash |
@@ -616,7 +705,7 @@ Regenerate the table below after changing recipes with
 | 39 | Void | Diamond + Pressure · Drain + Pressure |
 | 40 | Oxygen | Ozone + Time · Liquid Oxygen + Heat · Hydrogen Peroxide + Heat · Hydrogen Peroxide + Time · Aurora + Time · Water + Spark · Fluorine + Water · Fluorine + Glass · Hydrogen Peroxide + Pyrolusite · Freon + Ozone · Nitrogen + Alpha Particle · Algae + Photon |
 | 41 | Nitrogen | Cryo + Time |
-| 42 | Ozone | Oxygen + Spark · Oxygen + Photon |
+| 42 | Ozone | Oxygen + Spark · Oxygen + Ultraviolet |
 | 43 | Carbon Dioxide | Dry Ice + Heat · Carbon Monoxide + Fire · Soda Water + Time · Cola + Time · Smoke + Oxygen · Acid + Limestone · Limestone + Spark · Acid + Marble · Baking Soda + Vinegar · Yeast + Sugar · Dry Ice + Water · Chalk + Acid · Seashell + Acid · Baking Soda + Acid · Washing Soda + Acid · Acid + Fossil · Acid Rain + Limestone · Vinegar + Limestone · Vinegar + Chalk · Vinegar + Seashell · Vinegar + Marble · Vinegar + Pearl · Lemon + Baking Soda · Fire + Baking Soda · Diamond + Oxygen · Microplastic + Bacteria |
 | 44 | Dry Ice | Carbon Dioxide + Cold |
 | 45 | Liquid Oxygen | Oxygen + Cold |
@@ -625,7 +714,7 @@ Regenerate the table below after changing recipes with
 | 48 | Quartz | Sand + Pressure · Opal + Heat · Citrine + Heat · Smoky Quartz + Heat · Rose Quartz + Heat · Clock + Pressure |
 | 49 | Granite | Lava + Pressure |
 | 50 | Sulfur | Lava + Steam |
-| 51 | Copper | Verdigris + Heat · Photocell + Pressure · Chalcopyrite + Heat · Metal + Copper Sulfate · Malachite + Coal |
+| 51 | Copper | Verdigris + Heat · Photocell + Pressure · Delay Line + Pressure · Pipe + Pressure · Chalcopyrite + Heat · Metal + Copper Sulfate · Malachite + Coal |
 | 52 | Verdigris | Copper + Water · Turquoise + Acid |
 | 53 | Limestone | Coral + Heat · Salt Water + Stone · Slaked Lime + Carbon Dioxide · Washing Soda + Slaked Lime |
 | 54 | Cement | Limestone + Heat |
@@ -633,7 +722,7 @@ Regenerate the table below after changing recipes with
 | 56 | Concrete | Wet Concrete + Time |
 | 57 | Propane | Oil + Heat |
 | 58 | Gasoline | Oil + Hydrogen |
-| 59 | Plastic | Propane + Pressure · Glowstick + Time · Acetylene + Acid |
+| 59 | Plastic | Propane + Pressure · Glowstick + Time · Smoke Detector + Pressure · Acetylene + Acid |
 | 60 | Sodium | Salt + Spark · Molten Salt + Spark |
 | 61 | Chlorine | Aqua Regia + Heat · Salt + Spark · Bleach + Acid · Molten Salt + Spark |
 | 62 | Lye | Sodium + Water · Potassium + Water · Cesium + Water · Cesium + Ice · Rubidium + Water · Francium + Water · NaK + Water · Washing Soda + Slaked Lime · Barium + Water · Strontium + Water · Sodium Vapour + Water |
@@ -642,12 +731,12 @@ Regenerate the table below after changing recipes with
 | 65 | Napalm | Gasoline + Soap |
 | 66 | Potassium | Ash + Spark |
 | 67 | Magnesium | Salt Water + Spark |
-| 68 | Aluminum | Clay + Spark · Bauxite + Lye |
-| 69 | Silicon | Moissanite + Heat · Sand + Magnesium |
+| 68 | Aluminum | Wind Turbine + Pressure · Clay + Spark · Bauxite + Lye |
+| 69 | Silicon | Moissanite + Heat · Inverter + Pressure · Sand + Magnesium |
 | 70 | Titanium | Stone + Magnesium |
 | 71 | Boron | Glass + Magnesium |
 | 72 | Graphite | Moissanite + Heat · Fullerene + Heat · Coal + Spark |
-| 73 | Steel | Reinforced Concrete + Pressure · Pressure Plate + Pressure · Door + Pressure · Metal + Coal |
+| 73 | Steel | Reinforced Concrete + Pressure · Pressure Plate + Pressure · Door + Pressure · Piston + Pressure · Metal + Coal |
 | 74 | Magnet | Fan + Pressure · Metal + Lightning |
 | 75 | Ferrofluid | Oil + Rust |
 | 76 | Tungsten | Light Bulb + Pressure · Wolframite + Aluminum |
@@ -662,7 +751,7 @@ Regenerate the table below after changing recipes with
 | 85 | Ruby | Clay + Pressure · Red Lamp + Pressure |
 | 86 | Laser | Laser Emitter + Pressure · Ruby + Spark |
 | 87 | Cinnabar | Sulfur + Granite |
-| 88 | Mercury | Cinnabar + Heat · Mercury Vapour + Cold · Vermilion + Heat · Thermostat + Pressure |
+| 88 | Mercury | Cinnabar + Heat · Mercury Vapour + Cold · Vermilion + Heat · Thermostat + Pressure · Barometer + Pressure |
 | 89 | Lithium | Granite + Acid |
 | 90 | Grass | Dirt + Plant |
 | 91 | Moss | Stone + Plant |
@@ -673,8 +762,8 @@ Regenerate the table below after changing recipes with
 | 96 | Fruit | Flower + Time · Butterfly + Flower |
 | 97 | Seed | Fruit + Time |
 | 98 | Alcohol | Fruit + Time · Perfume + Cold · Wine + Heat · Wine + Cold · Mead + Heat · Yeast + Sugar |
-| 99 | Electron | Muon + Time · Metal + Photon · Cesium + Photon · Hydrogen + Photon · Lead + Photon · Heavy Water + Neutrino · Neutron + Time |
-| 100 | Proton | Hydrogen + Photon · Nitrogen + Alpha Particle · Neutron + Time |
+| 99 | Electron | Muon + Time · Metal + Ultraviolet · Cesium + Photon · Hydrogen + Ultraviolet · Lead + Gamma Ray · Heavy Water + Neutrino · Neutron + Time |
+| 100 | Proton | Hydrogen + Ultraviolet · Nitrogen + Alpha Particle · Neutron + Time |
 | 101 | Neutron | Polonium + Beryllium · Tritium + Deuterium · Metal + Proton · Lead + Proton · Tungsten + Proton · Beryllium + Alpha Particle · Deuterium + Muon · Proton + Proton |
 | 102 | Neutrino | Muon + Time · Pion + Time · Neutron + Time |
 | 103 | Pitchblende | Granite + Pressure |
@@ -686,14 +775,14 @@ Regenerate the table below after changing recipes with
 | 109 | Cesium | Uranium + Neutron |
 | 110 | Fallout | Plutonium + Neutron |
 | 111 | Corium | Uranium + Heat · Plutonium + Heat |
-| 112 | Radium | Francium + Decay · Radium Paint + Time · Pitchblende + Spark |
+| 112 | Radium | Francium + Decay · Radium Paint + Time · Neutron Source + Pressure · Pitchblende + Spark |
 | 113 | Radon | Radium + Decay |
 | 114 | Helium | Radium + Decay · Radon + Decay · Polonium + Decay · Superfluid + Time · Tritium + Decay · Alpha Particle + Time · Quark-Gluon Plasma + Time · Tritium + Deuterium · Star + Hydrogen · Lithium + Proton · Lithium + Neutron · Deuterium + Muon |
 | 115 | Polonium | Radon + Decay · Astatine + Decay |
 | 116 | Lead | Nuclear Waste + Decay · Polonium + Decay · Galena + Heat · Golden Rain + Heat |
 | 117 | Silver | Tarnish + Heat · Beam Splitter + Pressure · Lead + Acid · Tarnish + Baking Soda · Silver Chloride + Photon |
 | 118 | Mirror | Silver + Glass |
-| 119 | Positron | Lead + Photon |
+| 119 | Positron | Lead + Gamma Ray |
 | 120 | Antimatter | Cryo + Positron |
 | 121 | Neon | Geiger Tube + Pressure · Helium + Plasma |
 | 122 | Geiger Tube | Neon + Chlorine |
@@ -705,7 +794,7 @@ Regenerate the table below after changing recipes with
 | 128 | Gold | Calaverite + Heat · Dissolved Gold + Heat · Supernova + Time · Mercury + Neutron |
 | 129 | Philosopher's Stone | Gold + Mercury |
 | 130 | Emerald | Green Lamp + Pressure · Quartz + Verdigris |
-| 131 | Beryllium | Emerald + Acid |
+| 131 | Beryllium | Neutron Source + Pressure · Emerald + Acid |
 | 132 | Amethyst | Geode + Pressure · Quartz + Neutron |
 | 133 | Virus | Fungus + Neutron |
 | 134 | Star | Hydrogen + Pressure |
@@ -749,7 +838,7 @@ Regenerate the table below after changing recipes with
 | 172 | Tantalum | Coltan + Spark |
 | 173 | Rhenium | Molybdenite + Acid |
 | 174 | Osmium | Platinum Ore + Aqua Regia |
-| 175 | Iridium | Platinum Ore + Aqua Regia |
+| 175 | Iridium | Igniter + Pressure · Platinum Ore + Aqua Regia |
 | 176 | Platinum | Platinum Ore + Aqua Regia |
 | 177 | Gallium | Liquid Gallium + Cold · Bauxite + Lye |
 | 178 | Liquid Gallium | Gallium + Heat |
@@ -788,7 +877,7 @@ Regenerate the table below after changing recipes with
 | 211 | Astatine | Bismuth + Alpha Particle |
 | 212 | Protactinium | Neptunium + Decay · Thorium + Neutron |
 | 213 | Neptunium | Americium + Decay |
-| 214 | Americium | Plutonium + Neutron |
+| 214 | Americium | Smoke Detector + Pressure · Plutonium + Neutron |
 | 215 | Curium | Americium + Neutron · Plutonium + Alpha Particle |
 | 216 | Berkelium | Einsteinium + Decay · Curium + Neutron · Americium + Alpha Particle |
 | 217 | Californium | Berkelium + Decay · Fermium + Decay · Curium + Alpha Particle |
@@ -947,7 +1036,7 @@ Regenerate the table below after changing recipes with
 | 370 | Bronze | Copper + Tin |
 | 371 | Brass | Copper + Zinc |
 | 372 | Pewter | Tin + Antimony |
-| 373 | Solder | Tin + Lead |
+| 373 | Solder | Pipe + Pressure · Tin + Lead |
 | 374 | Electrum | Gold + Silver |
 | 375 | Rose Gold | Gold + Copper |
 | 376 | White Gold | Gold + Palladium |
@@ -974,7 +1063,7 @@ Regenerate the table below after changing recipes with
 | 397 | Roman Concrete | Pumice + Slaked Lime |
 | 398 | Adobe | Mud + Grass |
 | 399 | Plaster | Wet Plaster + Time |
-| 400 | Porcelain | Talc + Heat · Kaolin + Heat · Heater + Pressure |
+| 400 | Porcelain | Talc + Heat · Kaolin + Heat · Heater + Pressure · Igniter + Pressure |
 | 401 | Asphalt | Tar + Gravel |
 | 402 | Glue | Steam + Bone |
 | 403 | Slime | Borax + Glue |
@@ -996,7 +1085,7 @@ Regenerate the table below after changing recipes with
 | 419 | Cloth | Cotton + Pressure |
 | 420 | Silk | Spider + Time |
 | 421 | Latex | Wood + Milk |
-| 422 | Rubber | Latex + Heat |
+| 422 | Rubber | Latex + Heat · Conveyor + Pressure |
 | 423 | Vulcanized Rubber | Rubber + Sulfur |
 | 424 | Match | Red Phosphorus + Wood |
 | 425 | Sponge | Wet Sponge + Pressure · Plastic + Bubbles |
@@ -1010,7 +1099,7 @@ Regenerate the table below after changing recipes with
 | 433 | Microplastic | Plastic + Pressure · Teflon + Pressure |
 | 434 | Light Bulb | Glass + Tungsten |
 | 435 | LED | Silicon + Gallium |
-| 436 | Electromagnet | Fan + Pressure · Metal + Copper |
+| 436 | Electromagnet | Fan + Pressure · Pump + Pressure · Metal + Copper |
 | 437 | Nichrome | Heater + Pressure · Nickel + Chromium |
 | 438 | Potato Battery | Potato + Zinc |
 | 439 | RTG | Plutonium + Germanium |
@@ -1106,7 +1195,7 @@ Regenerate the table below after changing recipes with
 | 529 | Grey Goo | Graphene + Virus |
 | 530 | Elixir of Life | Philosopher's Stone + Water |
 | 531 | Greek Fire | Tar + Quicklime |
-| 532 | Gamma Ray | Black Hole + White Hole · Electron + Positron |
+| 532 | Gamma Ray | Cobalt-60 + Decay · Black Hole + White Hole · Electron + Positron |
 | 533 | X-Ray | Pulsar + Star · Tungsten + Electron |
 | 534 | Ultraviolet | Mercury Vapour + Electron |
 | 535 | Microwave | Magnet + Spark |
@@ -1114,32 +1203,44 @@ Regenerate the table below after changing recipes with
 | 537 | Pion | Proton + Proton |
 | 538 | Higgs Boson | Muon + Muon |
 | 539 | Tachyon | Dark Matter + Neutrino |
-| 540 | Switch | Brass + Plastic |
+| 540 | Switch | Inverter + Pressure · Brass + Plastic |
 | 541 | Button | Switch + Rubber |
-| 542 | Clock | Quartz + Battery · Time Crystal + Switch |
+| 542 | Clock | Delay Line + Pressure · Quartz + Battery · Time Crystal + Switch |
 | 543 | Pressure Plate | Button + Steel |
 | 544 | Photocell | Selenium + Copper |
 | 545 | Thermostat | Switch + Mercury |
-| 546 | Door | Steel + Electromagnet |
-| 547 | Lamp | LED + Plastic |
-| 548 | Red Lamp | Lamp + Ruby |
-| 549 | Green Lamp | Lamp + Emerald |
-| 550 | Blue Lamp | Lamp + Sapphire |
-| 551 | Laser Emitter | Laser + Switch |
-| 552 | Heater | Nichrome + Porcelain |
-| 553 | Cooler | Bismuth + Tellurium |
-| 554 | Fan | Electromagnet + Magnet |
-| 555 | Dispenser | Clone + Switch |
-| 556 | Drain | Void + Switch |
-| 557 | Beam Splitter | Mirror + Quartz |
-| 558 | Chalcopyrite | Lava + Sulfur |
-| 559 | Wolframite | Steam + Quartz |
-| 560 | White Copper Sulfate | Copper Sulfate + Heat |
-| 561 | Liquid Methane | Methane + Cold |
-| 562 | Heavy Ice | Heavy Water + Cold |
-| 563 | Sawdust | Termite + Wood |
-| 564 | Tun | Tardigrade + Cold |
-| 565 | Mead | Honey + Yeast |
-| 566 | Denim | Indigo + Cloth |
+| 546 | Inverter | Silicon + Switch |
+| 547 | Delay Line | Clock + Copper |
+| 548 | Barometer | Mercury + Glass |
+| 549 | Smoke Detector | Americium + Plastic |
+| 550 | Wind Turbine | Fan + Aluminum |
+| 551 | Door | Steel + Electromagnet |
+| 552 | Lamp | LED + Plastic |
+| 553 | Red Lamp | Lamp + Ruby |
+| 554 | Green Lamp | Lamp + Emerald |
+| 555 | Blue Lamp | Lamp + Sapphire |
+| 556 | Laser Emitter | Laser + Switch |
+| 557 | Heater | Nichrome + Porcelain |
+| 558 | Cooler | Bismuth + Tellurium |
+| 559 | Fan | Wind Turbine + Pressure · Conveyor + Pressure · Electromagnet + Magnet |
+| 560 | Dispenser | Clone + Switch |
+| 561 | Drain | Void + Switch |
+| 562 | Igniter | Iridium + Porcelain |
+| 563 | Neutron Source | Radium + Beryllium |
+| 564 | Pipe | Pump + Pressure · Copper + Solder |
+| 565 | Pump | Piston + Pressure · Pipe + Electromagnet |
+| 566 | Safety Valve | Pipe + Brass |
+| 567 | Conveyor | Rubber + Fan |
+| 568 | Piston | Pump + Steel |
+| 569 | Beam Splitter | Mirror + Quartz |
+| 570 | Chalcopyrite | Lava + Sulfur |
+| 571 | Wolframite | Steam + Quartz |
+| 572 | White Copper Sulfate | Copper Sulfate + Heat |
+| 573 | Liquid Methane | Methane + Cold |
+| 574 | Heavy Ice | Heavy Water + Cold |
+| 575 | Sawdust | Termite + Wood |
+| 576 | Tun | Tardigrade + Cold |
+| 577 | Mead | Honey + Yeast |
+| 578 | Denim | Indigo + Cloth |
 
 </details>

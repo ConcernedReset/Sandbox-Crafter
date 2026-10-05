@@ -1,7 +1,12 @@
 // Draws the world into a canvas. Particles are written into an ImageData at
-// one pixel per cell, then scaled up with nearest-neighbour filtering. Hot
-// and energetic particles also feed a low-resolution glow layer that is
-// drawn on top with additive blending, which gives fire and lava a bloom.
+// one pixel per cell, then scaled up with nearest-neighbour filtering. Two
+// effects, each switched on and off by a button (`gas`, `glow`):
+//   - Gas: gases (and loose flames, and plasma) go on a layer of their own at
+//     half resolution, blurred and blended into soft clouds as in The Powder
+//     Toy, then drawn over the world.
+//   - Glow: hot and energetic particles feed a low-resolution light layer,
+//     blurred into a wide halo that lingers a few frames, drawn on top with
+//     additive blending.
 // A camera ({ x, y, vw, vh } in cells) picks the part of the world shown, so
 // zooming in just scales up a smaller piece of the same image.
 
@@ -11,6 +16,13 @@ import { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } from '../sim/world.js';
 
 const BG = [10, 12, 16];
 const SHADES = 8;
+const GAS_GAIN = 1.7; // how solid the blurred gas looks
+const GAS_SPREAD = 2.3; // how far gas is blurred, in cells (a standard deviation)
+const GLOW_GAIN = 3; // how bright the halo is
+const GLOW_LINGER = 0.82; // the share of last frame's halo kept (an afterglow)
+// Things past ULTRA_HOT glow blue-white, like the hottest stars, fully so by
+// ULTRA_HOT × 1000.
+const ULTRA_HOT = 10000;
 
 const pack = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -45,17 +57,51 @@ const HOT = ramp([[0, '#5a0d04'], [0.12, '#a3200a'], [0.3, '#e2461a'], [0.5, '#f
 const FIRE = ramp([[0, '#3a0a04'], [0.25, '#b3260b'], [0.55, '#ff7a22'], [0.8, '#ffc04a'], [1, '#fff1b0']]);
 const PLASMA = ramp([[0, '#3a0b5a'], [0.4, '#a02ce0'], [0.75, '#f07cff'], [1, '#fff0ff']]);
 const HEAT = ramp([
-  [0, '#141a5c'], [0.18, '#2350c8'], [0.28, '#2fb4d8'], [0.36, '#3cc47a'],
-  [0.5, '#e8d13c'], [0.68, '#ff7a26'], [0.85, '#e0262a'], [1, '#ffffff'],
+  [0, '#141a5c'], [0.162, '#2350c8'], [0.252, '#2fb4d8'], [0.324, '#3cc47a'],
+  [0.45, '#e8d13c'], [0.612, '#ff7a26'], [0.765, '#e0262a'], [0.9, '#ffffff'], [1, '#b49cff'],
 ]);
 
-// Map a temperature to a 0..255 index on the heat-view ramp.
+// Map a temperature to a 0..255 index on the heat-view ramp: blue through
+// red to white at 6000 °C, then on to violet for the millions and beyond.
 function heatIndex(T) {
   let u;
-  if (T < 22) u = 0.3 * Math.max(0, T + 273) / 295;
-  else u = 0.3 + 0.7 * Math.min(1, Math.log1p((T - 22) / 40) / Math.log1p(6000 / 40));
+  if (T < 22) u = 0.27 * Math.max(0, T + 273) / 295;
+  else if (T <= 6000) u = 0.27 + 0.63 * Math.log1p((T - 22) / 40) / Math.log1p(5978 / 40);
+  else u = 0.9 + 0.1 * Math.min(1, Math.log10(T / 6000) / 9);
   return Math.min(255, Math.max(0, (u * 255) | 0));
 }
+
+// Box-blur an interleaved array of `ch` (3 or 4) channels, w wide, in
+// place, radius 1, across then down, over columns x0..x1 and rows y0..y1
+// only; `tmp` is scratch of the same size.
+function blur(a, tmp, w, ch, x0, y0, x1, y1) {
+  const k = 1 / 3, four = ch === 4;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0, i = (y * w + x0) * ch; x <= x1; x++, i += ch) {
+      const l = x > x0 ? i - ch : i, r = x < x1 ? i + ch : i;
+      tmp[i] = (a[l] + a[i] + a[r]) * k;
+      tmp[i + 1] = (a[l + 1] + a[i + 1] + a[r + 1]) * k;
+      tmp[i + 2] = (a[l + 2] + a[i + 2] + a[r + 2]) * k;
+      if (four) tmp[i + 3] = (a[l + 3] + a[i + 3] + a[r + 3]) * k;
+    }
+  }
+  const row = w * ch;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0, i = (y * w + x0) * ch; x <= x1; x++, i += ch) {
+      const u = y > y0 ? i - row : i, d = y < y1 ? i + row : i;
+      a[i] = (tmp[u] + tmp[i] + tmp[d]) * k;
+      a[i + 1] = (tmp[u + 1] + tmp[i + 1] + tmp[d + 1]) * k;
+      a[i + 2] = (tmp[u + 2] + tmp[i + 2] + tmp[d + 2]) * k;
+      if (four) a[i + 3] = (tmp[u + 3] + tmp[i + 3] + tmp[d + 3]) * k;
+    }
+  }
+}
+
+// What the Gas effect blurs into soft clouds: gases, and the glowing energy
+// that looks like gas (flames, plasma, ball lightning). Not things that
+// merely glow like neon (an LED, phosphor, fluorite).
+export const SOFT = Uint8Array.from(DEFS, (d) => (d.id !== 0 && !d.projectile
+  && (d.state === State.GAS || d.id === ID.FIRE || d.id === ID.PLASMA || d.id === ID.BALL_LIGHTNING) ? 1 : 0));
 
 const MODE = {
   PLAIN: 0, GAS: 1, FIRE: 2, PLASMA: 3, SPARK: 4, LIGHTNING: 5, CLONE: 6, VOID: 7, MOLTEN: 8,
@@ -73,8 +119,18 @@ export class Renderer {
   constructor(canvas, world, camera) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    // Can the canvas blur what it draws (on the GPU)? If not, the gas layer
+    // is blurred here instead.
+    this.gpuBlur = false;
+    if (typeof this.ctx.filter === 'string') {
+      this.ctx.filter = 'blur(1px)';
+      this.gpuBlur = this.ctx.filter === 'blur(1px)';
+      this.ctx.filter = 'none';
+    }
     this.camera = camera ?? { x: 0, y: 0, vw: world.w, vh: world.h };
     this.view = 'normal';
+    this.gas = true; // the Gas effect (see the top of this file)
+    this.glow = true; // the Glow effect
     this.frame = 0;
     this.count = 0;
     this.setWorld(world);
@@ -91,12 +147,27 @@ export class Renderer {
     this.pixels = new Uint32Array(this.image.data.buffer);
 
     const { cols, rows } = world.air;
-    this.glow = document.createElement('canvas');
-    this.glow.width = cols;
-    this.glow.height = rows;
-    this.glowCtx = this.glow.getContext('2d');
+    this.glowCanvas = document.createElement('canvas');
+    this.glowCanvas.width = cols;
+    this.glowCanvas.height = rows;
+    this.glowCtx = this.glowCanvas.getContext('2d');
     this.glowImage = this.glowCtx.createImageData(cols, rows);
     this.glowAcc = new Float32Array(cols * rows * 3);
+    this.glowLast = new Float32Array(cols * rows * 3);
+    this.glowTmp = new Float32Array(cols * rows * 3);
+
+    // The gas layer, at half resolution: colour times opacity, and opacity.
+    this.gw = Math.ceil(world.w / 2);
+    this.gh = Math.ceil(world.h / 2);
+    this.gasCanvas = document.createElement('canvas');
+    this.gasCanvas.width = this.gw;
+    this.gasCanvas.height = this.gh;
+    this.gasCtx = this.gasCanvas.getContext('2d');
+    this.gasImage = this.gasCtx.createImageData(this.gw, this.gh);
+    this.gasAcc = new Float32Array(this.gw * this.gh * 4);
+    this.gasTmp = new Float32Array(this.gw * this.gh * 4);
+    this.gasCells = 0;
+    this.gasBox = null; // [x0, y0, x1, y1] of the gas layer drawn last, in its pixels
   }
 
   buildPalettes() {
@@ -172,12 +243,19 @@ export class Renderer {
     ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.buffer, cam.x, cam.y, cam.vw, cam.vh, 0, 0, canvas.width, canvas.height);
-    if (this.view !== 'heat') {
+    if (this.gasCells > 0) {
+      this.gasCtx.putImageData(this.gasImage, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      if (this.gpuBlur) ctx.filter = `blur(${(GAS_SPREAD * canvas.width) / cam.vw}px)`;
+      ctx.drawImage(this.gasCanvas, cam.x / 2, cam.y / 2, cam.vw / 2, cam.vh / 2, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
+    }
+    if (this.glow && this.view !== 'heat') {
       this.glowCtx.putImageData(this.glowImage, 0, 0);
       ctx.imageSmoothingEnabled = true;
       ctx.globalCompositeOperation = 'lighter';
       // One glow pixel per air block.
-      ctx.drawImage(this.glow, cam.x / CELL, cam.y / CELL, cam.vw / CELL, cam.vh / CELL,
+      ctx.drawImage(this.glowCanvas, cam.x / CELL, cam.y / CELL, cam.vw / CELL, cam.vh / CELL,
         0, 0, canvas.width, canvas.height);
       ctx.globalCompositeOperation = 'source-over';
     }
@@ -259,7 +337,7 @@ export class Renderer {
 
   paint() {
     const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
-    const { w, h, type, temp, life, ctype, shade, loose, doorTimer } = world;
+    const { w, h, type, temp, life, ctype, shade, loose, doorTimer, doorKind } = world;
     const air = world.air;
     const cols = air.cols;
     const glow = this.glowAcc;
@@ -269,6 +347,12 @@ export class Renderer {
     const heatView = view === 'heat';
     const pressureView = view === 'pressure';
     const airHeat = heatView && air.heat; // show the air's own temperature
+    // Soft gas only in the normal view: the others colour every cell.
+    const soft = this.gas && view === 'normal';
+    const gas = this.gasAcc, gw = this.gw;
+    if (soft) gas.fill(0);
+    let gasCells = 0;
+    let gx0 = gw, gy0 = this.gh, gx1 = -1, gy1 = -1; // where the gas is
     let count = 0;
 
     for (let y = 0; y < h; y++) {
@@ -280,8 +364,8 @@ export class Renderer {
 
         if (t === 0) {
           if (doorTimer[i] !== 0 && !heatView) {
-            // An open doorway: a faint ghost of the door.
-            const q = (ID.DOOR * SHADES + (x + y) % 3) * 3;
+            // An open doorway: a faint ghost of the door (or valve).
+            const q = ((doorKind[i] || ID.DOOR) * SHADES + (x + y) % 3) * 3;
             r = bgR + (palRGB[q] - bgR) * 0.25; g = bgG + (palRGB[q + 1] - bgG) * 0.25; b = bgB + (palRGB[q + 2] - bgB) * 0.25;
           } else {
             if (airHeat) {
@@ -308,6 +392,7 @@ export class Renderer {
           const p = (t * SHADES + s) * 3;
           r = palRGB[p]; g = palRGB[p + 1]; b = palRGB[p + 2];
           let emit = 0;
+          let wisp = -1; // see-through: drawn this opaque (and blurred, if SOFT)
           switch (mode[t]) {
             case MODE.PLAIN: {
               const T = temp[i];
@@ -317,6 +402,11 @@ export class Renderer {
                 const k = Math.min(255, ((T - 480) / 12) | 0) * 3;
                 r += (HOT[k] - r) * f; g += (HOT[k + 1] - g) * f; b += (HOT[k + 2] - b) * f;
                 emit = f * 0.5;
+                if (T > ULTRA_HOT) {
+                  const u = Math.min(1, Math.log10(T / ULTRA_HOT) / 3);
+                  r += (205 - r) * u; g += (222 - g) * u; b += (255 - b) * u;
+                  emit += u * 0.5;
+                }
               } else if (T < -30) {
                 const f = Math.min(0.45, (-30 - T) / 250);
                 r += (200 - r) * f; g += (236 - g) * f; b += (255 - b) * f;
@@ -326,7 +416,15 @@ export class Renderer {
             case MODE.GAS: {
               let a = alpha[t];
               if (t === ID.SMOKE) a *= Math.min(1, life[i] / 120);
-              r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+              const T = temp[i];
+              if (T > 480) { // hot gas glows
+                const f = Math.min(0.9, (T - 480) / 1400);
+                const k = Math.min(255, ((T - 480) / 12) | 0) * 3;
+                r += (HOT[k] - r) * f; g += (HOT[k + 1] - g) * f; b += (HOT[k + 2] - b) * f;
+                a += (1 - a) * f * 0.6;
+                emit = f * 0.6;
+              }
+              wisp = a;
               break;
             }
             case MODE.MOLTEN: {
@@ -349,9 +447,9 @@ export class Renderer {
                 const q = t * 3, f = 0.7 + Math.min(1, life[i] / 20) * 0.3;
                 r = exciteRGB[q] * f; g = exciteRGB[q + 1] * f; b = exciteRGB[q + 2] * f;
                 emit = 0.45;
+                if (SOFT[t]) wisp = 0.9; // a glowing gas; a glowing solid stays sharp
               } else {
-                const a = alpha[t];
-                r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+                wisp = alpha[t];
               }
               break;
             }
@@ -401,8 +499,8 @@ export class Renderer {
             }
             case MODE.PULSE: {
               const pulse = 0.8 + 0.2 * Math.sin(frame * 0.15 + x * 0.3 + y * 0.2);
-              const a = alpha[t];
-              r = bgR + (r * pulse - bgR) * a; g = bgG + (g * pulse - bgG) * a; b = bgB + (b * pulse - bgB) * a;
+              r *= pulse; g *= pulse; b *= pulse;
+              wisp = alpha[t];
               break;
             }
             case MODE.FIRE: {
@@ -418,15 +516,13 @@ export class Renderer {
                 r = r * 0.2 + flameRGB[fq] * 0.8 * f;
                 g = g * 0.2 + flameRGB[fq + 1] * 0.8 * f;
                 b = b * 0.2 + flameRGB[fq + 2] * 0.8 * f;
-                const a = 0.45 + 0.55 * v;
-                r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+                wisp = 0.45 + 0.55 * v;
               } else if (fuel && !loose && DEFS[fuel].state !== State.GAS && DEFS[fuel].state !== State.LIQUID) {
                 // An ember: the fuel's own colour, glowing.
                 const q = (fuel * SHADES + s) * 3;
                 r = palRGB[q] * 0.35 + r * 0.65; g = palRGB[q + 1] * 0.35 + g * 0.55; b = palRGB[q + 2] * 0.35 + b * 0.4;
               } else {
-                const a = 0.45 + 0.55 * v;
-                r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+                wisp = 0.45 + 0.55 * v; // a loose flame
               }
               emit = 0.9 * v;
               break;
@@ -437,6 +533,7 @@ export class Renderer {
               const k = Math.min(255, (v * 255) | 0) * 3;
               r = PLASMA[k]; g = PLASMA[k + 1]; b = PLASMA[k + 2];
               emit = 1.1 * v;
+              if (soft) wisp = 0.85;
               break;
             }
             case MODE.SPARK: {
@@ -475,6 +572,20 @@ export class Renderer {
             glow[gi + 1] += g * emit;
             glow[gi + 2] += b * emit;
           }
+          if (wisp >= 0) { // see-through: blended with the background, or blurred
+            if (soft && SOFT[t]) { // onto the gas layer; the cell itself shows the background
+              const hx = x >> 1, hy = y >> 1, q = (hy * gw + hx) * 4;
+              gas[q] += r * wisp; gas[q + 1] += g * wisp; gas[q + 2] += b * wisp; gas[q + 3] += wisp;
+              gasCells++;
+              if (hx < gx0) gx0 = hx;
+              if (hx > gx1) gx1 = hx;
+              if (hy < gy0) gy0 = hy;
+              if (hy > gy1) gy1 = hy;
+              pixels[i] = bg;
+              continue;
+            }
+            r = bgR + (r - bgR) * wisp; g = bgG + (g - bgG) * wisp; b = bgB + (b - bgB) * wisp;
+          }
         }
 
         if (pressureView) {
@@ -491,14 +602,64 @@ export class Renderer {
     this.count = count;
     this.paintProjectiles(heatView);
 
-    // Glow: average per air block, boosted.
+    this.gasCells = soft ? gasCells : 0;
+    if (this.gasCells > 0) this.paintGas(gx0, gy0, gx1, gy1);
+    if (this.glow && !heatView) this.paintGlow();
+  }
+
+  // Turn the gas layer into an image, blurred (here, unless the canvas blurs
+  // it as it's drawn): each pixel the average colour of the gas around it,
+  // as opaque as there is gas. Only the box round the gas (x0..y1, with room
+  // for the blur to spread) is worked on.
+  paintGas(x0, y0, x1, y1) {
+    const { gasAcc: a, gasTmp, gw, gh } = this;
+    x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2);
+    x1 = Math.min(gw - 1, x1 + 2); y1 = Math.min(gh - 1, y1 + 2);
+    if (!this.gpuBlur) {
+      blur(a, gasTmp, gw, 4, x0, y0, x1, y1);
+      blur(a, gasTmp, gw, 4, x0, y0, x1, y1);
+    }
+    const out = this.gasImage.data;
+    // Clear what was drawn last time, then draw this time's box.
+    const last = this.gasBox;
+    if (last) {
+      for (let y = last[1]; y <= last[3]; y++) {
+        for (let x = last[0], q = (y * gw + x) * 4 + 3; x <= last[2]; x++, q += 4) out[q] = 0;
+      }
+    }
+    this.gasBox = [x0, y0, x1, y1];
+    const gain = 0.25 * GAS_GAIN * 255;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0, q = (y * gw + x) * 4; x <= x1; x++, q += 4) {
+        const cover = a[q + 3];
+        if (cover < 0.004) { out[q + 3] = 0; continue; }
+        const inv = 1 / cover;
+        out[q] = a[q] * inv;
+        out[q + 1] = a[q + 1] * inv;
+        out[q + 2] = a[q + 2] * inv;
+        out[q + 3] = cover * gain;
+      }
+    }
+  }
+
+  // The halo: the light given off in each air block, kept from fading
+  // faster than GLOW_LINGER a frame, blurred wide and boosted.
+  paintGlow() {
+    const { glowAcc: g, glowLast: last, glowTmp } = this;
+    for (let k = 0; k < g.length; k++) {
+      const kept = last[k] * GLOW_LINGER;
+      if (g[k] < kept) g[k] = kept;
+    }
+    last.set(g);
+    const { cols, rows } = this.world.air;
+    blur(g, glowTmp, cols, 3, 0, 0, cols - 1, rows - 1);
+    blur(g, glowTmp, cols, 3, 0, 0, cols - 1, rows - 1);
     const gp = this.glowImage.data;
-    const n = cols * air.rows;
-    const gain = 1 / (CELL * CELL) * 2.2;
-    for (let k = 0; k < n; k++) {
-      gp[k * 4] = Math.min(255, glow[k * 3] * gain);
-      gp[k * 4 + 1] = Math.min(255, glow[k * 3 + 1] * gain);
-      gp[k * 4 + 2] = Math.min(255, glow[k * 3 + 2] * gain);
+    const gain = (1 / (CELL * CELL)) * GLOW_GAIN;
+    for (let k = 0; k < cols * rows; k++) {
+      gp[k * 4] = Math.min(255, g[k * 3] * gain);
+      gp[k * 4 + 1] = Math.min(255, g[k * 3 + 1] * gain);
+      gp[k * 4 + 2] = Math.min(255, g[k * 3 + 2] * gain);
       gp[k * 4 + 3] = 255;
     }
   }

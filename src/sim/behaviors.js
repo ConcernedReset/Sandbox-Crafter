@@ -3,7 +3,6 @@
 // to let the generic phase changes, reactions and movement run as well.
 
 import { DEFS, ID, NUM, State, REACT, SPECIAL } from './elements.js';
-import { MAX_TEMP } from './constants.js';
 import {
   CONDUCTOR, CLONEABLE, ORGANIC, TRANSMUTABLE, SPEW, POWERED, PRESSABLE,
 } from './lookups.js';
@@ -122,7 +121,7 @@ export const Behaviors = {
       const j = ny * this.w + nx;
       const u = this.type[j];
       if (CONDUCTOR[u]) { if (this.life[j] === 0) this.sparkAt(j); }
-      else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j);
+      else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j, y * this.w + x);
     }
   },
 
@@ -218,7 +217,7 @@ export const Behaviors = {
           else if (DEFS[u].explode > 0) this.ignite(j, nx, ny);
           // Current powers machines (and open doorways) beside the wire. A
           // loose spark, not one running along a wire, flips a switch.
-          else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j);
+          else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j, i);
           else if (PRESSABLE[u]) { if (this.ctype[i] === 0) this.press(j); }
           else if (DEFS[u].excite !== null) { // neon, argon, sodium vapour... light up
             this.life[j] = 20;
@@ -228,7 +227,7 @@ export const Behaviors = {
       }
     }
     const under = this.ctype[i];
-    if (under) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + DEFS[under].sparkHeat);
+    if (under) this.temp[i] += DEFS[under].sparkHeat;
     if (--this.life[i] <= 0) {
       if (under) {
         type[i] = under;
@@ -258,7 +257,7 @@ export const Behaviors = {
         this.sparkAt(j);
         this.record(SPARK, SPECIAL['battery-spark']);
       } else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) {
-        this.powerCell(j);
+        this.powerCell(j, y * w + x);
       }
     }
     return false;
@@ -351,7 +350,7 @@ export const Behaviors = {
         const j = ny * w + nx;
         const u = type[j];
         if (u === 0 || u === LIGHTNING || u === WALL) continue;
-        this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 1200);
+        this.temp[j] += 1200;
         const r = REACT[LIGHTNING * NUM + u];
         if (r !== null && r.other.to >= 0 && this.rand() < r.chance) {
           const o = r.other;

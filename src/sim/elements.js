@@ -77,8 +77,8 @@ export const CATEGORIES = [
 //   selfHeat    °C gained per frame (radioactive warmth)
 //   decay       { chance, to, spawn } random decay, like a half-life
 //   fission     what a neutron does when it splits this element: neutrons,
-//               photons and protons thrown out, heat (or hot: the maximum
-//               temperature), pressure added to its air block, blast (a
+//               photons and protons thrown out, heat (and hot: a million
+//               degrees in a lump), pressure added to its air block, blast (a
 //               push), boost (the pressure that doubles the chance of a
 //               split), products, capture
 //   transparent / opaque / reflect   how light treats it
@@ -361,16 +361,16 @@ export const ELEMENT_LIST = [
   },
   {
     key: 'LIGHTNING', name: 'Lightning', sym: 'Lt', cat: 'energy', state: ENERGY, fixed: true,
-    colors: ['#f4f0ff', '#dcd4ff'], temp: 8000, holdTemp: true, conduct: 0.3,
+    colors: ['#f4f0ff', '#dcd4ff'], temp: 30000, holdTemp: true, conduct: 0.3,
     life: [150, 240], behavior: 'lightning',
-    desc: 'A bolt that strikes downward, melting sand and sparking metal.',
+    desc: 'A bolt at 30,000 °C that strikes downward, melting sand and sparking metal.',
     hint: 'Put a Spark into a Cloud.',
   },
   {
     key: 'PLASMA', name: 'Plasma', sym: 'Pz', cat: 'energy', state: ENERGY,
-    colors: ['#e07bff'], density: 0.015, temp: 5000, holdTemp: true, conduct: 0.5,
+    colors: ['#e07bff'], density: 0.015, temp: 20000, holdTemp: true, conduct: 0.5,
     life: [25, 55], rise: 0.6, sink: 0.05, airDrag: 0.5, behavior: 'plasma',
-    desc: 'Superheated gas at 5000 °C. Melts nearly anything.',
+    desc: 'Superheated gas at 20,000 °C. Melts nearly anything.',
     hint: 'Superheat Steam past 3000 °C.',
   },
   {

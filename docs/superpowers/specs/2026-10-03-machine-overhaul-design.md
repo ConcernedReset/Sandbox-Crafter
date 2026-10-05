@@ -5,7 +5,7 @@ Date: 2026-10-03. Status: approved in chat, awaiting review of this write-up.
 ## Goal
 
 Make the Machines group a real toolkit: improve the existing heat and air
-machines, give power a direction so things can move one way, and add 13 new
+machines, give power a direction so things can move one way, and add 12 new
 machines covering air (pipes and pumps), motion, logic, sensing and energy.
 Everything stays in the existing model: machines are elements in the
 Machines category, crafted from parts, crushed back into them, powered by
@@ -64,20 +64,25 @@ Machines that use it:
   y when it points sideways). Power from the left end carries things right.
   A cell level with the entry (the Spark tool on the belt itself) carries
   things the "positive" way.
-- **Piston**: extends along whichever axis the entry is farther away on,
-  away from the entry. Powered with no direction (the Spark tool), it
-  extends against gravity.
+- **Piston**: extends the way the power was going as it came in
+  (`powerDir`), so a row of pistons fed from one side all push the same way.
+  Powered with no direction (the Spark tool), it extends against gravity.
 - **Inverter**: its input side is where power last came from; it outputs on
-  the opposite side only, and ignores power arriving on its output side, so
-  its own output can't switch it off. Until it has ever been powered it
-  outputs on every side.
+  the opposite side only, and ignores power from its output side and its
+  own echoes (wire cells it sparked in the last 3 frames). Until it has been
+  fed, it traces its wires every 15 frames to find the side that leads back
+  to something that makes power, and takes that as its input; if none does,
+  it outputs on every side.
 - **Delay Line**: see below.
 
 ## Pipe networks
 
-- A network is a 4-connected group of Pipe and Pump cells.
-- Its **openings** are the air blocks of empty (or gas) cells touching it
-  that aren't sealed. An opening touching a Pump is that pump's intake. A
+- A network is a 4-connected group of Pipe and Pump cells, drawn one cell
+  wide.
+- Its **openings** are at its ends: the empty (or gas) cell beyond each pipe
+  cell that has only one neighbour in the network. Every cell touching a
+  Pump is that pump's intake. An opening uses the air block beside the pipe,
+  or the next block out when the pipe has sealed that one. A
   pump is shut while unpowered: its intake takes no part in the sharing.
 - Pipe and Pump cells are airtight, so they also wall off the air like any
   strong solid.
@@ -102,6 +107,12 @@ the same code serves Doors and Safety Valves:
 - An open valve's doorway stays open while the pressure in its air block (or
   the blocks beside it) is above +10. Below that its timer runs down as a
   door's does, and it shuts, shoving loose things aside.
+- Air can't pass a block with any Wall in it, and a valve set into a Wall
+  shares its blocks with the wall. So an open valve vents itself: each frame
+  the air on its two sides (the next unsealed blocks out) evens out by 10 %
+  of the difference per valve cell.
+- Pressure opens a Safety Valve long before it could crush it, so it has no
+  crush rule.
 
 ## The other new machines
 

@@ -182,6 +182,31 @@ function setReplace(on) {
   $('btn-replace').setAttribute('aria-pressed', String(on));
 }
 
+// The Gas and Glow effects (renderer.js), on unless switched off; the choice
+// is remembered in this browser.
+const DISPLAY_KEY = 'sandbox-crafter:display';
+function setEffect(name, on) {
+  renderer[name] = on;
+  $(`btn-${name}`).setAttribute('aria-pressed', String(on));
+  try {
+    localStorage.setItem(DISPLAY_KEY, JSON.stringify({ gas: renderer.gas, glow: renderer.glow }));
+  } catch {
+    // Storage unavailable: it just won't be remembered.
+  }
+}
+function loadEffects() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(DISPLAY_KEY)) ?? {};
+  } catch {
+    // Unreadable or unavailable: the defaults.
+  }
+  for (const name of ['gas', 'glow']) {
+    renderer[name] = saved[name] !== false;
+    $(`btn-${name}`).setAttribute('aria-pressed', String(renderer[name]));
+  }
+}
+
 // ---- zoom -----------------------------------------------------------------
 
 // Zoom in or out a step, towards the pointer if it's over the world.
@@ -229,6 +254,9 @@ $('btn-pause').addEventListener('click', () => setPaused(!game.paused));
 $('btn-step').addEventListener('click', stepOnce);
 $('btn-clear').addEventListener('click', () => world.clearAll());
 $('btn-replace').addEventListener('click', () => setReplace(!game.replace));
+$('btn-gas').addEventListener('click', () => setEffect('gas', !renderer.gas));
+$('btn-glow').addEventListener('click', () => setEffect('glow', !renderer.glow));
+loadEffects();
 for (const b of document.querySelectorAll('[data-shape]')) {
   b.addEventListener('click', () => {
     game.brushShape = b.dataset.shape;

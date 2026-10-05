@@ -15,11 +15,12 @@
 // Mixed into World.prototype; `initParticles` sets up the storage.
 
 import { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL, State } from './elements.js';
-import { MAX_TEMP, MIN_TEMP, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } from './constants.js';
+import { MIN_TEMP, FISSION_HOT, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } from './constants.js';
 import { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED } from './lookups.js';
 import { LENS } from './gravity.js';
 
 const PASS = 0, DEAD = 1, BOUNCE = 2;
+const LUMP = 13; // of the 24 cells around a split (see inLump)
 const { SOLID } = State;
 const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
@@ -277,7 +278,7 @@ export const Particles = {
         if (e.indestructible) return this.impact(j, lx, ly, d);
         const T = this.ptemp[k];
         const nt = this.temp[j] + (T - this.temp[j]) * 0.25;
-        this.temp[j] = nt > MAX_TEMP ? MAX_TEMP : nt < MIN_TEMP ? MIN_TEMP : nt;
+        this.temp[j] = nt < MIN_TEMP ? MIN_TEMP : nt;
         if (T > PROTON_IGNITES && (e.flammable > 0 || e.explode > 0) && this.ignite(j, ix, iy)) {
           this.air.addPressure(this.air.at(ix, iy), 1);
         }
@@ -322,9 +323,10 @@ export const Particles = {
         return this.impact(j, lx, ly, d);
       }
       case PMODE.gamma: {
-        // Dense matter soaks up gamma rays; light matter barely slows them.
+        // Dense matter soaks up gamma rays; light matter barely slows them. A
+        // cell of lead stops about half, as a centimetre of real lead does.
         if (GASLIKE[u]) return PASS;
-        const stop = e.indestructible ? 1 : Math.min(0.9, e.density * 0.025 + e.nAbsorb * 0.3);
+        const stop = e.indestructible ? 1 : Math.min(0.9, e.density * 0.05);
         if (this.rand() >= stop) return PASS;
         return this.impact(j, lx, ly, d);
       }
@@ -370,7 +372,7 @@ export const Particles = {
   // hitPressure). Returns DEAD.
   impact(j, x, y, d) {
     if (DEFS[this.type[j]].indestructible) return DEAD;
-    if (d.hitHeat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + d.hitHeat);
+    if (d.hitHeat) this.temp[j] += d.hitHeat;
     if (d.hitPressure) this.air.addPressure(this.air.at(x, y), d.hitPressure);
     return DEAD;
   },
@@ -380,7 +382,7 @@ export const Particles = {
   // and a loose grain or drop is shoved along.
   batter(k, j, e, lx, ly, d) {
     if (e.indestructible) return;
-    this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + d.hitHeat);
+    this.temp[j] += d.hitHeat;
     this.air.addPressure(this.air.at(lx, ly), d.hitPressure);
     if (e.state === SOLID) {
       if (e.strength > 0 && this.loose[j] === 0 && this.rand() < NEUTRON_KNOCK) this.loose[j] = 1;
@@ -397,7 +399,7 @@ export const Particles = {
     // Whatever else the hit does, a particle that stops here still lands a blow.
     if (!r.keep) this.impact(j, lx, ly, DEFS[this.ptype[k]]);
     if (r.recover) this.life[j] = r.recover;
-    if (r.heat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
+    if (r.heat) this.temp[j] += r.heat;
     if (r.action === 'spark') this.sparkNeighbors(ix, iy);
     else if (r.action === 'excite') this.life[j] = 24;
     if (r.spawn >= 0 && this.spawnNear(ix, iy, r.spawn) >= 0) this.record(r.spawn, r.spawnRule);
@@ -429,12 +431,30 @@ export const Particles = {
     if (e.emits !== null) {
       for (const m of e.emits) if (this.rand() < m.chance * KICK_EMIT) this.emitAt(m.id, x, y);
     }
-    if (e.selfHeat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + e.selfHeat * KICK_EMIT);
+    if (e.selfHeat) this.temp[j] += e.selfHeat * KICK_EMIT;
     const o = e.decay;
     if (o !== null && this.rand() < Math.min(0.9, o.chance * KICK_DECAY)) this.decayCell(j, x, y, o);
   },
 
-  // A neutron splits the atom in cell j.
+  // Is the atom at (x, y) part of a lump of its element: at least LUMP of
+  // the 24 cells around it the same? (See fission.)
+  inLump(x, y, u) {
+    const { w, h, type } = this;
+    let n = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= h) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const xx = x + dx;
+        if (xx >= 0 && xx < w && (dx !== 0 || dy !== 0) && type[yy * w + xx] === u) n++;
+      }
+    }
+    return n >= LUMP;
+  },
+
+  // A neutron splits the atom in cell j. A `hot` split (plutonium) leaves
+  // its cell at least FISSION_HOT, but only in a lump, as in a bomb's
+  // critical mass; a lone atom (bred in a uranium pile) just adds its heat.
   fission(j, u, x, y) {
     const f = DEFS[u].fission;
     if (f.captureTo >= 0 && this.rand() < f.captureChance) {
@@ -442,13 +462,14 @@ export const Particles = {
       return;
     }
     // Heat first, so what flies out (protons especially) carries it.
-    this.temp[j] = f.hot ? MAX_TEMP : Math.min(MAX_TEMP, this.temp[j] + f.heat);
+    const hot = f.hot && this.inLump(x, y, u);
+    this.temp[j] = hot ? Math.max(this.temp[j], FISSION_HOT) : this.temp[j] + f.heat;
     for (let n = 0; n < f.neutrons; n++) this.emitAt(NEUTRON, x, y);
     for (let n = 0; n < f.photons; n++) this.emitAt(PHOTON, x, y);
     for (let n = 0; n < f.protons; n++) this.emitAt(PROTON, x, y);
     if (f.pressure) this.air.addPressure(this.air.at(x, y), f.pressure);
     if (f.blast) this.blast(x, y, f.blast);
-    if (f.hot) this.igniteAround(x, y);
+    if (hot) this.igniteAround(x, y);
     let roll = this.rand();
     for (const p of f.products) {
       if (roll < p.w) { this.convert(j, p.id, true, p.rule); break; }

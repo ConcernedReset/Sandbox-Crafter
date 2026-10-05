@@ -50,6 +50,32 @@ export const MACHINE_ELEMENTS = [
     hint: 'Old thermostats tipped a bead of Mercury across a Switch.',
   }),
 
+  machine('INVERTER', 'Inverter', 'NOT', 'inverter', ['#3a3a52', '#34344a', '#40405a'], {
+    light: '#c08aff', pressure: { above: 60, to: 'SILICON', alt: 'SWITCH', altChance: 0.5, chance: 0.02 },
+    desc: 'A NOT gate. It powers what\'s on its far side unless something powers it, so a lamp wired through it is lit while its switch is off. Feed it from one side; it answers on the opposite side.',
+    hint: 'Silicon and a Switch make a transistor.',
+  }),
+  machine('DELAY', 'Delay Line', 'Dly', 'delay', ['#3a4a3a', '#344434', '#405040'], {
+    light: '#8aff9a', pressure: { above: 60, to: 'CLOCK', alt: 'COPPER', altChance: 0.5, chance: 0.02 },
+    desc: 'A slow wire: current creeps along it one cell every 4 frames, and only forwards. A longer line waits longer.',
+    hint: 'A Clock wound with Copper.',
+  }),
+  machine('BAROMETER', 'Barometer', 'Bar', 'barometer', ['#4a5560', '#424d58', '#525d68'], {
+    light: '#ff9a7a', pressure: { above: 60, to: 'MERCURY', alt: 'GLASS', altChance: 0.5, chance: 0.02 },
+    desc: 'Switches on while the air pressure beside it is above +5. Wire it to a fan or a valve to keep a chamber in check.',
+    hint: 'Torricelli\'s barometer: a column of Mercury in a Glass tube.',
+  }),
+  machine('SMOKE_DETECTOR', 'Smoke Detector', 'SmD', 'smoke', ['#d8d8d0', '#ccccc4', '#e0e0d8'], {
+    light: '#ff4a4a', pressure: { above: 60, to: 'AMERICIUM', alt: 'PLASTIC', altChance: 0.7, chance: 0.02 },
+    desc: 'Switches on while smoke, or any other gas, touches it. A fire alarm.',
+    hint: 'Most smoke detectors hold a speck of Americium in a Plastic case.',
+  }),
+  machine('WIND_TURBINE', 'Wind Turbine', 'WTb', 'turbine', ['#c8ccd0', '#bcc0c4', '#d4d8dc'], {
+    light: '#9affc8', pressure: { above: 60, to: 'FAN', alt: 'ALUMINUM', altChance: 0.5, chance: 0.02 },
+    desc: 'Makes power while the wind blows past it.',
+    hint: 'Aluminum blades on a Fan, run backwards.',
+  }),
+
   // ---- machines -------------------------------------------------------------------
   machine('DOOR', 'Door', 'Dr', 'door', ['#6b7280', '#737a88', '#646b78', '#5e6572'], {
     strength: 200, conduct: 0.5, pressure: { above: 200, to: 'STEEL', chance: 0.01 },
@@ -84,13 +110,13 @@ export const MACHINE_ELEMENTS = [
   machine('HEATER', 'Heater', 'Htr', 'heater', ['#5a4a44', '#52423c', '#62524c'], {
     light: '#ff7a3a', conduct: 0.6, strength: 100,
     pressure: { above: 60, to: 'NICHROME', alt: 'PORCELAIN', altChance: 0.5, chance: 0.02 },
-    desc: 'Heats up (to 1200 °C at most) while it\'s powered, warming everything touching it.',
+    desc: 'Heats up while it\'s powered, faster and faster the longer it stays on, with no limit, warming everything touching it.',
     hint: 'Nichrome wire wound on Porcelain.',
   }),
   machine('COOLER', 'Cooler', 'Clr', 'cooler', ['#44525e', '#3e4c58', '#4a5864'], {
     light: '#7ad8ff', conduct: 0.6, strength: 100,
     pressure: { above: 60, to: 'BISMUTH', alt: 'TELLURIUM', altChance: 0.5, chance: 0.02 },
-    desc: 'Chills itself (down to −150 °C) while it\'s powered, cooling everything touching it. It works like a Peltier cooler: current pumps heat from one side to the other.',
+    desc: 'Chills itself while it\'s powered, all the way down to absolute zero, cooling everything touching it. It works like a Peltier cooler: current pumps heat from one side to the other.',
     hint: 'Bismuth and Tellurium make the Peltier coolers in car fridges.',
   }),
   machine('FAN', 'Fan', 'Fan', 'fan', ['#4a5058', '#42484f', '#525860'], {
@@ -108,6 +134,48 @@ export const MACHINE_ELEMENTS = [
     desc: 'Swallows the powders, liquids and gases touching it while it\'s powered. Solids are safe.',
     hint: 'Put a Void on a Switch.',
   }),
+  machine('IGNITER', 'Igniter', 'Ign', 'igniter', ['#b8b0a0', '#aca494', '#c4bcac'], {
+    light: '#ff9a3a', strength: 120, pressure: { above: 100, to: 'IRIDIUM', alt: 'PORCELAIN', altChance: 0.5, chance: 0.02 },
+    desc: 'While it\'s powered it sets anything flammable touching it alight, and throws little flames into the air beside it.',
+    hint: 'A spark plug: an Iridium tip in Porcelain.',
+  }),
+  machine('NEUTRON_SOURCE', 'Neutron Source', 'NSc', 'neutron', ['#5a6a5a', '#526252', '#627262'], {
+    light: '#b8ffb0', strength: 150, pressure: { above: 150, to: 'RADIUM', alt: 'BERYLLIUM', altChance: 0.5, chance: 0.01 },
+    desc: 'Fires neutrons out of its open faces while it\'s powered. Start a reactor with a switch.',
+    hint: 'Radium mixed with Beryllium: the source the neutron was discovered with.',
+  }),
+  machine('PIPE', 'Pipe', 'Pip', 'pipe', ['#8a5a3c', '#7e5034', '#966444'], {
+    strength: 150, conduct: 0.6, pressure: { above: 220, to: 'COPPER', alt: 'SOLDER', altChance: 0.3, chance: 0.02 },
+    desc: 'An airtight tube, one cell wide. Air goes in at one open end and comes out at the others, even through a wall, so the pressure at its ends evens out.',
+    hint: 'Copper plumbing, joined with Solder.',
+  }),
+  machine('PUMP', 'Pump', 'Pmp', 'pump', ['#4a5a6e', '#425266', '#526276'], {
+    light: '#7ad8ff', strength: 150, pressure: { above: 220, to: 'PIPE', alt: 'ELECTROMAGNET', altChance: 0.5, chance: 0.02 },
+    desc: 'Put it at the end of a Pipe. While it\'s powered it sucks in the air beside it and blows it out of the pipe\'s other ends, building up pressure there. Switched off, it\'s shut.',
+    hint: 'A Pipe driven by an Electromagnet motor.',
+  }),
+  machine('VALVE', 'Safety Valve', 'SVl', 'valve', ['#8a7a3a', '#7e6e34', '#968644'], {
+    // Pressure opens it long before it could crush it, so it has no crush rule.
+    strength: 200, conduct: 0.4,
+    desc: 'An airtight plug that opens by itself when the pressure beside it passes +30, letting the air out, and shuts again once it has dropped below +10. Fit one to anything you pressurise.',
+    hint: 'A Brass fitting on a Pipe.',
+  }),
+  machine('CONVEYOR', 'Conveyor', 'Cnv', 'conveyor', ['#2e2e2e', '#363636', '#262626', '#3a3a3a'], {
+    light: '#ffd76a', strength: 100, pressure: { above: 120, to: 'RUBBER', alt: 'FAN', altChance: 0.3, chance: 0.02 },
+    desc: 'A belt. While it\'s powered, sand, water, debris and creatures resting on it ride along, away from the end the power comes in at.',
+    hint: 'A Rubber belt run by a Fan motor.',
+  }),
+  machine('PISTON', 'Piston', 'Pst', 'piston', ['#5c6470', '#545c68', '#646c78'], {
+    light: '#9fd8ff', strength: 200, pressure: { above: 240, to: 'PUMP', alt: 'STEEL', altChance: 0.5, chance: 0.01 },
+    desc: 'While it\'s powered it pushes out an arm up to 8 cells long, away from the side the power comes in, shoving whatever is in front of it. It pulls the arm back when the power stops.',
+    hint: 'A Pump driving a Steel ram.',
+  }),
+  {
+    // A piston's arm: not a discovery, and not in the palette.
+    key: 'PISTON_ARM', name: 'Piston Arm', sym: 'Arm', cat: null, state: SOLID, always: true,
+    colors: ['#9aa3b0', '#a4adba', '#909aa6'], density: 7.8, conduct: 0.3, strength: 200, acidProof: true,
+    desc: 'The arm of a piston.',
+  },
   {
     key: 'BEAM_SPLITTER', name: 'Beam Splitter', sym: 'BSp', cat: 'machine', state: SOLID,
     colors: ['#a8cfe0', '#b4d8e8', '#9cc6d8'], density: 2.6, conduct: 0.1, strength: 40, acidProof: true,
@@ -137,4 +205,16 @@ export const MACHINE_REACTIONS = [
   { a: 'CLONE', b: 'SWITCH', chance: 0.03, aTo: 'DISPENSER', bTo: null },
   { a: 'VOID', b: 'SWITCH', chance: 0.03, aTo: 'DRAIN', bTo: null },
   { a: 'MIRROR', b: 'QUARTZ', chance: 0.03, aTo: null, bTo: 'BEAM_SPLITTER' },
+  { a: 'COPPER', b: 'SOLDER', chance: 0.03, aTo: 'PIPE', bTo: null },
+  { a: 'PIPE', b: 'ELECTROMAGNET', chance: 0.03, aTo: 'PUMP', bTo: null },
+  { a: 'PIPE', b: 'BRASS', chance: 0.03, aTo: 'VALVE', bTo: null },
+  { a: 'RUBBER', b: 'FAN', chance: 0.03, aTo: 'CONVEYOR', bTo: null },
+  { a: 'PUMP', b: 'STEEL', chance: 0.03, aTo: 'PISTON', bTo: null },
+  { a: 'SILICON', b: 'SWITCH', chance: 0.03, aTo: 'INVERTER', bTo: null },
+  { a: 'CLOCK', b: 'COPPER', chance: 0.03, aTo: 'DELAY', bTo: null },
+  { a: 'MERCURY', b: 'GLASS', chance: 0.03, aTo: null, bTo: 'BAROMETER' },
+  { a: 'AMERICIUM', b: 'PLASTIC', chance: 0.03, aTo: null, bTo: 'SMOKE_DETECTOR' },
+  { a: 'FAN', b: 'ALUMINUM', chance: 0.03, aTo: 'WIND_TURBINE', bTo: null },
+  { a: 'IRIDIUM', b: 'PORCELAIN', chance: 0.03, aTo: 'IGNITER', bTo: null },
+  { a: 'RADIUM', b: 'BERYLLIUM', chance: 0.03, aTo: 'NEUTRON_SOURCE', bTo: null },
 ];

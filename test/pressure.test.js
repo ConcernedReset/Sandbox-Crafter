@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
 import { World } from '../src/sim/world.js';
+import { Air } from '../src/sim/air.js';
 import { makeWorld, fillRect, wallBox, run } from './helpers.js';
 
 const intact = (w, t) => {
@@ -201,4 +202,25 @@ test('a charge sealed in a steel shell bursts it open and flings the fragments',
   });
   assert.ok(before - intact(w, ID.STEEL) > 15, `${before - intact(w, ID.STEEL)} shell cells torn`);
   assert.ok(farthest > 40, `fragments flew ${farthest.toFixed(0)} cells`);
+});
+
+test('the air is thick, as in The Powder Toy: a burst spreads as one smooth front', () => {
+  const a = new Air(60, 60);
+  const W = a.W;
+  a.p[31 * W + 31] = 200;
+  // Watch a point 10 blocks away: the front arrives, and the air there
+  // swings between pushing and pulling once at most, instead of ringing.
+  let swings = 0, last = 0, peak = 0;
+  for (let f = 0; f < 150; f++) {
+    a.step({});
+    const v = a.p[31 * W + 41];
+    peak = Math.max(peak, v);
+    if (Math.abs(v) > 0.05) {
+      const s = Math.sign(v);
+      if (last && s !== last) swings++;
+      last = s;
+    }
+  }
+  assert.ok(peak > 0.3, `the front arrived (peak ${peak.toFixed(2)})`);
+  assert.ok(swings <= 1, `${swings} swings`);
 });

@@ -28,7 +28,7 @@ test('a mirror sends light back the way it came', () => {
   assert.ok(w.pvx[0] < 0, 'photon is heading back left');
 });
 
-test('neutrons bounce off stone, battering it, while lead soaks some of them up', () => {
+test('neutrons bounce off stone and lead alike, battering them, while boron soaks them up', () => {
   const shoot = (shield) => {
     const w = makeWorld(100, 30);
     fillRect(w, 40, 0, 49, 29, shield);
@@ -45,11 +45,56 @@ test('neutrons bounce off stone, battering it, while lead soaks some of them up'
     for (let i = 0; i < w.type.length; i++) if (w.type[i] === shield) heat += w.temp[i] - 22;
     return { back, through, heat };
   };
-  const stone = shoot(ID.STONE), lead = shoot(ID.LEAD);
+  const stone = shoot(ID.STONE), lead = shoot(ID.LEAD), boron = shoot(ID.BORON);
   assert.equal(stone.through, 0, 'nothing gets through stone');
-  // Lead soaks up about a third of the neutrons that hit it.
-  assert.ok(stone.back > lead.back * 1.3, `stone sends more of them back (${stone.back} vs ${lead.back})`);
   assert.ok(stone.heat > 200 * 100, `the stone took a battering (${stone.heat.toFixed(0)} °C in all)`);
+  // Lead stops gamma rays, not neutrons: it bounces them back (a neutron
+  // reflector), as stone does. Boron swallows them.
+  assert.ok(lead.back > stone.back * 0.8, `lead sends them back too (${lead.back} vs stone ${stone.back})`);
+  assert.ok(stone.back > boron.back * 3, `boron soaks them up (${boron.back} back)`);
+});
+
+// Fire n particles of type p from the left at a block of element t; returns
+// the world afterwards.
+function fireAt(p, t, n = 100, frames = 40) {
+  const w = makeWorld(100, 30);
+  fillRect(w, 40, 0, 59, 29, t);
+  for (let k = 0; k < n; k++) w.spawnProjectile(p, 5.5, 5 + (k % 20) + 0.5, 2, 0);
+  let made = {};
+  run(w, frames, () => {
+    for (let k = 0; k < w.pn; k++) made[w.ptype[k]] = Math.max(made[w.ptype[k]] ?? 0, 1);
+  });
+  w.made = made;
+  return w;
+}
+const flying = (w, p) => { let c = 0; for (let k = 0; k < w.pn; k++) if (w.ptype[k] === p) c++; return c; };
+const sawAny = (w, p) => w.made[p] === 1;
+
+test('it takes ultraviolet to free electrons from metal; cesium gives them up to ordinary light', () => {
+  assert.ok(!sawAny(fireAt(ID.PHOTON, ID.METAL), ID.ELECTRON), 'light alone does nothing to metal');
+  assert.ok(sawAny(fireAt(ID.UV_LIGHT, ID.METAL), ID.ELECTRON), 'ultraviolet does');
+  assert.ok(sawAny(fireAt(ID.PHOTON, ID.CESIUM), ID.ELECTRON), 'cesium needs only light');
+});
+
+test('ultraviolet splits hydrogen and makes ozone; ordinary light does neither', () => {
+  const lit = fireAt(ID.PHOTON, ID.HYDROGEN, 100, 30), uv = fireAt(ID.UV_LIGHT, ID.HYDROGEN, 100, 30);
+  assert.ok(!sawAny(lit, ID.PROTON) && !sawAny(lit, ID.ELECTRON), 'light leaves hydrogen alone');
+  assert.ok(sawAny(uv, ID.PROTON) || sawAny(uv, ID.ELECTRON), 'ultraviolet ionises it');
+  assert.equal(countOf(fireAt(ID.PHOTON, ID.OXYGEN, 200, 30), ID.OZONE), 0, 'no ozone from light');
+  assert.ok(countOf(fireAt(ID.UV_LIGHT, ID.OXYGEN, 200, 30), ID.OZONE) > 0, 'ozone from ultraviolet');
+});
+
+test('gamma rays hitting lead make electron-positron pairs; ordinary light can\'t', () => {
+  assert.ok(!sawAny(fireAt(ID.PHOTON, ID.LEAD), ID.POSITRON), 'light makes no positrons');
+  assert.ok(sawAny(fireAt(ID.GAMMA, ID.LEAD), ID.POSITRON), 'gamma rays do');
+});
+
+test('a Star gives off ultraviolet as well as light, as the Sun does', () => {
+  const w = makeWorld(60, 60);
+  fillRect(w, 28, 28, 32, 32, ID.STAR);
+  let uv = 0;
+  run(w, 60, () => { uv += flying(w, ID.UV_LIGHT); });
+  assert.ok(uv > 0, 'some ultraviolet');
 });
 
 test('a neutron beam knocks pieces loose from a wall of stone', () => {
@@ -249,7 +294,8 @@ test('one neutron sets off a plutonium ball: enormous pressure and heat tear the
     for (let i = 0; i < w.air.p.length; i++) if (w.air.p[i] > maxP) maxP = w.air.p[i];
     for (let i = 0; i < w.temp.length; i++) if (w.type[i] && w.temp[i] > maxT) maxT = w.temp[i];
   });
-  assert.ok(maxP > 200, `pressure reached ${maxP.toFixed(0)}`);
+  // Thick air spreads the bang out rather than spiking it, but it is huge.
+  assert.ok(maxP > 150, `pressure reached ${maxP.toFixed(0)}`);
   assert.ok(maxT > 5000, `temperature reached ${maxT.toFixed(0)}`);
   assert.ok(types(w, ID.PLUTONIUM) < pu * 0.3, `${types(w, ID.PLUTONIUM)} of ${pu} plutonium left`);
   assert.ok(types(w, ID.STONE) < stone * 0.8, `${types(w, ID.STONE)} of ${stone} stone left`);

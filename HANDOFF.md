@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,360 tests, all passing, in a few seconds
+npm test    # node --test: about 1,420 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -44,7 +44,7 @@ else; `test/build.test.js` checks the bundle runs.
 | `src/sim/air.js` | Coarse pressure / wind grid (4 × 4 cells per block), plus air temperature for convection |
 | `src/sim/gravity.js` | Gravity settings and the per-air-block gravity table; the Newtonian solver (`Solver`) |
 | `src/sim/fft.js` | Radix-2 FFT used by the Newtonian solver |
-| `src/render/renderer.js` | Draws the grid, glow, particles, minimap; heat and pressure views |
+| `src/render/renderer.js` | Draws the grid, the Gas and Glow effects, particles, minimap; heat and pressure views |
 | `src/render/tree-view.js` | Draws the recipe tree under the game; drag, zoom and click handling |
 | `src/game/tree.js` | Recipe tree layout (pure, tested): which elements show, one link into each, columns and rows |
 | `src/game/physics-panel.js` | The Physics strip: gravity dial, strength box, Newtonian and convection switches; saves settings |
@@ -66,6 +66,33 @@ else; `test/build.test.js` checks the bundle runs.
 - **Cell state:** `type`, `temp`, `life`, `ctype`, `vx`/`vy`, `shade`,
   `loose`, `clock`. `ctype` is overloaded: a spark's conductor, a fire's fuel,
   a clone's copy, a switch's position. `life` is a machine's power timer.
+- **Machine code** lives in three mix-ins: `machines.js` (power, controls,
+  logic and sensors, doors and valves, heater, cooler, igniter, neutron
+  source), `machines-air.js` (fan, pipe networks, pump) and
+  `machines-motion.js` (conveyor, piston). Piston Arm is a hidden `always`
+  element. The Safety Valve has no crush rule on purpose.
+- **Power has a direction.** `powerCell(j, from)` records, for the whole
+  block it powers, the cell the power came from (`powerFrom`) and the way it
+  was going (`powerDir`, a DX4/DY4 index; -1 from the Spark tool). Every
+  caller passes a source. Conveyors use `powerFrom`, pistons `powerDir`.
+- **Inverters** are fed through `feedInverter`, not the block flood:
+  `ctype` counts the frames it stays fed, `powerDir` is its output side.
+  Power from its output side, or from a wire cell it sparked itself in the
+  last 3 frames (`echo`), is ignored. An unfed inverter calls
+  `findInverterInput` every 15 frames (tracing wires back to a source) so it
+  never answers into its own input wire, where its pulses would cancel the
+  switch's.
+- **Delay Lines** are also outside the flood: `ctype` is the charge
+  countdown, `life` the rest after firing (the rest is what makes it
+  one-way).
+- **Pipe networks** (`machines-air.js`): pipe and pump cells push themselves
+  onto `pipeCells` during the update; `stepPipes` rebuilds the networks
+  every 10 frames or when the count changes. A pipe opens only at its ends
+  (cells with one network neighbour); an opening is two blocks (beside it,
+  and the next one out), because a pipe can seal its own block.
+- **Doors and valves** share the door code; `doorKind` says what an open
+  doorway turns back into. An open valve vents itself (`ventValve`), since
+  air can't pass a block with any Wall in it.
 - **Machines** don't carry current themselves: controls power what touches
   them and spark wires; wires power machines beside them. Power floods a whole
   connected block of one machine type. Doors open by vanishing and remember
@@ -138,14 +165,38 @@ else; `test/build.test.js` checks the bundle runs.
   blurring and cooling. Buoyancy compares each block with the average of the
   air around it (`localMean`, a box blur), not with room temperature: that is
   what makes cooled air sink and the loop close. The heat's share of the
-  pressure is `EXPAND × (t − room temperature)`, applied as the change
-  since last frame (`tPressed`), so it can't drift: never add to `p`
-  directly when the air's temperature changes. `heatArea` (the Heat and
-  Cool tools) also changes the air. Constants are at the top of `air.js`.
+  pressure is `thermal(t)` (`EXPAND` a degree near room temperature,
+  levelling off at `THERMAL_MAX`), applied as the change since last frame
+  (`tPressed`), so it can't drift: never add to `p` directly when the
+  air's temperature changes. `heatArea` (the Heat and Cool tools) also
+  changes the air. Particles trade heat with the air at `TOUCH` (world.js:
+  conductivity × `AIR_TOUCH`), at most `AIR_FLUX` a frame; hot air
+  radiates (`airLoss`, growing with the cube of absolute temperature), and
+  the flow carries heat at most `HEAT_REACH` blocks a frame. Those three
+  keep a Star (15 million °C) from heating the whole world through the air;
+  `test/heat.test.js` checks it. Constants are at the top of `air.js`.
+- **The air is thick, as in The Powder Toy.** `Air.thicken` runs after the
+  pressure and velocity updates: it blurs pressure and both velocity fields
+  with TPT's 3 × 3 kernel (closed blocks and faces count as the block's own
+  value) and advects the velocity along itself (`ADVECT`). Losses are TPT's
+  (0.9999 pressure, 0.999 velocity). Peaks come out lower and broader than
+  before the change; pressure thresholds in tests were checked against it.
+- **No top temperature.** `MIN_TEMP` (absolute zero) is the only clamp; don't
+  reintroduce a maximum. Plutonium's `hot` split leaves a cell at least
+  `FISSION_HOT` (a million degrees), but only in a lump (`inLump`: 13 of
+  the 24 cells around it the same element), so plutonium bred inside a
+  uranium pile splits like uranium and the reactor puzzle still works.
+- **Display effects** are `renderer.gas` and `renderer.glow`, buttons
+  in main.js, saved under `sandbox-crafter:display`. Gas cells (a `wisp`
+  opacity in `paint`) go to a half-resolution layer, blurred by the canvas
+  (`ctx.filter`, on the GPU) or by `blur` where that isn't supported; only
+  the box round the gas is worked on. Glow blurs the per-block light layer
+  and keeps `GLOW_LINGER` of last frame's. Both only apply to the Normal
+  view.
 - **Plutonium and protons work as in The Powder Toy.** A fission's settings
   (see the field docs in elements.js) can add pressure per split (`pressure`),
-  make splits likelier under pressure (`boost`), set what's left to the
-  maximum temperature (`hot`) and throw out protons. Flying particles have a
+  make splits likelier under pressure (`boost`), leave what's left at a
+  million degrees in a lump (`hot`, see below) and throw out protons. Flying particles have a
   temperature (`ptemp`, set from the cell they came from); protons pass
   through matter and pull what they pass towards it. Neutrons bounce off
   anything that isn't a gas, a radioactive element or a moderator

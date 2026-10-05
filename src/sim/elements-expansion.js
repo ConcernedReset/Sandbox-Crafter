@@ -503,10 +503,10 @@ export const EXPANSION_ELEMENTS = [
     colors: ['#8a6f6a', '#7d625d', '#967a75'], density: 19.8, conduct: 0.3, selfHeat: 0.05,
     emits: [{ p: 'NEUTRON', chance: 0.0015 }], glowAmount: 0.25,
     // As in The Powder Toy: every split adds a big kick of pressure, and
-    // pressure makes splits more likely, so a chain feeds on itself; what's
-    // left is as hot as anything gets.
+    // pressure makes splits more likely, so a chain feeds on itself. In a
+    // lump, what's left is a million degrees; a lone atom adds `heat`.
     fission: {
-      neutrons: 3, photons: 2, protons: 1, hot: true, pressure: 10, boost: 10,
+      neutrons: 3, photons: 2, protons: 1, hot: true, heat: 450, pressure: 10, boost: 10,
       products: [['FALLOUT', 0.4], ['PLASMA', 0.3]], capture: ['AMERICIUM', 0.04],
     },
     high: { temp: 2500, to: 'CORIUM', chance: 0.05 },
@@ -586,9 +586,9 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'LEAD', name: 'Lead', sym: 'Pb', cat: 'metal', state: SOLID, strength: 60,
     colors: ['#6d7280', '#626775', '#777c89'], density: 11.3, conduct: 0.35, conductor: true,
-    nAbsorb: 0.35, high: melt(327),
+    high: melt(327),
     pressure: { above: 120, to: 'NEUTRONIUM', chance: 0.005 },
-    desc: 'Soft, heavy metal that stops radiation. Melts at 327 °C.',
+    desc: 'Soft, heavy metal that stops gamma rays and X-rays. Neutrons bounce off it. Melts at 327 °C.',
     hint: 'Where the radioactive decay chain ends.',
   },
   {
@@ -666,7 +666,7 @@ export const EXPANSION_ELEMENTS = [
   {
     key: 'COBALT', name: 'Cobalt-60', sym: 'Co', cat: 'nuclear', state: SOLID, strength: 150,
     colors: ['#5a6fa8', '#50649a', '#6479b5'], density: 8.9, conduct: 0.6, conductor: true,
-    emits: [{ p: 'GAMMA', chance: 0.004 }], glowAmount: 0.25, decay: { chance: 0.00005, to: 'METAL' },
+    emits: [{ p: 'GAMMA', chance: 0.004 }], glowAmount: 0.25, decay: { chance: 0.00005, to: 'METAL', spawn: 'GAMMA' },
     high: melt(1495),
     desc: 'Metal made radioactive by neutrons. It shines gamma rays.',
     hint: 'Bombard Metal with Neutrons.',
@@ -718,9 +718,9 @@ export const EXPANSION_ELEMENTS = [
   // ---- the far end of the table ------------------------------------------
   {
     key: 'STAR', name: 'Star', sym: 'Sun', cat: 'special', state: SOLID,
-    colors: ['#fff2b0', '#ffe680', '#fff8d6'], temp: 6000, holdTemp: true, conduct: 0.5,
-    emits: [{ p: 'PHOTON', chance: 0.03 }], glowAmount: 1.2, indestructible: true,
-    desc: 'A miniature sun. Fuses hydrogen into helium and floods the chamber with light.',
+    colors: ['#fff2b0', '#ffe680', '#fff8d6'], temp: 15e6, holdTemp: true, conduct: 0.5,
+    emits: [{ p: 'PHOTON', chance: 0.03 }, { p: 'UV_LIGHT', chance: 0.006 }], glowAmount: 1.2, indestructible: true,
+    desc: 'A miniature sun, as hot as the heart of the real one: 15 million °C. Fuses hydrogen into helium and floods the chamber with light, and some ultraviolet.',
     hint: 'Squeeze Hydrogen until it ignites.',
   },
   {
@@ -859,14 +859,18 @@ export const EXPANSION_REACTIONS = [
 //   action  'spark' (sparks touching metal) or 'excite' (makes the target glow)
 //   recover frames the target needs before it can do this again (limits gain)
 export const PARTICLE_HITS = [
-  { p: 'PHOTON', t: 'METAL', chance: 0.25, emit: ['ELECTRON'] },
+  // Only cesium gives up electrons to ordinary light; iron needs ultraviolet.
+  { p: 'UV_LIGHT', t: 'METAL', chance: 0.25, emit: ['ELECTRON'] },
   { p: 'PHOTON', t: 'CESIUM', chance: 0.6, emit: ['ELECTRON', 'ELECTRON'] },
-  { p: 'PHOTON', t: 'HYDROGEN', chance: 0.4, tTo: 'PROTON', emit: ['ELECTRON'] },
-  { p: 'PHOTON', t: 'LEAD', chance: 0.2, emit: ['POSITRON', 'ELECTRON'] },
+  // Pulling hydrogen's electron off takes far ultraviolet...
+  { p: 'UV_LIGHT', t: 'HYDROGEN', chance: 0.4, tTo: 'PROTON', emit: ['ELECTRON'] },
+  // ...and making an electron and a positron takes a gamma ray (over 1 MeV)
+  // passing a heavy nucleus.
+  { p: 'GAMMA', t: 'LEAD', chance: 0.2, emit: ['POSITRON', 'ELECTRON'] },
   { p: 'PHOTON', t: 'RUBY', chance: 0.3, emit: ['PHOTON'], copy: true, keep: true, recover: 20 },
   { p: 'PHOTON', t: 'PLANT', chance: 0.1, tTo: 'FLOWER' },
   { p: 'PHOTON', t: 'SILICON', chance: 0.6, action: 'spark' },
-  { p: 'PHOTON', t: 'OXYGEN', chance: 0.02, tTo: 'OZONE' },
+  { p: 'UV_LIGHT', t: 'OXYGEN', chance: 0.02, tTo: 'OZONE' }, // as in the ozone layer
   { p: 'PHOTON', t: 'CHLORINE', chance: 0.3, heat: 400 },
   { p: 'ELECTRON', t: 'NEON', chance: 0.9, action: 'excite', emit: ['PHOTON'] },
   { p: 'ELECTRON', t: 'WATER', chance: 0.1, tTo: 'HYDROGEN' },

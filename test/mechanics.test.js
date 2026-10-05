@@ -20,6 +20,14 @@ function shootThrough(p, t, thickness, n = 100) {
   return through;
 }
 
+test('how well something stops gamma rays depends on how dense it is', () => {
+  // Cadmium soaks up neutrons, but that doesn't help against gamma rays:
+  // lead, denser, stops more of them.
+  const lead = shootThrough(ID.GAMMA, ID.LEAD, 4, 200);
+  const cadmium = shootThrough(ID.GAMMA, ID.CADMIUM, 4, 200);
+  assert.ok(lead < cadmium, `lead lets ${lead} through, cadmium ${cadmium}`);
+});
+
 test('X-rays pass through water and wood but not bone or lead', () => {
   assert.ok(shootThrough(ID.XRAY, ID.WATER, 5) > 500);
   assert.ok(shootThrough(ID.XRAY, ID.WOOD, 5) > 500);

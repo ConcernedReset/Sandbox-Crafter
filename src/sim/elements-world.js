@@ -942,7 +942,7 @@ export const WORLD_ELEMENTS = [
   },
   {
     key: 'SUPERNOVA', name: 'Supernova', sym: 'SN', cat: 'special', state: ENERGY, fixed: true,
-    colors: ['#ffffff', '#f0f4ff', '#fff8e8'], temp: 9000, holdTemp: true, life: [60, 90], behavior: 'decay',
+    colors: ['#ffffff', '#f0f4ff', '#fff8e8'], temp: 1e9, holdTemp: true, life: [60, 90], behavior: 'decay',
     lifeEnd: { to: 'NEUTRONIUM', alt: 'GOLD', altChance: 0.4, explode: 30 }, glowAmount: 3, render: 'star',
     desc: 'A star that has fused its core all the way to iron, which can\'t be fused for energy, collapses and rebounds in a blast brighter than a galaxy. Its debris is where gold comes from.',
     hint: 'Feed iron (Metal) to a Star.',
@@ -956,11 +956,11 @@ export const WORLD_ELEMENTS = [
   },
   {
     key: 'QUARK_GLUON_PLASMA', name: 'Quark-Gluon Plasma', sym: 'QGP', cat: 'special', state: ENERGY,
-    colors: ['#ff4aff', '#4affff', '#ffff4a'], temp: 9999, holdTemp: true, density: 0.02,
+    colors: ['#ff4aff', '#4affff', '#ffff4a'], temp: 5.5e12, holdTemp: true, density: 0.02,
     life: [30, 60], behavior: 'decay', render: 'strange', glowAmount: 2,
     lifeEnd: { to: 'HYDROGEN', alt: 'HELIUM', altChance: 0.25 },
     emits: [{ p: 'PROTON', chance: 0.05 }, { p: 'NEUTRON', chance: 0.05 }, { p: 'PION', chance: 0.05 }],
-    desc: 'Matter so hot that protons and neutrons melt into a soup of quarks and gluons, as the whole universe was a millionth of a second after the Big Bang. As it cools it freezes into hydrogen and helium, in the same three-to-one mix the Big Bang made.',
+    desc: 'Matter so hot (5.5 trillion °C, the hottest thing ever made, at CERN) that protons and neutrons melt into a soup of quarks and gluons, as the whole universe was a millionth of a second after the Big Bang. As it cools it freezes into hydrogen and helium, in the same three-to-one mix the Big Bang made.',
     hint: 'Melt Neutronium in Plasma.',
   },
   {

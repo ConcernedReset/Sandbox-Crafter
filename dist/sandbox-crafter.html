@@ -862,7 +862,7 @@ kbd {
     <h1 class="wordmark">Sandbox <span>Crafter</span></h1>
 
     <div class="meter" id="meter" title="Elements discovered">
-      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">566</span> elements</div>
+      <div class="meter-label"><b id="meter-count">4</b> / <span id="meter-total">578</span> elements</div>
       <div class="meter-cells" id="meter-cells" aria-hidden="true"></div>
     </div>
 
@@ -883,6 +883,14 @@ kbd {
       <button class="btn" id="btn-replace" type="button" aria-pressed="false" title="Replace: painting overwrites whatever is in the way (R)">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h8v3H5v5H2zM6 6h8v8H6z"/></svg>
         <span>Replace</span>
+      </button>
+      <button class="btn" id="btn-gas" type="button" aria-pressed="true" title="Gas: blur gases and flames into soft clouds">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 13a3 3 0 0 1-.5-5.96A4 4 0 0 1 11.7 6a3.5 3.5 0 0 1 .3 7z"/></svg>
+        <span>Gas</span>
+      </button>
+      <button class="btn" id="btn-glow" type="button" aria-pressed="true" title="Glow: hot things cast a soft halo">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zM7.25 0h1.5v2.6h-1.5zM7.25 13.4h1.5V16h-1.5zM0 7.25h2.6v1.5H0zM13.4 7.25H16v1.5h-2.6zM2.1 3.2l1.1-1.1 1.8 1.8-1.1 1.1zM11 12.1l1.1-1.1 1.8 1.8-1.1 1.1zM2.1 12.8l1.8-1.8 1.1 1.1-1.8 1.8zM11 3.9l1.8-1.8 1.1 1.1-1.8 1.8z"/></svg>
+        <span>Glow</span>
       </button>
       <button class="btn" id="btn-clear" type="button" title="Remove every particle">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h6l1 2h3v2H1V4h3zM3 7h10l-1 8H4z"/></svg>
@@ -1049,8 +1057,12 @@ const State = { EMPTY: 0, SOLID: 1, POWDER: 2, LIQUID: 3, GAS: 4, ENERGY: 5 };
 
 const AMBIENT = 22; // °C, room temperature
 
-const MAX_TEMP = 9999;
+// There is no highest temperature: a star is millions of degrees, and quark-
+// gluon plasma trillions. There is a lowest, absolute zero.
 const MIN_TEMP = -273;
+// What a plutonium split heats its cell to, at least (the heart of a nuclear
+// fireball is millions of degrees).
+const FISSION_HOT = 1e6;
 const GRAVITY = 0.12;
 
 // Radioactive elements (the Radioactive category) are stable until something
@@ -1069,7 +1081,7 @@ const KICK_CHANCE = 0.3;
 const KICK_EMIT = 50;
 const KICK_DECAY = 300;
 
-return { State, AMBIENT, MAX_TEMP, MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY, KICK_CHANCE, KICK_EMIT, KICK_DECAY };
+return { State, AMBIENT, MIN_TEMP, FISSION_HOT, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY, KICK_CHANCE, KICK_EMIT, KICK_DECAY };
 })();
 
 __modules["src/sim/air.js"] = (() => {
@@ -1078,9 +1090,14 @@ __modules["src/sim/air.js"] = (() => {
 // The world is divided into CELL x CELL blocks, each holding a pressure value.
 // Velocities live on the faces between blocks (a staggered grid): vx[i] is
 // the flow from block i to the block on its right, vy[i] the flow to the
-// block below. Each step:
+// block below. Each step, as in The Powder Toy:
 //   1. pressure changes by how much air flows in or out (divergence)
 //   2. velocity is pushed from high pressure towards low pressure
+//   3. pressure and velocity are both blurred over each block and its eight
+//      neighbours (KERNEL): blurring the flow is viscosity, and it's what
+//      makes the air thick, so a blast pushes out a slow, smooth front
+//   4. the flow carries itself along (ADVECT), so gusts keep going and curl
+//      into eddies
 // A ring of blocks around the edge is held at zero pressure, so air can
 // escape the map, and blocked blocks (Wall, or a line of strong solid across
 // the block) stop flow entirely so sealed boxes hold pressure.
@@ -1088,13 +1105,14 @@ __modules["src/sim/air.js"] = (() => {
 // With convection on (`heat`), each block also has an air temperature.
 // Particles trade heat with it (world.js, warmAir). Warm air presses
 // harder: a block's pressure includes EXPAND for every degree its air is
-// above room temperature, so heating sealed air raises the pressure while
-// it stays hot, and in the open hot air pushes out and is drawn back as it
-// cools, with nothing left over once it has; air warmer than the air
-// around it is pushed against gravity and cooler air sinks, so a plume rises
-// over something hot, spreads, comes down at the sides and is drawn back in
-// at the base; the flow carries the heat along; and the air gives its heat
-// back to the room. The border ring stays at room temperature.
+// above room temperature (levelling off when very hot, see thermal), so
+// heating sealed air raises the pressure while it stays hot, and in the
+// open hot air pushes out and is drawn back as it cools, with nothing left
+// over once it has; air warmer than the air around it is pushed against
+// gravity and cooler air sinks, so a plume rises over something hot,
+// spreads, comes down at the sides and is drawn back in at the base; the
+// flow carries the heat along; and the air gives its heat back to the room.
+// The border ring stays at room temperature.
 
 const { AMBIENT } = __modules["src/sim/constants.js"];
 
@@ -1109,17 +1127,37 @@ const CELL = 4;
 // pressure.
 const AIR_SHARE = 3;
 const EXPAND = 0.008;
-const BUOYANCY = 0.0001;
+// ...but not without limit: the pressure heat adds levels off towards
+// THERMAL_MAX (see thermal), so a pocket of million-degree air pushes hard
+// without pinning the pressure at its maximum, or leaving a vacuum behind as
+// it cools. Buoyancy counts at most BUOYANT_MAX degrees of difference.
+const THERMAL_MAX = 40;
+const BUOYANT_MAX = 1000;
+const BUOYANCY = 0.0015;
 const AIR_TEMP_LOSS = 0.01;
-const HEAT_SMOOTH = 0.1;
+// Very hot air also radiates its heat away, the faster the hotter (real
+// radiation grows with the fourth power of temperature, so the share of the
+// excess lost a frame grows with its cube): RADIATE_AT kelvin doubles the
+// loss, and at most RADIATE_MAX of the excess goes a frame. So air beside a
+// star is searing, but the heat doesn't flood the whole world.
+const RADIATE_AT = 2000;
+const RADIATE_MAX = 0.9;
+// The flow carries heat at most this many blocks a frame, however hard it blows.
+const HEAT_REACH = 1.5;
+const HEAT_SMOOTH = 0.2;
 const MEAN_RADIUS = 14;
 
 const PRESSURE_STEP = 0.3;
 const VELOCITY_STEP = 0.4;
-const PRESSURE_LOSS = 0.9995;
-const VELOCITY_LOSS = 0.995;
-const SMOOTHING = 0.15;
+const PRESSURE_LOSS = 0.9999;
+const VELOCITY_LOSS = 0.999;
+const ADVECT = 0.3; // the share of each face's flow traced back along the flow
+const ADVECT_MAX = 3; // how many blocks back, at most
 const MAX_PRESSURE = 256;
+// The Powder Toy's blur kernel, exp(-2 r²) normalised: the block itself,
+// its four sides and its four corners.
+const K_SUM = 1 + 4 * Math.exp(-2) + 4 * Math.exp(-4);
+const K_SELF = 1 / K_SUM, K_SIDE = Math.exp(-2) / K_SUM, K_CORNER = Math.exp(-4) / K_SUM;
 
 // Pressure moves boiling and melting points. ATM pressure units make one
 // atmosphere (0 is normal air). A boiling point, in kelvin, is divided by
@@ -1146,6 +1184,62 @@ const SIDE_TOP = 1, SIDE_BOTTOM = 2, SIDE_LEFT = 4, SIDE_RIGHT = 8;
 const BOIL_LOWEST = 1 / (1 - Math.log(P_MIN) / TROUTON);
 const PHASE_HIGHEST = 1 / (1 - Math.log(1 + MAX_PRESSURE / ATM) / TROUTON);
 
+// The share of its excess heat air at temperature t gives the room a frame.
+function airLoss(t) {
+  if (t < 600) return AIR_TEMP_LOSS;
+  const k = (t + 273) / RADIATE_AT;
+  const loss = AIR_TEMP_LOSS * (1 + k * k * k);
+  return loss < RADIATE_MAX ? loss : RADIATE_MAX;
+}
+
+// The pressure air at temperature t adds: EXPAND a degree near room
+// temperature, levelling off towards THERMAL_MAX.
+function thermal(t) {
+  return THERMAL_MAX * Math.tanh(((t - AMBIENT) * EXPAND) / THERMAL_MAX);
+}
+
+// How far back along the flow a face looks, in blocks.
+function clampBack(v) {
+  const d = v * ADVECT;
+  return d > ADVECT_MAX ? ADVECT_MAX : d < -ADVECT_MAX ? -ADVECT_MAX : d;
+}
+
+// Blur `f` into `out` with the kernel, where `open`; a closed neighbour
+// counts as the block's own value. Closed entries are copied as they are.
+function blur(f, open, out, W, H) {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0, i = y * W; x < W; x++, i++) {
+      const own = f[i];
+      if (!open[i]) { out[i] = own; continue; }
+      let s = own * K_SELF;
+      const l = x > 0, r = x < W - 1, u = y > 0, d = y < H - 1;
+      s += (l && open[i - 1] ? f[i - 1] : own) * K_SIDE;
+      s += (r && open[i + 1] ? f[i + 1] : own) * K_SIDE;
+      s += (u && open[i - W] ? f[i - W] : own) * K_SIDE;
+      s += (d && open[i + W] ? f[i + W] : own) * K_SIDE;
+      s += (l && u && open[i - W - 1] ? f[i - W - 1] : own) * K_CORNER;
+      s += (r && u && open[i - W + 1] ? f[i - W + 1] : own) * K_CORNER;
+      s += (l && d && open[i + W - 1] ? f[i + W - 1] : own) * K_CORNER;
+      s += (r && d && open[i + W + 1] ? f[i + W + 1] : own) * K_CORNER;
+      out[i] = s;
+    }
+  }
+}
+
+// `f` at (x, y) in its own grid's units, blended from the four entries
+// around; a closed one counts as `own`.
+function sample(f, open, W, H, x, y, own) {
+  if (x < 0) x = 0; else if (x > W - 1) x = W - 1;
+  if (y < 0) y = 0; else if (y > H - 1) y = H - 1;
+  const x0 = x | 0, y0 = y | 0;
+  const x1 = x0 < W - 1 ? x0 + 1 : x0, y1 = y0 < H - 1 ? y0 + 1 : y0;
+  const fx = x - x0, fy = y - y0;
+  const a = y0 * W + x0, b = y0 * W + x1, c = y1 * W + x0, d = y1 * W + x1;
+  const va = open[a] ? f[a] : own, vb = open[b] ? f[b] : own;
+  const vc = open[c] ? f[c] : own, vd = open[d] ? f[d] : own;
+  return (va * (1 - fx) + vb * fx) * (1 - fy) + (vc * (1 - fx) + vd * fx) * fy;
+}
+
 class Air {
   constructor(cols, rows) {
     this.cols = cols;
@@ -1164,6 +1258,12 @@ class Air {
     this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature already counted in p
     this.heat = false;
     this.voidSides = 0; // which edges are a void (see SPONGE)
+    this.np = new Float32Array(n); // the next pressure and flow, being worked out
+    this.nvx = new Float32Array(n);
+    this.nvy = new Float32Array(n);
+    this.open = new Uint8Array(n); // which blocks and faces air can be in (see step)
+    this.openX = new Uint8Array(n);
+    this.openY = new Uint8Array(n);
     this.boil = new Float32Array(n).fill(1); // boiling point factor (see ATM)
     this.melt = new Float32Array(n).fill(1); // melting point factor
   }
@@ -1201,14 +1301,14 @@ class Air {
   // Convection off: the air forgets its heat, and the pressure it made.
   coolAll() {
     const { p, t, tPressed, blocked } = this;
-    for (let i = 0; i < p.length; i++) if (!blocked[i]) p[i] += (AMBIENT - tPressed[i]) * EXPAND;
+    for (let i = 0; i < p.length; i++) if (!blocked[i] && tPressed[i] !== AMBIENT) p[i] -= thermal(tPressed[i]);
     t.fill(AMBIENT);
     tPressed.fill(AMBIENT);
   }
 
   // `gravity` (gravity.js) is only read with convection on.
   step(gravity) {
-    const { W, H, p, vx, vy, blocked, scratch } = this;
+    const { W, H, p, vx, vy, blocked } = this;
 
     // 1. Pressure from divergence of the face velocities.
     for (let y = 1; y < H - 1; y++) {
@@ -1221,21 +1321,7 @@ class Air {
       }
     }
 
-    // 2. Light smoothing to keep the grid from ringing.
-    scratch.set(p);
-    for (let y = 1; y < H - 1; y++) {
-      for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
-        if (blocked[i]) continue;
-        let sum = 0, n = 0;
-        if (!blocked[i - 1]) { sum += scratch[i - 1]; n++; }
-        if (!blocked[i + 1]) { sum += scratch[i + 1]; n++; }
-        if (!blocked[i - W]) { sum += scratch[i - W]; n++; }
-        if (!blocked[i + W]) { sum += scratch[i + W]; n++; }
-        if (n) p[i] += (sum / n - scratch[i]) * SMOOTHING;
-      }
-    }
-
-    // 3. Velocity from the pressure gradient across each face.
+    // 2. Velocity from the pressure gradient across each face.
     for (let y = 0; y < H; y++) {
       for (let x = 0, i = y * W; x < W; x++, i++) {
         if (x < W - 1) {
@@ -1249,9 +1335,50 @@ class Air {
       }
     }
 
+    this.thicken();
     if (this.heat) this.stepHeat(gravity.gx, gravity.gy);
     if (this.voidSides !== 0) this.sponge();
 
+  }
+
+  // 3. Viscosity: blur the pressure and the flow (see KERNEL). 4. The flow
+  // carries itself along: each face takes ADVECT of the flow traced back
+  // from it. The border ring keeps no pressure; blocked blocks and the faces
+  // beside them hold no air and no flow, and count as their neighbour's own
+  // value in a blur.
+  thicken() {
+    const { W, H, p, vx, vy, blocked, np, nvx, nvy, open, openX, openY } = this;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0, i = y * W; x < W; x++, i++) {
+        const inside = x > 0 && y > 0 && x < W - 1 && y < H - 1;
+        open[i] = inside && !blocked[i] ? 1 : 0;
+        openX[i] = x < W - 1 && !blocked[i] && !blocked[i + 1] ? 1 : 0;
+        openY[i] = y < H - 1 && !blocked[i] && !blocked[i + W] ? 1 : 0;
+      }
+    }
+    blur(p, open, np, W, H);
+    blur(vx, openX, nvx, W, H);
+    blur(vy, openY, nvy, W, H);
+    p.set(np);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0, i = y * W; x < W; x++, i++) {
+        if (openX[i]) {
+          // The flow at this face, and where it came from.
+          const u = vx[i];
+          const v = (vy[i] + vy[i + 1] + (y > 0 ? vy[i - W] + vy[i - W + 1] : 0)) * 0.25;
+          const s = sample(vx, openX, W, H, x - clampBack(u), y - clampBack(v), u);
+          nvx[i] = nvx[i] * (1 - ADVECT) + s * ADVECT;
+        }
+        if (openY[i]) {
+          const v = vy[i];
+          const u = (vx[i] + vx[i + W] + (x > 0 ? vx[i - 1] + vx[i + W - 1] : 0)) * 0.25;
+          const s = sample(vy, openY, W, H, x - clampBack(u), y - clampBack(v), v);
+          nvy[i] = nvy[i] * (1 - ADVECT) + s * ADVECT;
+        }
+      }
+    }
+    vx.set(nvx);
+    vy.set(nvy);
   }
 
   // Damp the air near void edges (see SPONGE): pressure and flow fade out,
@@ -1367,11 +1494,13 @@ class Air {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
         if (blocked[i]) continue;
         if (!blocked[i + 1]) {
-          const e = (t[i] + t[i + 1] - mean[i] - mean[i + 1]) * 0.5;
+          let e = (t[i] + t[i + 1] - mean[i] - mean[i + 1]) * 0.5;
+          if (e > BUOYANT_MAX) e = BUOYANT_MAX; else if (e < -BUOYANT_MAX) e = -BUOYANT_MAX;
           vx[i] -= BUOYANCY * e * (gx[i] + gx[i + 1]) * 0.5;
         }
         if (!blocked[i + W]) {
-          const e = (t[i] + t[i + W] - mean[i] - mean[i + W]) * 0.5;
+          let e = (t[i] + t[i + W] - mean[i] - mean[i + W]) * 0.5;
+          if (e > BUOYANT_MAX) e = BUOYANT_MAX; else if (e < -BUOYANT_MAX) e = -BUOYANT_MAX;
           vy[i] -= BUOYANCY * e * (gy[i] + gy[i + W]) * 0.5;
         }
       }
@@ -1384,7 +1513,10 @@ class Air {
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
         if (blocked[i]) continue;
-        let sx = x - this.cvx(i) / CELL, sy = y - this.cvy(i) / CELL;
+        let dx = this.cvx(i) / CELL, dy = this.cvy(i) / CELL;
+        if (dx > HEAT_REACH) dx = HEAT_REACH; else if (dx < -HEAT_REACH) dx = -HEAT_REACH;
+        if (dy > HEAT_REACH) dy = HEAT_REACH; else if (dy < -HEAT_REACH) dy = -HEAT_REACH;
+        let sx = x - dx, sy = y - dy;
         if (sx < 0) sx = 0; else if (sx > W - 1) sx = W - 1;
         if (sy < 0) sy = 0; else if (sy > H - 1) sy = H - 1;
         const x0 = sx | 0, y0 = sy | 0;
@@ -1410,7 +1542,7 @@ class Air {
         if (!blocked[i + W]) { sum += scratch[i + W]; n++; }
         let v = scratch[i];
         if (n) v += (sum / n - v) * HEAT_SMOOTH;
-        t[i] = v + (AMBIENT - v) * AIR_TEMP_LOSS;
+        t[i] = v + (AMBIENT - v) * airLoss(v);
       }
     }
 
@@ -1418,13 +1550,14 @@ class Air {
     // frame (particles, tools, the flow, cooling).
     const { tPressed } = this;
     for (let i = 0; i < t.length; i++) {
-      if (!blocked[i]) p[i] += (t[i] - tPressed[i]) * EXPAND;
+      if (t[i] === tPressed[i]) continue;
+      if (!blocked[i]) p[i] += thermal(t[i]) - thermal(tPressed[i]);
       tPressed[i] = t[i];
     }
   }
 }
 
-return { CELL, AIR_SHARE, EXPAND, BOIL_LOWEST, PHASE_HIGHEST, Air };
+return { CELL, AIR_SHARE, EXPAND, BOIL_LOWEST, PHASE_HIGHEST, thermal, Air };
 })();
 
 __modules["src/sim/elements-expansion.js"] = (() => {
@@ -1933,10 +2066,10 @@ const EXPANSION_ELEMENTS = [
     colors: ['#8a6f6a', '#7d625d', '#967a75'], density: 19.8, conduct: 0.3, selfHeat: 0.05,
     emits: [{ p: 'NEUTRON', chance: 0.0015 }], glowAmount: 0.25,
     // As in The Powder Toy: every split adds a big kick of pressure, and
-    // pressure makes splits more likely, so a chain feeds on itself; what's
-    // left is as hot as anything gets.
+    // pressure makes splits more likely, so a chain feeds on itself. In a
+    // lump, what's left is a million degrees; a lone atom adds `heat`.
     fission: {
-      neutrons: 3, photons: 2, protons: 1, hot: true, pressure: 10, boost: 10,
+      neutrons: 3, photons: 2, protons: 1, hot: true, heat: 450, pressure: 10, boost: 10,
       products: [['FALLOUT', 0.4], ['PLASMA', 0.3]], capture: ['AMERICIUM', 0.04],
     },
     high: { temp: 2500, to: 'CORIUM', chance: 0.05 },
@@ -2016,9 +2149,9 @@ const EXPANSION_ELEMENTS = [
   {
     key: 'LEAD', name: 'Lead', sym: 'Pb', cat: 'metal', state: SOLID, strength: 60,
     colors: ['#6d7280', '#626775', '#777c89'], density: 11.3, conduct: 0.35, conductor: true,
-    nAbsorb: 0.35, high: melt(327),
+    high: melt(327),
     pressure: { above: 120, to: 'NEUTRONIUM', chance: 0.005 },
-    desc: 'Soft, heavy metal that stops radiation. Melts at 327 °C.',
+    desc: 'Soft, heavy metal that stops gamma rays and X-rays. Neutrons bounce off it. Melts at 327 °C.',
     hint: 'Where the radioactive decay chain ends.',
   },
   {
@@ -2096,7 +2229,7 @@ const EXPANSION_ELEMENTS = [
   {
     key: 'COBALT', name: 'Cobalt-60', sym: 'Co', cat: 'nuclear', state: SOLID, strength: 150,
     colors: ['#5a6fa8', '#50649a', '#6479b5'], density: 8.9, conduct: 0.6, conductor: true,
-    emits: [{ p: 'GAMMA', chance: 0.004 }], glowAmount: 0.25, decay: { chance: 0.00005, to: 'METAL' },
+    emits: [{ p: 'GAMMA', chance: 0.004 }], glowAmount: 0.25, decay: { chance: 0.00005, to: 'METAL', spawn: 'GAMMA' },
     high: melt(1495),
     desc: 'Metal made radioactive by neutrons. It shines gamma rays.',
     hint: 'Bombard Metal with Neutrons.',
@@ -2148,9 +2281,9 @@ const EXPANSION_ELEMENTS = [
   // ---- the far end of the table ------------------------------------------
   {
     key: 'STAR', name: 'Star', sym: 'Sun', cat: 'special', state: SOLID,
-    colors: ['#fff2b0', '#ffe680', '#fff8d6'], temp: 6000, holdTemp: true, conduct: 0.5,
-    emits: [{ p: 'PHOTON', chance: 0.03 }], glowAmount: 1.2, indestructible: true,
-    desc: 'A miniature sun. Fuses hydrogen into helium and floods the chamber with light.',
+    colors: ['#fff2b0', '#ffe680', '#fff8d6'], temp: 15e6, holdTemp: true, conduct: 0.5,
+    emits: [{ p: 'PHOTON', chance: 0.03 }, { p: 'UV_LIGHT', chance: 0.006 }], glowAmount: 1.2, indestructible: true,
+    desc: 'A miniature sun, as hot as the heart of the real one: 15 million °C. Fuses hydrogen into helium and floods the chamber with light, and some ultraviolet.',
     hint: 'Squeeze Hydrogen until it ignites.',
   },
   {
@@ -2289,14 +2422,18 @@ const EXPANSION_REACTIONS = [
 //   action  'spark' (sparks touching metal) or 'excite' (makes the target glow)
 //   recover frames the target needs before it can do this again (limits gain)
 const PARTICLE_HITS = [
-  { p: 'PHOTON', t: 'METAL', chance: 0.25, emit: ['ELECTRON'] },
+  // Only cesium gives up electrons to ordinary light; iron needs ultraviolet.
+  { p: 'UV_LIGHT', t: 'METAL', chance: 0.25, emit: ['ELECTRON'] },
   { p: 'PHOTON', t: 'CESIUM', chance: 0.6, emit: ['ELECTRON', 'ELECTRON'] },
-  { p: 'PHOTON', t: 'HYDROGEN', chance: 0.4, tTo: 'PROTON', emit: ['ELECTRON'] },
-  { p: 'PHOTON', t: 'LEAD', chance: 0.2, emit: ['POSITRON', 'ELECTRON'] },
+  // Pulling hydrogen's electron off takes far ultraviolet...
+  { p: 'UV_LIGHT', t: 'HYDROGEN', chance: 0.4, tTo: 'PROTON', emit: ['ELECTRON'] },
+  // ...and making an electron and a positron takes a gamma ray (over 1 MeV)
+  // passing a heavy nucleus.
+  { p: 'GAMMA', t: 'LEAD', chance: 0.2, emit: ['POSITRON', 'ELECTRON'] },
   { p: 'PHOTON', t: 'RUBY', chance: 0.3, emit: ['PHOTON'], copy: true, keep: true, recover: 20 },
   { p: 'PHOTON', t: 'PLANT', chance: 0.1, tTo: 'FLOWER' },
   { p: 'PHOTON', t: 'SILICON', chance: 0.6, action: 'spark' },
-  { p: 'PHOTON', t: 'OXYGEN', chance: 0.02, tTo: 'OZONE' },
+  { p: 'UV_LIGHT', t: 'OXYGEN', chance: 0.02, tTo: 'OZONE' }, // as in the ozone layer
   { p: 'PHOTON', t: 'CHLORINE', chance: 0.3, heat: 400 },
   { p: 'ELECTRON', t: 'NEON', chance: 0.9, action: 'excite', emit: ['PHOTON'] },
   { p: 'ELECTRON', t: 'WATER', chance: 0.1, tTo: 'HYDROGEN' },
@@ -4874,7 +5011,7 @@ const WORLD_ELEMENTS = [
   },
   {
     key: 'SUPERNOVA', name: 'Supernova', sym: 'SN', cat: 'special', state: ENERGY, fixed: true,
-    colors: ['#ffffff', '#f0f4ff', '#fff8e8'], temp: 9000, holdTemp: true, life: [60, 90], behavior: 'decay',
+    colors: ['#ffffff', '#f0f4ff', '#fff8e8'], temp: 1e9, holdTemp: true, life: [60, 90], behavior: 'decay',
     lifeEnd: { to: 'NEUTRONIUM', alt: 'GOLD', altChance: 0.4, explode: 30 }, glowAmount: 3, render: 'star',
     desc: 'A star that has fused its core all the way to iron, which can\'t be fused for energy, collapses and rebounds in a blast brighter than a galaxy. Its debris is where gold comes from.',
     hint: 'Feed iron (Metal) to a Star.',
@@ -4888,11 +5025,11 @@ const WORLD_ELEMENTS = [
   },
   {
     key: 'QUARK_GLUON_PLASMA', name: 'Quark-Gluon Plasma', sym: 'QGP', cat: 'special', state: ENERGY,
-    colors: ['#ff4aff', '#4affff', '#ffff4a'], temp: 9999, holdTemp: true, density: 0.02,
+    colors: ['#ff4aff', '#4affff', '#ffff4a'], temp: 5.5e12, holdTemp: true, density: 0.02,
     life: [30, 60], behavior: 'decay', render: 'strange', glowAmount: 2,
     lifeEnd: { to: 'HYDROGEN', alt: 'HELIUM', altChance: 0.25 },
     emits: [{ p: 'PROTON', chance: 0.05 }, { p: 'NEUTRON', chance: 0.05 }, { p: 'PION', chance: 0.05 }],
-    desc: 'Matter so hot that protons and neutrons melt into a soup of quarks and gluons, as the whole universe was a millionth of a second after the Big Bang. As it cools it freezes into hydrogen and helium, in the same three-to-one mix the Big Bang made.',
+    desc: 'Matter so hot (5.5 trillion °C, the hottest thing ever made, at CERN) that protons and neutrons melt into a soup of quarks and gluons, as the whole universe was a millionth of a second after the Big Bang. As it cools it freezes into hydrogen and helium, in the same three-to-one mix the Big Bang made.',
     hint: 'Melt Neutronium in Plasma.',
   },
   {
@@ -5215,6 +5352,32 @@ const MACHINE_ELEMENTS = [
     hint: 'Old thermostats tipped a bead of Mercury across a Switch.',
   }),
 
+  machine('INVERTER', 'Inverter', 'NOT', 'inverter', ['#3a3a52', '#34344a', '#40405a'], {
+    light: '#c08aff', pressure: { above: 60, to: 'SILICON', alt: 'SWITCH', altChance: 0.5, chance: 0.02 },
+    desc: 'A NOT gate. It powers what\'s on its far side unless something powers it, so a lamp wired through it is lit while its switch is off. Feed it from one side; it answers on the opposite side.',
+    hint: 'Silicon and a Switch make a transistor.',
+  }),
+  machine('DELAY', 'Delay Line', 'Dly', 'delay', ['#3a4a3a', '#344434', '#405040'], {
+    light: '#8aff9a', pressure: { above: 60, to: 'CLOCK', alt: 'COPPER', altChance: 0.5, chance: 0.02 },
+    desc: 'A slow wire: current creeps along it one cell every 4 frames, and only forwards. A longer line waits longer.',
+    hint: 'A Clock wound with Copper.',
+  }),
+  machine('BAROMETER', 'Barometer', 'Bar', 'barometer', ['#4a5560', '#424d58', '#525d68'], {
+    light: '#ff9a7a', pressure: { above: 60, to: 'MERCURY', alt: 'GLASS', altChance: 0.5, chance: 0.02 },
+    desc: 'Switches on while the air pressure beside it is above +5. Wire it to a fan or a valve to keep a chamber in check.',
+    hint: 'Torricelli\'s barometer: a column of Mercury in a Glass tube.',
+  }),
+  machine('SMOKE_DETECTOR', 'Smoke Detector', 'SmD', 'smoke', ['#d8d8d0', '#ccccc4', '#e0e0d8'], {
+    light: '#ff4a4a', pressure: { above: 60, to: 'AMERICIUM', alt: 'PLASTIC', altChance: 0.7, chance: 0.02 },
+    desc: 'Switches on while smoke, or any other gas, touches it. A fire alarm.',
+    hint: 'Most smoke detectors hold a speck of Americium in a Plastic case.',
+  }),
+  machine('WIND_TURBINE', 'Wind Turbine', 'WTb', 'turbine', ['#c8ccd0', '#bcc0c4', '#d4d8dc'], {
+    light: '#9affc8', pressure: { above: 60, to: 'FAN', alt: 'ALUMINUM', altChance: 0.5, chance: 0.02 },
+    desc: 'Makes power while the wind blows past it.',
+    hint: 'Aluminum blades on a Fan, run backwards.',
+  }),
+
   // ---- machines -------------------------------------------------------------------
   machine('DOOR', 'Door', 'Dr', 'door', ['#6b7280', '#737a88', '#646b78', '#5e6572'], {
     strength: 200, conduct: 0.5, pressure: { above: 200, to: 'STEEL', chance: 0.01 },
@@ -5249,13 +5412,13 @@ const MACHINE_ELEMENTS = [
   machine('HEATER', 'Heater', 'Htr', 'heater', ['#5a4a44', '#52423c', '#62524c'], {
     light: '#ff7a3a', conduct: 0.6, strength: 100,
     pressure: { above: 60, to: 'NICHROME', alt: 'PORCELAIN', altChance: 0.5, chance: 0.02 },
-    desc: 'Heats up (to 1200 °C at most) while it\'s powered, warming everything touching it.',
+    desc: 'Heats up while it\'s powered, faster and faster the longer it stays on, with no limit, warming everything touching it.',
     hint: 'Nichrome wire wound on Porcelain.',
   }),
   machine('COOLER', 'Cooler', 'Clr', 'cooler', ['#44525e', '#3e4c58', '#4a5864'], {
     light: '#7ad8ff', conduct: 0.6, strength: 100,
     pressure: { above: 60, to: 'BISMUTH', alt: 'TELLURIUM', altChance: 0.5, chance: 0.02 },
-    desc: 'Chills itself (down to −150 °C) while it\'s powered, cooling everything touching it. It works like a Peltier cooler: current pumps heat from one side to the other.',
+    desc: 'Chills itself while it\'s powered, all the way down to absolute zero, cooling everything touching it. It works like a Peltier cooler: current pumps heat from one side to the other.',
     hint: 'Bismuth and Tellurium make the Peltier coolers in car fridges.',
   }),
   machine('FAN', 'Fan', 'Fan', 'fan', ['#4a5058', '#42484f', '#525860'], {
@@ -5273,6 +5436,48 @@ const MACHINE_ELEMENTS = [
     desc: 'Swallows the powders, liquids and gases touching it while it\'s powered. Solids are safe.',
     hint: 'Put a Void on a Switch.',
   }),
+  machine('IGNITER', 'Igniter', 'Ign', 'igniter', ['#b8b0a0', '#aca494', '#c4bcac'], {
+    light: '#ff9a3a', strength: 120, pressure: { above: 100, to: 'IRIDIUM', alt: 'PORCELAIN', altChance: 0.5, chance: 0.02 },
+    desc: 'While it\'s powered it sets anything flammable touching it alight, and throws little flames into the air beside it.',
+    hint: 'A spark plug: an Iridium tip in Porcelain.',
+  }),
+  machine('NEUTRON_SOURCE', 'Neutron Source', 'NSc', 'neutron', ['#5a6a5a', '#526252', '#627262'], {
+    light: '#b8ffb0', strength: 150, pressure: { above: 150, to: 'RADIUM', alt: 'BERYLLIUM', altChance: 0.5, chance: 0.01 },
+    desc: 'Fires neutrons out of its open faces while it\'s powered. Start a reactor with a switch.',
+    hint: 'Radium mixed with Beryllium: the source the neutron was discovered with.',
+  }),
+  machine('PIPE', 'Pipe', 'Pip', 'pipe', ['#8a5a3c', '#7e5034', '#966444'], {
+    strength: 150, conduct: 0.6, pressure: { above: 220, to: 'COPPER', alt: 'SOLDER', altChance: 0.3, chance: 0.02 },
+    desc: 'An airtight tube, one cell wide. Air goes in at one open end and comes out at the others, even through a wall, so the pressure at its ends evens out.',
+    hint: 'Copper plumbing, joined with Solder.',
+  }),
+  machine('PUMP', 'Pump', 'Pmp', 'pump', ['#4a5a6e', '#425266', '#526276'], {
+    light: '#7ad8ff', strength: 150, pressure: { above: 220, to: 'PIPE', alt: 'ELECTROMAGNET', altChance: 0.5, chance: 0.02 },
+    desc: 'Put it at the end of a Pipe. While it\'s powered it sucks in the air beside it and blows it out of the pipe\'s other ends, building up pressure there. Switched off, it\'s shut.',
+    hint: 'A Pipe driven by an Electromagnet motor.',
+  }),
+  machine('VALVE', 'Safety Valve', 'SVl', 'valve', ['#8a7a3a', '#7e6e34', '#968644'], {
+    // Pressure opens it long before it could crush it, so it has no crush rule.
+    strength: 200, conduct: 0.4,
+    desc: 'An airtight plug that opens by itself when the pressure beside it passes +30, letting the air out, and shuts again once it has dropped below +10. Fit one to anything you pressurise.',
+    hint: 'A Brass fitting on a Pipe.',
+  }),
+  machine('CONVEYOR', 'Conveyor', 'Cnv', 'conveyor', ['#2e2e2e', '#363636', '#262626', '#3a3a3a'], {
+    light: '#ffd76a', strength: 100, pressure: { above: 120, to: 'RUBBER', alt: 'FAN', altChance: 0.3, chance: 0.02 },
+    desc: 'A belt. While it\'s powered, sand, water, debris and creatures resting on it ride along, away from the end the power comes in at.',
+    hint: 'A Rubber belt run by a Fan motor.',
+  }),
+  machine('PISTON', 'Piston', 'Pst', 'piston', ['#5c6470', '#545c68', '#646c78'], {
+    light: '#9fd8ff', strength: 200, pressure: { above: 240, to: 'PUMP', alt: 'STEEL', altChance: 0.5, chance: 0.01 },
+    desc: 'While it\'s powered it pushes out an arm up to 8 cells long, away from the side the power comes in, shoving whatever is in front of it. It pulls the arm back when the power stops.',
+    hint: 'A Pump driving a Steel ram.',
+  }),
+  {
+    // A piston's arm: not a discovery, and not in the palette.
+    key: 'PISTON_ARM', name: 'Piston Arm', sym: 'Arm', cat: null, state: SOLID, always: true,
+    colors: ['#9aa3b0', '#a4adba', '#909aa6'], density: 7.8, conduct: 0.3, strength: 200, acidProof: true,
+    desc: 'The arm of a piston.',
+  },
   {
     key: 'BEAM_SPLITTER', name: 'Beam Splitter', sym: 'BSp', cat: 'machine', state: SOLID,
     colors: ['#a8cfe0', '#b4d8e8', '#9cc6d8'], density: 2.6, conduct: 0.1, strength: 40, acidProof: true,
@@ -5302,6 +5507,18 @@ const MACHINE_REACTIONS = [
   { a: 'CLONE', b: 'SWITCH', chance: 0.03, aTo: 'DISPENSER', bTo: null },
   { a: 'VOID', b: 'SWITCH', chance: 0.03, aTo: 'DRAIN', bTo: null },
   { a: 'MIRROR', b: 'QUARTZ', chance: 0.03, aTo: null, bTo: 'BEAM_SPLITTER' },
+  { a: 'COPPER', b: 'SOLDER', chance: 0.03, aTo: 'PIPE', bTo: null },
+  { a: 'PIPE', b: 'ELECTROMAGNET', chance: 0.03, aTo: 'PUMP', bTo: null },
+  { a: 'PIPE', b: 'BRASS', chance: 0.03, aTo: 'VALVE', bTo: null },
+  { a: 'RUBBER', b: 'FAN', chance: 0.03, aTo: 'CONVEYOR', bTo: null },
+  { a: 'PUMP', b: 'STEEL', chance: 0.03, aTo: 'PISTON', bTo: null },
+  { a: 'SILICON', b: 'SWITCH', chance: 0.03, aTo: 'INVERTER', bTo: null },
+  { a: 'CLOCK', b: 'COPPER', chance: 0.03, aTo: 'DELAY', bTo: null },
+  { a: 'MERCURY', b: 'GLASS', chance: 0.03, aTo: null, bTo: 'BAROMETER' },
+  { a: 'AMERICIUM', b: 'PLASTIC', chance: 0.03, aTo: null, bTo: 'SMOKE_DETECTOR' },
+  { a: 'FAN', b: 'ALUMINUM', chance: 0.03, aTo: 'WIND_TURBINE', bTo: null },
+  { a: 'IRIDIUM', b: 'PORCELAIN', chance: 0.03, aTo: 'IGNITER', bTo: null },
+  { a: 'RADIUM', b: 'BERYLLIUM', chance: 0.03, aTo: 'NEUTRON_SOURCE', bTo: null },
 ];
 
 return { MACHINE_ELEMENTS, MACHINE_REACTIONS };
@@ -5574,8 +5791,8 @@ const CATEGORIES = [
 //   selfHeat    °C gained per frame (radioactive warmth)
 //   decay       { chance, to, spawn } random decay, like a half-life
 //   fission     what a neutron does when it splits this element: neutrons,
-//               photons and protons thrown out, heat (or hot: the maximum
-//               temperature), pressure added to its air block, blast (a
+//               photons and protons thrown out, heat (and hot: a million
+//               degrees in a lump), pressure added to its air block, blast (a
 //               push), boost (the pressure that doubles the chance of a
 //               split), products, capture
 //   transparent / opaque / reflect   how light treats it
@@ -5858,16 +6075,16 @@ const ELEMENT_LIST = [
   },
   {
     key: 'LIGHTNING', name: 'Lightning', sym: 'Lt', cat: 'energy', state: ENERGY, fixed: true,
-    colors: ['#f4f0ff', '#dcd4ff'], temp: 8000, holdTemp: true, conduct: 0.3,
+    colors: ['#f4f0ff', '#dcd4ff'], temp: 30000, holdTemp: true, conduct: 0.3,
     life: [150, 240], behavior: 'lightning',
-    desc: 'A bolt that strikes downward, melting sand and sparking metal.',
+    desc: 'A bolt at 30,000 °C that strikes downward, melting sand and sparking metal.',
     hint: 'Put a Spark into a Cloud.',
   },
   {
     key: 'PLASMA', name: 'Plasma', sym: 'Pz', cat: 'energy', state: ENERGY,
-    colors: ['#e07bff'], density: 0.015, temp: 5000, holdTemp: true, conduct: 0.5,
+    colors: ['#e07bff'], density: 0.015, temp: 20000, holdTemp: true, conduct: 0.5,
     life: [25, 55], rise: 0.6, sink: 0.05, airDrag: 0.5, behavior: 'plasma',
-    desc: 'Superheated gas at 5000 °C. Melts nearly anything.',
+    desc: 'Superheated gas at 20,000 °C. Melts nearly anything.',
     hint: 'Superheat Steam past 3000 °C.',
   },
   {
@@ -6442,7 +6659,7 @@ for (const d of DEFS) {
   AIRTIGHT[d.id] = d.strength >= 25 && d.explode === 0 ? 1 : 0;
   const m = d.machine;
   MACHINE[d.id] = m ? 1 : 0;
-  POWERED[d.id] = ['door', 'lamp', 'laser', 'heater', 'cooler', 'fan', 'dispenser', 'drain'].includes(m) ? 1 : 0;
+  POWERED[d.id] = ['door', 'lamp', 'laser', 'heater', 'cooler', 'fan', 'dispenser', 'drain', 'pump', 'conveyor', 'piston', 'inverter', 'delay', 'igniter', 'neutron'].includes(m) ? 1 : 0;
   PRESSABLE[d.id] = m === 'switch' || m === 'button' ? 1 : 0;
   LIGHT_SENSOR[d.id] = m === 'photocell' ? 1 : 0;
   MIRROR_BACKING[d.id] = d.transparent && d.state === SOLID ? 1 : 0;
@@ -6876,7 +7093,6 @@ __modules["src/sim/behaviors.js"] = (() => {
 // to let the generic phase changes, reactions and movement run as well.
 
 const { DEFS, ID, NUM, State, REACT, SPECIAL } = __modules["src/sim/elements.js"];
-const { MAX_TEMP } = __modules["src/sim/constants.js"];
 const { CONDUCTOR, CLONEABLE, ORGANIC, TRANSMUTABLE, SPEW, POWERED, PRESSABLE } = __modules["src/sim/lookups.js"];
 const { DX8, DY8 } = __modules["src/sim/gravity.js"];
 
@@ -6993,7 +7209,7 @@ const Behaviors = {
       const j = ny * this.w + nx;
       const u = this.type[j];
       if (CONDUCTOR[u]) { if (this.life[j] === 0) this.sparkAt(j); }
-      else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j);
+      else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j, y * this.w + x);
     }
   },
 
@@ -7089,7 +7305,7 @@ const Behaviors = {
           else if (DEFS[u].explode > 0) this.ignite(j, nx, ny);
           // Current powers machines (and open doorways) beside the wire. A
           // loose spark, not one running along a wire, flips a switch.
-          else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j);
+          else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) this.powerCell(j, i);
           else if (PRESSABLE[u]) { if (this.ctype[i] === 0) this.press(j); }
           else if (DEFS[u].excite !== null) { // neon, argon, sodium vapour... light up
             this.life[j] = 20;
@@ -7099,7 +7315,7 @@ const Behaviors = {
       }
     }
     const under = this.ctype[i];
-    if (under) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + DEFS[under].sparkHeat);
+    if (under) this.temp[i] += DEFS[under].sparkHeat;
     if (--this.life[i] <= 0) {
       if (under) {
         type[i] = under;
@@ -7129,7 +7345,7 @@ const Behaviors = {
         this.sparkAt(j);
         this.record(SPARK, SPECIAL['battery-spark']);
       } else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) {
-        this.powerCell(j);
+        this.powerCell(j, y * w + x);
       }
     }
     return false;
@@ -7222,7 +7438,7 @@ const Behaviors = {
         const j = ny * w + nx;
         const u = type[j];
         if (u === 0 || u === LIGHTNING || u === WALL) continue;
-        this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + 1200);
+        this.temp[j] += 1200;
         const r = REACT[LIGHTNING * NUM + u];
         if (r !== null && r.other.to >= 0 && this.rand() < r.chance) {
           const o = r.other;
@@ -7699,11 +7915,12 @@ __modules["src/sim/particles.js"] = (() => {
 // Mixed into World.prototype; `initParticles` sets up the storage.
 
 const { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL, State } = __modules["src/sim/elements.js"];
-const { MAX_TEMP, MIN_TEMP, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } = __modules["src/sim/constants.js"];
+const { MIN_TEMP, FISSION_HOT, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } = __modules["src/sim/constants.js"];
 const { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED } = __modules["src/sim/lookups.js"];
 const { LENS } = __modules["src/sim/gravity.js"];
 
 const PASS = 0, DEAD = 1, BOUNCE = 2;
+const LUMP = 13; // of the 24 cells around a split (see inLump)
 const { SOLID } = State;
 const CAPACITY = 12000;
 const MAGNET_BEND = 0.006; // radians per unit of field per frame
@@ -7961,7 +8178,7 @@ const Particles = {
         if (e.indestructible) return this.impact(j, lx, ly, d);
         const T = this.ptemp[k];
         const nt = this.temp[j] + (T - this.temp[j]) * 0.25;
-        this.temp[j] = nt > MAX_TEMP ? MAX_TEMP : nt < MIN_TEMP ? MIN_TEMP : nt;
+        this.temp[j] = nt < MIN_TEMP ? MIN_TEMP : nt;
         if (T > PROTON_IGNITES && (e.flammable > 0 || e.explode > 0) && this.ignite(j, ix, iy)) {
           this.air.addPressure(this.air.at(ix, iy), 1);
         }
@@ -8006,9 +8223,10 @@ const Particles = {
         return this.impact(j, lx, ly, d);
       }
       case PMODE.gamma: {
-        // Dense matter soaks up gamma rays; light matter barely slows them.
+        // Dense matter soaks up gamma rays; light matter barely slows them. A
+        // cell of lead stops about half, as a centimetre of real lead does.
         if (GASLIKE[u]) return PASS;
-        const stop = e.indestructible ? 1 : Math.min(0.9, e.density * 0.025 + e.nAbsorb * 0.3);
+        const stop = e.indestructible ? 1 : Math.min(0.9, e.density * 0.05);
         if (this.rand() >= stop) return PASS;
         return this.impact(j, lx, ly, d);
       }
@@ -8054,7 +8272,7 @@ const Particles = {
   // hitPressure). Returns DEAD.
   impact(j, x, y, d) {
     if (DEFS[this.type[j]].indestructible) return DEAD;
-    if (d.hitHeat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + d.hitHeat);
+    if (d.hitHeat) this.temp[j] += d.hitHeat;
     if (d.hitPressure) this.air.addPressure(this.air.at(x, y), d.hitPressure);
     return DEAD;
   },
@@ -8064,7 +8282,7 @@ const Particles = {
   // and a loose grain or drop is shoved along.
   batter(k, j, e, lx, ly, d) {
     if (e.indestructible) return;
-    this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + d.hitHeat);
+    this.temp[j] += d.hitHeat;
     this.air.addPressure(this.air.at(lx, ly), d.hitPressure);
     if (e.state === SOLID) {
       if (e.strength > 0 && this.loose[j] === 0 && this.rand() < NEUTRON_KNOCK) this.loose[j] = 1;
@@ -8081,7 +8299,7 @@ const Particles = {
     // Whatever else the hit does, a particle that stops here still lands a blow.
     if (!r.keep) this.impact(j, lx, ly, DEFS[this.ptype[k]]);
     if (r.recover) this.life[j] = r.recover;
-    if (r.heat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
+    if (r.heat) this.temp[j] += r.heat;
     if (r.action === 'spark') this.sparkNeighbors(ix, iy);
     else if (r.action === 'excite') this.life[j] = 24;
     if (r.spawn >= 0 && this.spawnNear(ix, iy, r.spawn) >= 0) this.record(r.spawn, r.spawnRule);
@@ -8113,12 +8331,30 @@ const Particles = {
     if (e.emits !== null) {
       for (const m of e.emits) if (this.rand() < m.chance * KICK_EMIT) this.emitAt(m.id, x, y);
     }
-    if (e.selfHeat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + e.selfHeat * KICK_EMIT);
+    if (e.selfHeat) this.temp[j] += e.selfHeat * KICK_EMIT;
     const o = e.decay;
     if (o !== null && this.rand() < Math.min(0.9, o.chance * KICK_DECAY)) this.decayCell(j, x, y, o);
   },
 
-  // A neutron splits the atom in cell j.
+  // Is the atom at (x, y) part of a lump of its element: at least LUMP of
+  // the 24 cells around it the same? (See fission.)
+  inLump(x, y, u) {
+    const { w, h, type } = this;
+    let n = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= h) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const xx = x + dx;
+        if (xx >= 0 && xx < w && (dx !== 0 || dy !== 0) && type[yy * w + xx] === u) n++;
+      }
+    }
+    return n >= LUMP;
+  },
+
+  // A neutron splits the atom in cell j. A `hot` split (plutonium) leaves
+  // its cell at least FISSION_HOT, but only in a lump, as in a bomb's
+  // critical mass; a lone atom (bred in a uranium pile) just adds its heat.
   fission(j, u, x, y) {
     const f = DEFS[u].fission;
     if (f.captureTo >= 0 && this.rand() < f.captureChance) {
@@ -8126,13 +8362,14 @@ const Particles = {
       return;
     }
     // Heat first, so what flies out (protons especially) carries it.
-    this.temp[j] = f.hot ? MAX_TEMP : Math.min(MAX_TEMP, this.temp[j] + f.heat);
+    const hot = f.hot && this.inLump(x, y, u);
+    this.temp[j] = hot ? Math.max(this.temp[j], FISSION_HOT) : this.temp[j] + f.heat;
     for (let n = 0; n < f.neutrons; n++) this.emitAt(NEUTRON, x, y);
     for (let n = 0; n < f.photons; n++) this.emitAt(PHOTON, x, y);
     for (let n = 0; n < f.protons; n++) this.emitAt(PROTON, x, y);
     if (f.pressure) this.air.addPressure(this.air.at(x, y), f.pressure);
     if (f.blast) this.blast(x, y, f.blast);
-    if (f.hot) this.igniteAround(x, y);
+    if (hot) this.igniteAround(x, y);
     let roll = this.rand();
     for (const p of f.products) {
       if (roll < p.w) { this.convert(j, p.id, true, p.rule); break; }
@@ -8276,11 +8513,12 @@ __modules["src/sim/machines.js"] = (() => {
 // (a switch's position, a button's countdown) or what a dispenser pours.
 
 const { DEFS, ID, State } = __modules["src/sim/elements.js"];
+const { CONDUCTOR, POWERED, DISPENSABLE, GASLIKE } = __modules["src/sim/lookups.js"];
+const { MIN_TEMP } = __modules["src/sim/constants.js"];
 const { CELL } = __modules["src/sim/air.js"];
-const { CONDUCTOR, POWERED, DISPENSABLE } = __modules["src/sim/lookups.js"];
 
 const { SOLID, POWDER, GAS, ENERGY } = State;
-const { DOOR, PHOTON } = ID;
+const { DOOR, PHOTON, VALVE, BATTERY, SPARK, FIRE, NEUTRON } = ID;
 
 const POWER_HOLD = 20;
 const DOOR_HOLD = 20;
@@ -8289,13 +8527,49 @@ const CLOCK_PERIOD = 60;
 const PRESS_HOLD = 4; // frames without a spark before a switch can flip again
 const PHOTOCELL_TIME = 8;
 const THERMOSTAT_TEMP = 60;
-const HEATER_MAX = 1200;
-const COOLER_MIN = -150;
-const FAN_PUSH = 0.25;
+// A heater heats HEATER_RATE a frame, plus HEATER_RAMP more for every frame
+// it has been on, so it outruns the heat it loses and has no limit. A cooler
+// chills COOLER_RATE a frame, down to absolute zero.
+const HEATER_RATE = 20;
+const HEATER_RAMP = 0.1;
+const COOLER_RATE = 20;
 const DX4 = [1, -1, 0, 0];
 const DY4 = [0, 0, 1, -1];
 
 const PUSH_REACH = 6; // how far a shutting door can shove things aside
+// A safety valve opens when the pressure beside it passes VALVE_OPEN and
+// stays open while it's above VALVE_CLOSE.
+const VALVE_OPEN = 30;
+const VALVE_CLOSE = 10;
+// An open valve passes this share of the pressure difference across it a
+// frame, per cell (see ventValve).
+const VALVE_VENT = 0.1;
+// An inverter stays off for INVERTER_HOLD frames after power reaches it,
+// enough to bridge the gaps between a wire's pulses. Power from a wire cell
+// it sparked itself within ECHO frames is its own echo, and is ignored.
+const INVERTER_HOLD = POWER_HOLD;
+const ECHO = 3;
+// An inverter that has never been fed looks for its input side every
+// INVERTER_LOOK frames, following wires at most LOOK_LIMIT cells.
+const INVERTER_LOOK = 15;
+const LOOK_LIMIT = 4096;
+// The controls that make power of their own (see findInverterInput).
+const SOURCE_KINDS = new Set(['switch', 'button', 'clock', 'plate', 'photocell', 'thermostat',
+  'barometer', 'smoke', 'turbine']);
+// A delay cell charges for DELAY_STEP frames, fires, then rests DELAY_REST.
+const DELAY_STEP = 4;
+const DELAY_REST = 12;
+const BAROMETER_ON = 5; // pressure
+const TURBINE_ON = 0.5; // wind speed
+const IGNITER_FLAME = 0.2; // chance a frame of a flame in each empty cell beside it
+const NEUTRON_RATE = 0.15; // chance a frame of a neutron from each open face
+
+// Direction indexes into DX4/DY4: 0 right, 1 left, 2 down, 3 up.
+const OPPOSITE = [1, 0, 3, 2];
+function dirIndex(dx, dy) {
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 0 : 1;
+  return dy >= 0 ? 2 : 3;
+}
 
 function initMachines(world) {
   const n = world.w * world.h;
@@ -8304,6 +8578,15 @@ function initMachines(world) {
   world.flood = new Int32Array(n);
   world.floodMark = new Uint32Array(n);
   world.floodStamp = 0;
+  // Where the power reaching each machine cell came from (a cell index), and
+  // which way it was going as it came in (see dirIndex). -1: no idea.
+  world.powerFrom = new Int32Array(n).fill(-1);
+  world.powerDir = new Int8Array(n).fill(-1);
+  world.doorKind = new Uint16Array(n); // what an open doorway turns back into
+  world.echo = new Uint32Array(n); // the frame an inverter last sparked each wire cell
+  world.pipeCells = []; // pipe and pump cells, listed during each frame's update
+  world.pipeNets = []; // the networks they make (machines-air.js)
+  world.pipeCount = 0;
 }
 
 const Machines = {
@@ -8342,6 +8625,45 @@ const Machines = {
       case 'thermostat':
         on = this.temp[i] >= THERMOSTAT_TEMP;
         break;
+      case 'barometer':
+        on = this.pressureNear(x, y) > BAROMETER_ON;
+        break;
+      case 'smoke':
+        on = this.gasTouching(x, y);
+        break;
+      case 'turbine':
+        on = this.windNear(x, y) > TURBINE_ON;
+        break;
+
+      case 'pipe':
+        this.pipeCells.push(i);
+        return false;
+      case 'valve':
+        if (this.pressureNear(x, y) > VALVE_OPEN) this.openDoor(i);
+        return false;
+      case 'inverter': {
+        // On (and lit) unless fed. Until it knows its input side it looks
+        // for it every INVERTER_LOOK frames, and answers on every side.
+        if (this.powerDir[i] < 0 && (this.tick + i) % INVERTER_LOOK === 0) {
+          this.powerDir[i] = this.findInverterInput(i, x, y);
+        }
+        const fed = this.ctype[i] > 0;
+        if (fed) this.ctype[i]--;
+        this.life[i] = fed ? 0 : 1;
+        if (!fed) this.signal(x, y, this.powerDir[i], true);
+        return false;
+      }
+      case 'delay': {
+        if (this.life[i] > 0) this.life[i]--; // resting (and lit) after firing
+        const c = this.ctype[i];
+        if (c > 1) this.ctype[i] = c - 1;
+        else if (c === 1) {
+          this.ctype[i] = 0;
+          this.life[i] = DELAY_REST;
+          this.fireDelay(i, x, y);
+        }
+        return false;
+      }
 
       // ---- machines: run while powered ---------------------------------------
       default: {
@@ -8390,10 +8712,15 @@ const Machines = {
         if (powered) this.fireBeam(x, y, this.type[i], 0.5);
         break;
       case 'heater':
-        if (powered && this.temp[i] < HEATER_MAX) this.temp[i] = Math.min(HEATER_MAX, this.temp[i] + 25);
+        if (powered) {
+          if (this.ctype[i] < 65535) this.ctype[i]++; // frames on
+          this.temp[i] += HEATER_RATE + this.ctype[i] * HEATER_RAMP;
+        } else {
+          this.ctype[i] = 0;
+        }
         break;
       case 'cooler':
-        if (powered && this.temp[i] > COOLER_MIN) this.temp[i] = Math.max(COOLER_MIN, this.temp[i] - 25);
+        if (powered) this.temp[i] = Math.max(MIN_TEMP, this.temp[i] - COOLER_RATE);
         break;
       case 'fan':
         if (powered) this.blowOut(x, y);
@@ -8416,33 +8743,169 @@ const Machines = {
       case 'drain':
         if (powered) this.drainAround(x, y);
         break;
+      case 'pump':
+        this.pipeCells.push(i); // its pumping is done with its network's
+        break;
+      case 'conveyor':
+        if (powered) this.runConveyor(i, x, y);
+        break;
+      case 'piston':
+        this.runPiston(i, x, y, powered);
+        break;
+      case 'igniter':
+        if (powered) {
+          for (let k = 0; k < 4; k++) {
+            const nx = x + DX4[k], ny = y + DY4[k];
+            if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
+            const j = ny * this.w + nx, e = DEFS[this.type[j]];
+            if (e.flammable > 0 || e.explode > 0) this.ignite(j, nx, ny);
+            else if (this.type[j] === 0 && this.rand() < IGNITER_FLAME) this.spawn(j, FIRE);
+          }
+        }
+        break;
+      case 'neutron':
+        if (powered) {
+          for (let k = 0; k < 4; k++) {
+            const nx = x + DX4[k], ny = y + DY4[k];
+            if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
+            const u = this.type[ny * this.w + nx];
+            if ((u === 0 || GASLIKE[u]) && this.rand() < NEUTRON_RATE) {
+              this.spawnProjectile(NEUTRON, nx + 0.5, ny + 0.5, DX4[k] * 2, DY4[k] * 2);
+            }
+          }
+        }
+        break;
       default:
         break; // doors and lamps have nothing to do each frame
     }
   },
 
-  // A control that is on: start current in idle wires and power machines.
-  signal(x, y) {
+  // A control that is on: start current in idle wires and power machines,
+  // on every side, or only on `side` (an index into DX4/DY4). An inverter
+  // marks the wire cells it sparks (`mark`) so it knows its own echo.
+  signal(x, y, side = -1, mark = false) {
+    const from = y * this.w + x;
     for (let k = 0; k < 4; k++) {
+      if (side >= 0 && k !== side) continue;
       const nx = x + DX4[k], ny = y + DY4[k];
       if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
       const j = ny * this.w + nx;
       const u = this.type[j];
       if (CONDUCTOR[u]) {
-        if (this.life[j] === 0) this.sparkAt(j);
+        if (this.life[j] === 0) {
+          this.sparkAt(j);
+          if (mark) this.echo[j] = this.tick;
+        }
       } else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) {
-        this.powerCell(j);
+        this.powerCell(j, from);
       }
     }
   },
 
-  // Power reaches cell j: a machine, or an open doorway.
-  powerCell(j) {
+  // Power reaches cell j (a machine, or an open doorway) from cell `from`
+  // beside it (j itself when it has no direction, as from the Spark tool).
+  powerCell(j, from = j) {
     const u = this.type[j];
-    if (u === DOOR || (u === 0 && this.doorTimer[j] !== 0)) { this.openDoor(j); return; }
+    if (u === DOOR || (u === 0 && this.doorTimer[j] !== 0 && this.doorKind[j] === DOOR)) { this.openDoor(j); return; }
+    const kind = DEFS[u].machine;
+    if (kind === 'inverter') { this.feedInverter(j, from); return; }
+    if (kind === 'delay') {
+      if (this.ctype[j] === 0 && this.life[j] === 0) this.ctype[j] = DELAY_STEP;
+      return;
+    }
     if (!POWERED[u] || this.life[j] >= POWER_HOLD - 1) return; // already running
+    const w = this.w;
+    const dir = from === j || from < 0 ? -1
+      : dirIndex((j % w) - (from % w), ((j / w) | 0) - ((from / w) | 0));
     // Power the whole connected block of this machine.
-    this.eachConnected(j, (c) => { this.life[c] = POWER_HOLD; });
+    this.eachConnected(j, (c) => {
+      this.life[c] = POWER_HOLD;
+      this.powerFrom[c] = from;
+      this.powerDir[c] = dir;
+    });
+  },
+
+  // Power reaches an inverter from cell `from`. It goes off for a while, and
+  // the side the power came in on becomes its input: it answers on the
+  // opposite side (powerDir). Power from its own output side, or its own
+  // echo, doesn't count.
+  feedInverter(j, from) {
+    if (from !== j && from >= 0) {
+      if (this.echo[from] !== 0 && this.tick - this.echo[from] <= ECHO) return;
+      const w = this.w;
+      const k = dirIndex((j % w) - (from % w), ((j / w) | 0) - ((from / w) | 0));
+      const out = this.powerDir[j];
+      if (out >= 0 && k === OPPOSITE[out]) return;
+      this.powerDir[j] = k;
+    }
+    this.ctype[j] = INVERTER_HOLD;
+  },
+
+  // Which way does an inverter that has never been fed face? Its input is the
+  // side whose wire (or neighbour) leads back to something that makes power:
+  // a control, a battery, a delay line, or an inverter whose output feeds
+  // that wire. Returns its output direction (the way power from that side
+  // travels in), or -1 if no side does. Without this, an inverter answering
+  // on every side would send pulses back down its input wire, and they'd
+  // meet the switch's pulses head on and cancel them out.
+  findInverterInput(i, x, y) {
+    const { w, h, type, ctype, flood, floodMark } = this;
+    const wire = (m) => CONDUCTOR[type[m]] || (type[m] === SPARK && CONDUCTOR[ctype[m]]);
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k], ny = y + DY4[k];
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const j = ny * w + nx;
+      if (this.makesPower(j, i)) return OPPOSITE[k];
+      if (!wire(j)) continue;
+      const stamp = ++this.floodStamp;
+      let n = 0, seen = 0;
+      floodMark[j] = stamp;
+      flood[n++] = j;
+      while (n > 0 && seen < LOOK_LIMIT) {
+        const c = flood[--n];
+        seen++;
+        const cx = c % w, cy = (c / w) | 0;
+        for (let q = 0; q < 4; q++) {
+          const mx = cx + DX4[q], my = cy + DY4[q];
+          if (mx < 0 || my < 0 || mx >= w || my >= h) continue;
+          const m = my * w + mx;
+          if (m === i || floodMark[m] === stamp) continue;
+          if (wire(m)) { floodMark[m] = stamp; flood[n++] = m; } else if (this.makesPower(m, c)) return OPPOSITE[k];
+        }
+      }
+    }
+    return -1;
+  },
+
+  // Does cell m send power into its neighbour c?
+  makesPower(m, c) {
+    const u = this.type[m];
+    if (u === BATTERY) return true;
+    const kind = DEFS[u].machine;
+    if (kind === 'inverter') {
+      const out = this.powerDir[m];
+      return out >= 0 && m + DX4[out] + DY4[out] * this.w === c;
+    }
+    return kind === 'delay' || SOURCE_KINDS.has(kind);
+  },
+
+  // A delay cell fires: current into idle wires, power into machines, and the
+  // next idle delay cells start charging. The one that charged it is resting,
+  // so the current only goes forwards.
+  fireDelay(i, x, y) {
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k], ny = y + DY4[k];
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
+      const j = ny * this.w + nx;
+      const u = this.type[j];
+      if (DEFS[u].machine === 'delay') {
+        if (this.ctype[j] === 0 && this.life[j] === 0) this.ctype[j] = DELAY_STEP;
+      } else if (CONDUCTOR[u]) {
+        if (this.life[j] === 0) this.sparkAt(j);
+      } else if (POWERED[u] || (u === 0 && this.doorTimer[j] !== 0)) {
+        this.powerCell(j, i);
+      }
+    }
   },
 
   // A spark lands on a switch or button: flip the switch, press the button.
@@ -8463,15 +8926,18 @@ const Machines = {
     this.ctype[j] = PHOTOCELL_TIME;
   },
 
-  // Open every connected cell of a door, and keep its doorway open.
+  // Open every connected cell of a door (or valve), and keep its doorway
+  // open, remembering what each cell was.
   openDoor(j) {
-    const { w, h, type, doorTimer, flood } = this;
+    const { w, h, type, doorTimer, doorKind, flood } = this;
     if (doorTimer[j] >= DOOR_HOLD - 1) return; // just refreshed
+    const kind = type[j] || doorKind[j];
     let n = 0;
     const visit = (c) => {
-      if (type[c] === DOOR) this.clearCell(c);
+      if (type[c] === kind) this.clearCell(c);
       if (doorTimer[c] === 0) this.doorList.push(c);
       doorTimer[c] = DOOR_HOLD;
+      doorKind[c] = kind;
       flood[n++] = c;
     };
     visit(j);
@@ -8482,7 +8948,7 @@ const Machines = {
         const nx = cx + DX4[k], ny = cy + DY4[k];
         if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
         const m = ny * w + nx;
-        if (doorTimer[m] !== DOOR_HOLD && (type[m] === DOOR || doorTimer[m] !== 0)) visit(m);
+        if (doorTimer[m] !== DOOR_HOLD && (type[m] === kind || (doorTimer[m] !== 0 && doorKind[m] === kind))) visit(m);
       }
     }
   },
@@ -8497,6 +8963,15 @@ const Machines = {
       const c = list[k];
       const t = timer[c];
       if (t === 0) continue; // erased
+      if (this.doorKind[c] === VALVE) {
+        this.ventValve(c);
+        // An open valve stays open while the pressure is still high.
+        if (this.pressureNear(c % this.w, (c / this.w) | 0) > VALVE_CLOSE) {
+          timer[c] = DOOR_HOLD;
+          list[n++] = c;
+          continue;
+        }
+      }
       if (t > 1) { timer[c] = t - 1; list[n++] = c; continue; }
       if (this.shutDoor(c)) timer[c] = 0;
       else list[n++] = c; // something is in the way: try again next frame
@@ -8518,8 +8993,64 @@ const Machines = {
       else if (e.displaceable && (e.state === GAS || e.state === ENERGY)) this.clearCell(c);
       else return false;
     }
-    this.spawn(c, DOOR);
+    this.spawn(c, this.doorKind[c] || DOOR);
     return true;
+  },
+
+  // An open valve lets the air through. Air can't pass a block with any Wall
+  // in it, and a valve set into a wall shares its blocks with the wall, so
+  // the valve passes it itself: the air on its two sides evens out (the
+  // blocks of the cells beside it, or the next blocks out where those are
+  // sealed), across and down.
+  ventValve(c) {
+    const { w, h, air } = this;
+    const x = c % w, y = (c / w) | 0;
+    const side = (dx, dy) => {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) return -1;
+      const a = air.at(nx, ny);
+      if (!air.blocked[a]) return a;
+      const fx = x + dx * CELL, fy = y + dy * CELL;
+      if (fx < 0 || fy < 0 || fx >= w || fy >= h) return -1;
+      const b = air.at(fx, fy);
+      return air.blocked[b] ? -1 : b;
+    };
+    for (let k = 0; k < 4; k += 2) {
+      const a = side(-DX4[k], -DY4[k]), b = side(DX4[k], DY4[k]);
+      if (a < 0 || b < 0 || a === b) continue;
+      const d = (air.p[a] - air.p[b]) * VALVE_VENT;
+      air.p[a] -= d;
+      air.p[b] += d;
+    }
+  },
+
+  // Does any gas touch (x, y)?
+  gasTouching(x, y) {
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k], ny = y + DY4[k];
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
+      if (DEFS[this.type[ny * this.w + nx]].state === GAS) return true;
+    }
+    return false;
+  },
+
+  // The fastest wind in the air block of (x, y) and the four beside it.
+  windNear(x, y) {
+    const air = this.air, W = air.W;
+    const a = air.at(x, y);
+    let best = 0;
+    for (const b of [a, a - 1, a + 1, a - W, a + W]) {
+      const s = Math.hypot(air.cvx(b), air.cvy(b));
+      if (s > best) best = s;
+    }
+    return best;
+  },
+
+  // The highest air pressure in the air block of (x, y) and the four beside it.
+  pressureNear(x, y) {
+    const { p, W } = this.air;
+    const a = this.air.at(x, y);
+    return Math.max(p[a], p[a - 1], p[a + 1], p[a - W], p[a + W]);
   },
 
   // The nearest empty cell to c that isn't part of an open doorway, or -1.
@@ -8554,19 +9085,6 @@ const Machines = {
     }
   },
 
-  // Push the air away from every open face. The push goes into the next air
-  // block along, so the two sides of a thin fan don't cancel out.
-  blowOut(x, y) {
-    for (let k = 0; k < 4; k++) {
-      const nx = x + DX4[k], ny = y + DY4[k];
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
-      const u = this.type[ny * this.w + nx];
-      if (u !== 0 && !DEFS[u].displaceable) continue;
-      const a = this.air.at(x + DX4[k] * CELL, y + DY4[k] * CELL);
-      if (!this.air.blocked[a]) this.air.addVelocity(a, DX4[k] * FAN_PUSH, DY4[k] * FAN_PUSH);
-    }
-  },
-
   // Swallow the powders, liquids and gases touching a drain.
   drainAround(x, y) {
     for (let k = 0; k < 4; k++) {
@@ -8582,7 +9100,250 @@ const Machines = {
   },
 };
 
-return { POWER_HOLD, DOOR_HOLD, initMachines, Machines };
+return { POWER_HOLD, DOOR_HOLD, OPPOSITE, dirIndex, initMachines, Machines };
+})();
+
+__modules["src/sim/machines-air.js"] = (() => {
+// Machines that work the air, mixed into World.prototype: fans, and pipe
+// networks of pipes and pumps.
+//
+// A pipe network is a 4-connected group of Pipe and Pump cells, drawn one
+// cell wide. Its openings are at its ends: the empty or gas cell beyond each
+// pipe cell that has only one neighbour in the network. (Every cell touching
+// a pump is that pump's intake.) Each frame the openings share their
+// pressure (each moves PIPE_SHARE of the way to their average), so a pipe
+// through a wall evens out the two sides. A powered pump moves PUMP_RATE of
+// pressure a frame from the air beside it (its intake) out through the
+// network's other openings; an unpowered pump is shut.
+//
+// An opening is remembered as two blocks: the block of the cell beside the
+// pipe, and the next block out. The first can be sealed by the pipe itself
+// (a pipe crossing a block seals it), so the second stands in for it then.
+//
+// Pipe cells list themselves (pipeCells) as the frame's update reaches them;
+// the networks are rebuilt from that list every PIPE_REBUILD frames, or as
+// soon as the number of pipe cells changes. With no pipes nothing runs.
+
+const { DEFS, ID } = __modules["src/sim/elements.js"];
+const { CELL } = __modules["src/sim/air.js"];
+const { GASLIKE } = __modules["src/sim/lookups.js"];
+
+const { PIPE, PUMP } = ID;
+const FAN_PUSH = 0.25;
+const PIPE_SHARE = 0.2;
+const PUMP_RATE = 4;
+const PIPE_REBUILD = 10;
+const DX4 = [1, -1, 0, 0];
+const DY4 = [0, 0, 1, -1];
+
+const AirMachines = {
+  // Push the air away from every open face of a fan. The push goes into the
+  // next air block along, so the two sides of a thin fan don't cancel out.
+  blowOut(x, y) {
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k], ny = y + DY4[k];
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
+      const u = this.type[ny * this.w + nx];
+      if (u !== 0 && !DEFS[u].displaceable) continue;
+      const a = this.air.at(x + DX4[k] * CELL, y + DY4[k] * CELL);
+      if (!this.air.blocked[a]) this.air.addVelocity(a, DX4[k] * FAN_PUSH, DY4[k] * FAN_PUSH);
+    }
+  },
+
+  // Find every network and its openings (see the top of this file).
+  buildPipeNets(cells) {
+    const { w, h, type, flood, floodMark } = this;
+    const nets = [];
+    const stamp = ++this.floodStamp;
+    for (const start of cells) {
+      if (floodMark[start] === stamp || (type[start] !== PIPE && type[start] !== PUMP)) continue;
+      const open = new Map(); // block -> the next block out
+      const pumps = [];
+      let n = 0;
+      floodMark[start] = stamp;
+      flood[n++] = start;
+      while (n > 0) {
+        const c = flood[--n];
+        const cx = c % w, cy = (c / w) | 0;
+        const pump = type[c] === PUMP;
+        const intake = pump ? new Map() : null;
+        const gaps = []; // directions with room beside this cell
+        let links = 0; // neighbours in the network
+        for (let k = 0; k < 4; k++) {
+          const nx = cx + DX4[k], ny = cy + DY4[k];
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const m = ny * w + nx, u = type[m];
+          if (u === PIPE || u === PUMP) {
+            links++;
+            if (floodMark[m] !== stamp) { floodMark[m] = stamp; flood[n++] = m; }
+          } else if (u === 0 || GASLIKE[u]) {
+            gaps.push(k);
+          }
+        }
+        // A pump draws from every side; a pipe opens only at an end.
+        if (!pump && links > 1) continue;
+        for (const k of gaps) {
+          const nx = cx + DX4[k], ny = cy + DY4[k];
+          const fx = Math.min(w - 1, Math.max(0, cx + DX4[k] * CELL));
+          const fy = Math.min(h - 1, Math.max(0, cy + DY4[k] * CELL));
+          (intake ?? open).set(this.air.at(nx, ny), this.air.at(fx, fy));
+        }
+        if (intake && intake.size) pumps.push({ cell: c, intake: [...intake] });
+      }
+      // A block beside both a pump and a pipe end is the pump's.
+      for (const q of pumps) for (const [a] of q.intake) open.delete(a);
+      nets.push({ open: [...open], pumps });
+    }
+    this.pipeNets = nets;
+  },
+
+  // Share and pump the air through every pipe network. Called once a frame.
+  stepPipes() {
+    const cells = this.pipeCells;
+    if (cells.length === 0) {
+      this.pipeNets.length = 0;
+      this.pipeCount = 0;
+      return;
+    }
+    if (cells.length !== this.pipeCount || this.tick % PIPE_REBUILD === 0) this.buildPipeNets(cells);
+    this.pipeCount = cells.length;
+    cells.length = 0;
+    const air = this.air, p = air.p, blocked = air.blocked;
+    // The block an opening uses this frame: its own, or the next one out.
+    const pick = ([a, b]) => (!blocked[a] ? a : !blocked[b] ? b : -1);
+    for (const net of this.pipeNets) {
+      const out = [];
+      for (const o of net.open) { const a = pick(o); if (a >= 0) out.push(a); }
+      if (out.length > 1) {
+        let sum = 0;
+        for (const a of out) sum += p[a];
+        const mean = sum / out.length;
+        for (const a of out) p[a] += (mean - p[a]) * PIPE_SHARE;
+      }
+      for (const pump of net.pumps) {
+        if (this.type[pump.cell] !== PUMP || this.life[pump.cell] === 0 || out.length === 0) continue;
+        const intake = [];
+        for (const o of pump.intake) { const a = pick(o); if (a >= 0) intake.push(a); }
+        if (intake.length === 0) continue;
+        for (const a of intake) air.addPressure(a, -PUMP_RATE / intake.length);
+        for (const a of out) air.addPressure(a, PUMP_RATE / out.length);
+      }
+    }
+  },
+};
+
+return { AirMachines };
+})();
+
+__modules["src/sim/machines-motion.js"] = (() => {
+// Machines that move things, mixed into World.prototype: conveyors and
+// pistons. Both take their direction from where the power came in
+// (powerFrom and powerDir, see machines.js).
+
+const { DEFS, ID, State } = __modules["src/sim/elements.js"];
+const { GASLIKE } = __modules["src/sim/lookups.js"];
+const { dirIndex } = __modules["src/sim/machines.js"];
+
+const { POWDER, LIQUID } = State;
+const { PISTON_ARM } = ID;
+const PISTON_REACH = 8; // the longest an arm gets
+const PISTON_PUSH = 16; // the longest row an arm can shove
+const DX4 = [1, -1, 0, 0];
+const DY4 = [0, 0, 1, -1];
+
+// What a conveyor carries: loose things (powders, liquids, creatures, and
+// debris torn off by pressure), never solid structures.
+const CARRIED = Uint8Array.from(DEFS, (d) => (d.id !== 0 && !d.indestructible && !d.projectile
+  && (d.state === POWDER || d.state === LIQUID || d.behavior === 'critter') ? 1 : 0));
+
+// Can a moving thing go into a cell holding u? Empty space, or gas it pushes aside.
+const roomFor = (u) => u === 0 || (GASLIKE[u] === 1 && DEFS[u].displaceable);
+
+const MotionMachines = {
+  // Every other frame, move the thing resting on top of a powered belt cell
+  // one cell along the belt, away from where the power came in. The belt
+  // runs across gravity. Each thing moves once a frame however many belt
+  // cells it passes: the scan reaches the belt before what rests on it, and
+  // a moved cell is marked as done for the frame.
+  runConveyor(i, x, y) {
+    if ((this.tick & 1) !== 0) return;
+    const { w, type } = this;
+    const { downX, downY } = this.gravity;
+    const tx = x - downX, ty = y - downY;
+    if (!this.inBounds(tx, ty)) return;
+    const j = ty * w + tx, u = type[j];
+    if (u === 0 || this.clock[j] === this.tick || !(CARRIED[u] || this.loose[j])) return;
+    const across = downY !== 0; // the belt runs along x when gravity is up or down
+    const f = this.powerFrom[i];
+    let s = across ? Math.sign(x - (f % w)) : Math.sign(y - ((f / w) | 0));
+    if (f < 0 || s === 0) s = 1;
+    const nx = across ? tx + s : tx, ny = across ? ty : ty + s;
+    if (!this.inBounds(nx, ny)) return;
+    const m = ny * w + nx;
+    if (roomFor(type[m])) this.swap(j, m);
+  },
+
+  // A powered piston grows its arm one cell a frame, up to PISTON_REACH, in
+  // the direction the power was going as it came in (against gravity if it
+  // has none, as from the Spark tool). Unpowered, the arm shrinks one cell a
+  // frame. ctype remembers the arm's direction (1 + an index into DX4/DY4).
+  runPiston(i, x, y, powered) {
+    const was = this.ctype[i] - 1;
+    if (powered) {
+      let k = this.powerDir[i];
+      if (k < 0) k = dirIndex(-this.gravity.downX, -this.gravity.downY);
+      // An arm already out keeps going the way it went.
+      if (was >= 0 && was !== k && this.armLength(x, y, was) > 0) k = was;
+      this.ctype[i] = k + 1;
+      const L = this.armLength(x, y, k);
+      if (L >= PISTON_REACH) return;
+      const ax = x + DX4[k] * (L + 1), ay = y + DY4[k] * (L + 1);
+      if (!this.inBounds(ax, ay)) return;
+      const a = ay * this.w + ax;
+      if (!roomFor(this.type[a]) && !this.shove(ax, ay, DX4[k], DY4[k])) return; // stalled
+      if (this.type[a] !== 0) this.clearCell(a); // gas pushed back into the gap
+      this.spawn(a, PISTON_ARM);
+    } else if (was >= 0) {
+      const L = this.armLength(x, y, was);
+      if (L === 0) { this.ctype[i] = 0; return; }
+      this.clearCell((y + DY4[was] * L) * this.w + x + DX4[was] * L);
+    }
+  },
+
+  // How many arm cells run out from (x, y) in direction k.
+  armLength(x, y, k) {
+    let L = 0;
+    while (L < PISTON_REACH) {
+      const ax = x + DX4[k] * (L + 1), ay = y + DY4[k] * (L + 1);
+      if (!this.inBounds(ax, ay) || this.type[ay * this.w + ax] !== PISTON_ARM) break;
+      L++;
+    }
+    return L;
+  },
+
+  // Move the row of things starting at (x, y) one cell along (dx, dy), into
+  // the first free cell within PISTON_PUSH. Returns false (and moves
+  // nothing) if there's no room, or the row meets something that can't be
+  // pushed: anything indestructible, or another arm.
+  shove(x, y, dx, dy) {
+    const { w, type } = this;
+    let n = 0;
+    for (; n < PISTON_PUSH; n++) {
+      const cx = x + dx * n, cy = y + dy * n;
+      if (!this.inBounds(cx, cy)) return false;
+      const u = type[cy * w + cx];
+      if (roomFor(u)) break;
+      if (DEFS[u].indestructible || u === PISTON_ARM) return false;
+    }
+    if (n === PISTON_PUSH) return false;
+    for (let t = n; t > 0; t--) {
+      this.swap((y + dy * (t - 1)) * w + x + dx * (t - 1), (y + dy * t) * w + x + dx * t);
+    }
+    return true;
+  },
+};
+
+return { MotionMachines };
 })();
 
 __modules["src/sim/world.js"] = (() => {
@@ -8608,15 +9369,30 @@ __modules["src/sim/world.js"] = (() => {
 
 const { Air, CELL, AIR_SHARE, BOIL_LOWEST, PHASE_HIGHEST } = __modules["src/sim/air.js"];
 const { DEFS, ID, NUM, State, AMBIENT, REACT } = __modules["src/sim/elements.js"];
-const { MAX_TEMP, MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY } = __modules["src/sim/constants.js"];
+const { MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY } = __modules["src/sim/constants.js"];
 const { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS, HIGH_PHASE, LOW_PHASE, PHASE_BOIL } = __modules["src/sim/lookups.js"];
 const { Behaviors, SNUFF_AT } = __modules["src/sim/behaviors.js"];
 const { Particles, initParticles } = __modules["src/sim/particles.js"];
 const { Machines, initMachines } = __modules["src/sim/machines.js"];
+const { AirMachines } = __modules["src/sim/machines-air.js"];
+const { MotionMachines } = __modules["src/sim/machines-motion.js"];
 const { Gravity, DX8, DY8 } = __modules["src/sim/gravity.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
+// Heat flow between touching particles: this fraction of the gap a frame,
+// times the smaller of their conductivities (under a half, so it never
+// overshoots). With convection on, a particle trades heat with the air
+// beside it at AIR_TOUCH times its conductivity (but never slower than it
+// would cool to the room without convection).
+const CONDUCT_RATE = 0.35;
+const AIR_TOUCH = 0.009;
+// Air can only take up so much heat from a surface a frame: AIR_FLUX degrees
+// of the particle's (AIR_SHARE times that in the air). Far above what lava or
+// fire gives, it only holds back the likes of a star, whose heat would
+// otherwise flood the whole world through the air.
+const AIR_FLUX = 100;
+const TOUCH = Float32Array.from(COND, (k, t) => (t === 0 ? 0 : Math.max(AIR_COOL[t], k * AIR_TOUCH)));
 // What the Mix tool leaves where it is (see mixArea).
 const FIXED = Uint8Array.from(DEFS, (d) => (d.indestructible ? 1 : 0));
 
@@ -8823,7 +9599,7 @@ class World {
         const j = ny * w + nx;
         const e = DEFS[type[j]];
         // Other explosives caught in the blast go off too.
-        if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = Math.min(MAX_TEMP, e.ignite + 1);
+        if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = e.ignite + 1;
         const s = e.state;
         if (s !== POWDER && s !== LIQUID && s !== GAS && !this.loose[j]) continue;
         // Push outward; things below the blast (along the gravity arrow)
@@ -8905,6 +9681,7 @@ class World {
     air.next = air.blocked;
     air.blocked = next;
     this.stepDoors();
+    this.stepPipes();
     this.computeField();
     this.stepProjectiles();
     this.conductHeat();
@@ -9079,7 +9856,7 @@ class World {
       a = this.activity(x, y, d);
       trickle = a + REST;
     }
-    if (d.selfHeat !== 0) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + d.selfHeat * trickle);
+    if (d.selfHeat !== 0) this.temp[i] += d.selfHeat * trickle;
     if (d.emits !== null && a > 0) {
       for (const m of d.emits) if (this.rand() < m.chance * a) this.emitAt(m.id, x, y);
     }
@@ -9125,7 +9902,7 @@ class World {
   // Apply a contact reaction between i (at x, y) and its neighbour j.
   // Returns true if i itself changed.
   react(i, j, x, y, r) {
-    if (r.heat) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + r.heat);
+    if (r.heat) this.temp[i] += r.heat;
     this.reactOther(j, x, y, r);
     const s = r.self;
     if (s.alt >= 0 && this.rand() < s.altChance) { this.convert(i, s.alt, r.keepSelf, s.altRule); return true; }
@@ -9136,7 +9913,7 @@ class World {
   // The half of a contact reaction r that happens to the other party, j,
   // and around (x, y): what j turns into, and anything given off.
   reactOther(j, x, y, r) {
-    if (r.heat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
+    if (r.heat) this.temp[j] += r.heat;
     const o = r.other;
     if (o.alt >= 0 && this.rand() < o.altChance) this.convert(j, o.alt, r.keepOther, o.altRule);
     else if (o.to >= 0) this.convert(j, o.to, r.keepOther, o.rule);
@@ -9573,7 +10350,7 @@ class World {
           if (u === 0) open++;
           else if (ka > 0) {
             const kb = COND[u];
-            const k = (ka < kb ? ka : kb) * 0.2;
+            const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
             if (k > 0) { const f = (T - temp[i + 1]) * k; T -= f; temp[i + 1] += f; }
           }
         }
@@ -9582,7 +10359,7 @@ class World {
           if (u === 0) open++;
           else if (ka > 0) {
             const kb = COND[u];
-            const k = (ka < kb ? ka : kb) * 0.2;
+            const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
             if (k > 0) { const f = (T - temp[i + w]) * k; T -= f; temp[i + w] += f; }
           }
         }
@@ -9598,7 +10375,7 @@ class World {
           if (!heat) T += (AMBIENT - T) * AIR_COOL[t] * open;
           else {
             // Convection: heat goes into the air of each empty cell beside it.
-            const r = AIR_COOL[t];
+            const r = TOUCH[t];
             if (x < w - 1 && type[i + 1] === 0) T = this.warmAir(x + 1, y, T, r);
             if (y < h - 1 && type[i + w] === 0) T = this.warmAir(x, y + 1, T, r);
             if (x > 0 && type[i - 1] === 0) T = this.warmAir(x - 1, y, T, r);
@@ -9620,7 +10397,8 @@ class World {
     const a = air.at(x, y);
     if (air.blocked[a]) return T + (AMBIENT - T) * rate; // no air of its own
     const was = air.t[a];
-    const f = (was - T) * rate;
+    let f = (was - T) * rate;
+    if (f > AIR_FLUX) f = AIR_FLUX; else if (f < -AIR_FLUX) f = -AIR_FLUX;
     const now = T + f;
     let t = was - f * AIR_SHARE;
     if ((f < 0 && t > now) || (f > 0 && t < now)) t = now; // never past the particle
@@ -9717,13 +10495,13 @@ class World {
       if (air.heat) {
         const a = air.at(x, y);
         if (!air.blocked[a]) {
-          const was = air.t[a], now = Math.min(MAX_TEMP, Math.max(MIN_TEMP, was + share));
+          const was = air.t[a], now = Math.max(MIN_TEMP, was + share);
           air.t[a] = now;
         }
       }
       if (!t) return;
       const T = this.temp[i] + amount;
-      this.temp[i] = T > MAX_TEMP ? MAX_TEMP : T < MIN_TEMP ? MIN_TEMP : T;
+      this.temp[i] = T < MIN_TEMP ? MIN_TEMP : T;
     });
   }
 
@@ -9757,7 +10535,7 @@ class World {
     area((i, x, y) => {
       const u = this.type[i];
       if (u === 0) {
-        if (this.doorTimer[i] !== 0) this.powerCell(i);
+        if (this.doorTimer[i] !== 0) this.powerCell(i, i);
         else if (density >= 1 || this.rand() < density) this.spawn(i, SPARK);
       } else {
         this.zap(i, x, y, u);
@@ -9768,7 +10546,7 @@ class World {
   zap(i, x, y, u) {
     if (CONDUCTOR[u]) { if (this.life[i] === 0) this.sparkAt(i); return; }
     if (PRESSABLE[u]) { this.press(i); return; }
-    if (POWERED[u]) { this.powerCell(i); return; }
+    if (POWERED[u]) { this.powerCell(i, i); return; }
     const d = DEFS[u];
     if (d.explode > 0) { this.ignite(i, x, y); return; }
     if (d.excite !== null) {
@@ -9806,16 +10584,21 @@ class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines);
 
-return { VOID_TOP, World, MAX_TEMP, MIN_TEMP };
+return { VOID_TOP, World, MIN_TEMP };
 })();
 
 __modules["src/render/renderer.js"] = (() => {
 // Draws the world into a canvas. Particles are written into an ImageData at
-// one pixel per cell, then scaled up with nearest-neighbour filtering. Hot
-// and energetic particles also feed a low-resolution glow layer that is
-// drawn on top with additive blending, which gives fire and lava a bloom.
+// one pixel per cell, then scaled up with nearest-neighbour filtering. Two
+// effects, each switched on and off by a button (`gas`, `glow`):
+//   - Gas: gases (and loose flames, and plasma) go on a layer of their own at
+//     half resolution, blurred and blended into soft clouds as in The Powder
+//     Toy, then drawn over the world.
+//   - Glow: hot and energetic particles feed a low-resolution light layer,
+//     blurred into a wide halo that lingers a few frames, drawn on top with
+//     additive blending.
 // A camera ({ x, y, vw, vh } in cells) picks the part of the world shown, so
 // zooming in just scales up a smaller piece of the same image.
 
@@ -9825,6 +10608,13 @@ const { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } = __modules["src/sim/worl
 
 const BG = [10, 12, 16];
 const SHADES = 8;
+const GAS_GAIN = 1.7; // how solid the blurred gas looks
+const GAS_SPREAD = 2.3; // how far gas is blurred, in cells (a standard deviation)
+const GLOW_GAIN = 3; // how bright the halo is
+const GLOW_LINGER = 0.82; // the share of last frame's halo kept (an afterglow)
+// Things past ULTRA_HOT glow blue-white, like the hottest stars, fully so by
+// ULTRA_HOT × 1000.
+const ULTRA_HOT = 10000;
 
 const pack = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -9859,17 +10649,51 @@ const HOT = ramp([[0, '#5a0d04'], [0.12, '#a3200a'], [0.3, '#e2461a'], [0.5, '#f
 const FIRE = ramp([[0, '#3a0a04'], [0.25, '#b3260b'], [0.55, '#ff7a22'], [0.8, '#ffc04a'], [1, '#fff1b0']]);
 const PLASMA = ramp([[0, '#3a0b5a'], [0.4, '#a02ce0'], [0.75, '#f07cff'], [1, '#fff0ff']]);
 const HEAT = ramp([
-  [0, '#141a5c'], [0.18, '#2350c8'], [0.28, '#2fb4d8'], [0.36, '#3cc47a'],
-  [0.5, '#e8d13c'], [0.68, '#ff7a26'], [0.85, '#e0262a'], [1, '#ffffff'],
+  [0, '#141a5c'], [0.162, '#2350c8'], [0.252, '#2fb4d8'], [0.324, '#3cc47a'],
+  [0.45, '#e8d13c'], [0.612, '#ff7a26'], [0.765, '#e0262a'], [0.9, '#ffffff'], [1, '#b49cff'],
 ]);
 
-// Map a temperature to a 0..255 index on the heat-view ramp.
+// Map a temperature to a 0..255 index on the heat-view ramp: blue through
+// red to white at 6000 °C, then on to violet for the millions and beyond.
 function heatIndex(T) {
   let u;
-  if (T < 22) u = 0.3 * Math.max(0, T + 273) / 295;
-  else u = 0.3 + 0.7 * Math.min(1, Math.log1p((T - 22) / 40) / Math.log1p(6000 / 40));
+  if (T < 22) u = 0.27 * Math.max(0, T + 273) / 295;
+  else if (T <= 6000) u = 0.27 + 0.63 * Math.log1p((T - 22) / 40) / Math.log1p(5978 / 40);
+  else u = 0.9 + 0.1 * Math.min(1, Math.log10(T / 6000) / 9);
   return Math.min(255, Math.max(0, (u * 255) | 0));
 }
+
+// Box-blur an interleaved array of `ch` (3 or 4) channels, w wide, in
+// place, radius 1, across then down, over columns x0..x1 and rows y0..y1
+// only; `tmp` is scratch of the same size.
+function blur(a, tmp, w, ch, x0, y0, x1, y1) {
+  const k = 1 / 3, four = ch === 4;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0, i = (y * w + x0) * ch; x <= x1; x++, i += ch) {
+      const l = x > x0 ? i - ch : i, r = x < x1 ? i + ch : i;
+      tmp[i] = (a[l] + a[i] + a[r]) * k;
+      tmp[i + 1] = (a[l + 1] + a[i + 1] + a[r + 1]) * k;
+      tmp[i + 2] = (a[l + 2] + a[i + 2] + a[r + 2]) * k;
+      if (four) tmp[i + 3] = (a[l + 3] + a[i + 3] + a[r + 3]) * k;
+    }
+  }
+  const row = w * ch;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0, i = (y * w + x0) * ch; x <= x1; x++, i += ch) {
+      const u = y > y0 ? i - row : i, d = y < y1 ? i + row : i;
+      a[i] = (tmp[u] + tmp[i] + tmp[d]) * k;
+      a[i + 1] = (tmp[u + 1] + tmp[i + 1] + tmp[d + 1]) * k;
+      a[i + 2] = (tmp[u + 2] + tmp[i + 2] + tmp[d + 2]) * k;
+      if (four) a[i + 3] = (tmp[u + 3] + tmp[i + 3] + tmp[d + 3]) * k;
+    }
+  }
+}
+
+// What the Gas effect blurs into soft clouds: gases, and the glowing energy
+// that looks like gas (flames, plasma, ball lightning). Not things that
+// merely glow like neon (an LED, phosphor, fluorite).
+const SOFT = Uint8Array.from(DEFS, (d) => (d.id !== 0 && !d.projectile
+  && (d.state === State.GAS || d.id === ID.FIRE || d.id === ID.PLASMA || d.id === ID.BALL_LIGHTNING) ? 1 : 0));
 
 const MODE = {
   PLAIN: 0, GAS: 1, FIRE: 2, PLASMA: 3, SPARK: 4, LIGHTNING: 5, CLONE: 6, VOID: 7, MOLTEN: 8,
@@ -9887,8 +10711,18 @@ class Renderer {
   constructor(canvas, world, camera) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    // Can the canvas blur what it draws (on the GPU)? If not, the gas layer
+    // is blurred here instead.
+    this.gpuBlur = false;
+    if (typeof this.ctx.filter === 'string') {
+      this.ctx.filter = 'blur(1px)';
+      this.gpuBlur = this.ctx.filter === 'blur(1px)';
+      this.ctx.filter = 'none';
+    }
     this.camera = camera ?? { x: 0, y: 0, vw: world.w, vh: world.h };
     this.view = 'normal';
+    this.gas = true; // the Gas effect (see the top of this file)
+    this.glow = true; // the Glow effect
     this.frame = 0;
     this.count = 0;
     this.setWorld(world);
@@ -9905,12 +10739,27 @@ class Renderer {
     this.pixels = new Uint32Array(this.image.data.buffer);
 
     const { cols, rows } = world.air;
-    this.glow = document.createElement('canvas');
-    this.glow.width = cols;
-    this.glow.height = rows;
-    this.glowCtx = this.glow.getContext('2d');
+    this.glowCanvas = document.createElement('canvas');
+    this.glowCanvas.width = cols;
+    this.glowCanvas.height = rows;
+    this.glowCtx = this.glowCanvas.getContext('2d');
     this.glowImage = this.glowCtx.createImageData(cols, rows);
     this.glowAcc = new Float32Array(cols * rows * 3);
+    this.glowLast = new Float32Array(cols * rows * 3);
+    this.glowTmp = new Float32Array(cols * rows * 3);
+
+    // The gas layer, at half resolution: colour times opacity, and opacity.
+    this.gw = Math.ceil(world.w / 2);
+    this.gh = Math.ceil(world.h / 2);
+    this.gasCanvas = document.createElement('canvas');
+    this.gasCanvas.width = this.gw;
+    this.gasCanvas.height = this.gh;
+    this.gasCtx = this.gasCanvas.getContext('2d');
+    this.gasImage = this.gasCtx.createImageData(this.gw, this.gh);
+    this.gasAcc = new Float32Array(this.gw * this.gh * 4);
+    this.gasTmp = new Float32Array(this.gw * this.gh * 4);
+    this.gasCells = 0;
+    this.gasBox = null; // [x0, y0, x1, y1] of the gas layer drawn last, in its pixels
   }
 
   buildPalettes() {
@@ -9986,12 +10835,19 @@ class Renderer {
     ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.buffer, cam.x, cam.y, cam.vw, cam.vh, 0, 0, canvas.width, canvas.height);
-    if (this.view !== 'heat') {
+    if (this.gasCells > 0) {
+      this.gasCtx.putImageData(this.gasImage, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      if (this.gpuBlur) ctx.filter = `blur(${(GAS_SPREAD * canvas.width) / cam.vw}px)`;
+      ctx.drawImage(this.gasCanvas, cam.x / 2, cam.y / 2, cam.vw / 2, cam.vh / 2, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
+    }
+    if (this.glow && this.view !== 'heat') {
       this.glowCtx.putImageData(this.glowImage, 0, 0);
       ctx.imageSmoothingEnabled = true;
       ctx.globalCompositeOperation = 'lighter';
       // One glow pixel per air block.
-      ctx.drawImage(this.glow, cam.x / CELL, cam.y / CELL, cam.vw / CELL, cam.vh / CELL,
+      ctx.drawImage(this.glowCanvas, cam.x / CELL, cam.y / CELL, cam.vw / CELL, cam.vh / CELL,
         0, 0, canvas.width, canvas.height);
       ctx.globalCompositeOperation = 'source-over';
     }
@@ -10073,7 +10929,7 @@ class Renderer {
 
   paint() {
     const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
-    const { w, h, type, temp, life, ctype, shade, loose, doorTimer } = world;
+    const { w, h, type, temp, life, ctype, shade, loose, doorTimer, doorKind } = world;
     const air = world.air;
     const cols = air.cols;
     const glow = this.glowAcc;
@@ -10083,6 +10939,12 @@ class Renderer {
     const heatView = view === 'heat';
     const pressureView = view === 'pressure';
     const airHeat = heatView && air.heat; // show the air's own temperature
+    // Soft gas only in the normal view: the others colour every cell.
+    const soft = this.gas && view === 'normal';
+    const gas = this.gasAcc, gw = this.gw;
+    if (soft) gas.fill(0);
+    let gasCells = 0;
+    let gx0 = gw, gy0 = this.gh, gx1 = -1, gy1 = -1; // where the gas is
     let count = 0;
 
     for (let y = 0; y < h; y++) {
@@ -10094,8 +10956,8 @@ class Renderer {
 
         if (t === 0) {
           if (doorTimer[i] !== 0 && !heatView) {
-            // An open doorway: a faint ghost of the door.
-            const q = (ID.DOOR * SHADES + (x + y) % 3) * 3;
+            // An open doorway: a faint ghost of the door (or valve).
+            const q = ((doorKind[i] || ID.DOOR) * SHADES + (x + y) % 3) * 3;
             r = bgR + (palRGB[q] - bgR) * 0.25; g = bgG + (palRGB[q + 1] - bgG) * 0.25; b = bgB + (palRGB[q + 2] - bgB) * 0.25;
           } else {
             if (airHeat) {
@@ -10122,6 +10984,7 @@ class Renderer {
           const p = (t * SHADES + s) * 3;
           r = palRGB[p]; g = palRGB[p + 1]; b = palRGB[p + 2];
           let emit = 0;
+          let wisp = -1; // see-through: drawn this opaque (and blurred, if SOFT)
           switch (mode[t]) {
             case MODE.PLAIN: {
               const T = temp[i];
@@ -10131,6 +10994,11 @@ class Renderer {
                 const k = Math.min(255, ((T - 480) / 12) | 0) * 3;
                 r += (HOT[k] - r) * f; g += (HOT[k + 1] - g) * f; b += (HOT[k + 2] - b) * f;
                 emit = f * 0.5;
+                if (T > ULTRA_HOT) {
+                  const u = Math.min(1, Math.log10(T / ULTRA_HOT) / 3);
+                  r += (205 - r) * u; g += (222 - g) * u; b += (255 - b) * u;
+                  emit += u * 0.5;
+                }
               } else if (T < -30) {
                 const f = Math.min(0.45, (-30 - T) / 250);
                 r += (200 - r) * f; g += (236 - g) * f; b += (255 - b) * f;
@@ -10140,7 +11008,15 @@ class Renderer {
             case MODE.GAS: {
               let a = alpha[t];
               if (t === ID.SMOKE) a *= Math.min(1, life[i] / 120);
-              r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+              const T = temp[i];
+              if (T > 480) { // hot gas glows
+                const f = Math.min(0.9, (T - 480) / 1400);
+                const k = Math.min(255, ((T - 480) / 12) | 0) * 3;
+                r += (HOT[k] - r) * f; g += (HOT[k + 1] - g) * f; b += (HOT[k + 2] - b) * f;
+                a += (1 - a) * f * 0.6;
+                emit = f * 0.6;
+              }
+              wisp = a;
               break;
             }
             case MODE.MOLTEN: {
@@ -10163,9 +11039,9 @@ class Renderer {
                 const q = t * 3, f = 0.7 + Math.min(1, life[i] / 20) * 0.3;
                 r = exciteRGB[q] * f; g = exciteRGB[q + 1] * f; b = exciteRGB[q + 2] * f;
                 emit = 0.45;
+                if (SOFT[t]) wisp = 0.9; // a glowing gas; a glowing solid stays sharp
               } else {
-                const a = alpha[t];
-                r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+                wisp = alpha[t];
               }
               break;
             }
@@ -10215,8 +11091,8 @@ class Renderer {
             }
             case MODE.PULSE: {
               const pulse = 0.8 + 0.2 * Math.sin(frame * 0.15 + x * 0.3 + y * 0.2);
-              const a = alpha[t];
-              r = bgR + (r * pulse - bgR) * a; g = bgG + (g * pulse - bgG) * a; b = bgB + (b * pulse - bgB) * a;
+              r *= pulse; g *= pulse; b *= pulse;
+              wisp = alpha[t];
               break;
             }
             case MODE.FIRE: {
@@ -10232,15 +11108,13 @@ class Renderer {
                 r = r * 0.2 + flameRGB[fq] * 0.8 * f;
                 g = g * 0.2 + flameRGB[fq + 1] * 0.8 * f;
                 b = b * 0.2 + flameRGB[fq + 2] * 0.8 * f;
-                const a = 0.45 + 0.55 * v;
-                r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+                wisp = 0.45 + 0.55 * v;
               } else if (fuel && !loose && DEFS[fuel].state !== State.GAS && DEFS[fuel].state !== State.LIQUID) {
                 // An ember: the fuel's own colour, glowing.
                 const q = (fuel * SHADES + s) * 3;
                 r = palRGB[q] * 0.35 + r * 0.65; g = palRGB[q + 1] * 0.35 + g * 0.55; b = palRGB[q + 2] * 0.35 + b * 0.4;
               } else {
-                const a = 0.45 + 0.55 * v;
-                r = bgR + (r - bgR) * a; g = bgG + (g - bgG) * a; b = bgB + (b - bgB) * a;
+                wisp = 0.45 + 0.55 * v; // a loose flame
               }
               emit = 0.9 * v;
               break;
@@ -10251,6 +11125,7 @@ class Renderer {
               const k = Math.min(255, (v * 255) | 0) * 3;
               r = PLASMA[k]; g = PLASMA[k + 1]; b = PLASMA[k + 2];
               emit = 1.1 * v;
+              if (soft) wisp = 0.85;
               break;
             }
             case MODE.SPARK: {
@@ -10289,6 +11164,20 @@ class Renderer {
             glow[gi + 1] += g * emit;
             glow[gi + 2] += b * emit;
           }
+          if (wisp >= 0) { // see-through: blended with the background, or blurred
+            if (soft && SOFT[t]) { // onto the gas layer; the cell itself shows the background
+              const hx = x >> 1, hy = y >> 1, q = (hy * gw + hx) * 4;
+              gas[q] += r * wisp; gas[q + 1] += g * wisp; gas[q + 2] += b * wisp; gas[q + 3] += wisp;
+              gasCells++;
+              if (hx < gx0) gx0 = hx;
+              if (hx > gx1) gx1 = hx;
+              if (hy < gy0) gy0 = hy;
+              if (hy > gy1) gy1 = hy;
+              pixels[i] = bg;
+              continue;
+            }
+            r = bgR + (r - bgR) * wisp; g = bgG + (g - bgG) * wisp; b = bgB + (b - bgB) * wisp;
+          }
         }
 
         if (pressureView) {
@@ -10305,14 +11194,64 @@ class Renderer {
     this.count = count;
     this.paintProjectiles(heatView);
 
-    // Glow: average per air block, boosted.
+    this.gasCells = soft ? gasCells : 0;
+    if (this.gasCells > 0) this.paintGas(gx0, gy0, gx1, gy1);
+    if (this.glow && !heatView) this.paintGlow();
+  }
+
+  // Turn the gas layer into an image, blurred (here, unless the canvas blurs
+  // it as it's drawn): each pixel the average colour of the gas around it,
+  // as opaque as there is gas. Only the box round the gas (x0..y1, with room
+  // for the blur to spread) is worked on.
+  paintGas(x0, y0, x1, y1) {
+    const { gasAcc: a, gasTmp, gw, gh } = this;
+    x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2);
+    x1 = Math.min(gw - 1, x1 + 2); y1 = Math.min(gh - 1, y1 + 2);
+    if (!this.gpuBlur) {
+      blur(a, gasTmp, gw, 4, x0, y0, x1, y1);
+      blur(a, gasTmp, gw, 4, x0, y0, x1, y1);
+    }
+    const out = this.gasImage.data;
+    // Clear what was drawn last time, then draw this time's box.
+    const last = this.gasBox;
+    if (last) {
+      for (let y = last[1]; y <= last[3]; y++) {
+        for (let x = last[0], q = (y * gw + x) * 4 + 3; x <= last[2]; x++, q += 4) out[q] = 0;
+      }
+    }
+    this.gasBox = [x0, y0, x1, y1];
+    const gain = 0.25 * GAS_GAIN * 255;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0, q = (y * gw + x) * 4; x <= x1; x++, q += 4) {
+        const cover = a[q + 3];
+        if (cover < 0.004) { out[q + 3] = 0; continue; }
+        const inv = 1 / cover;
+        out[q] = a[q] * inv;
+        out[q + 1] = a[q + 1] * inv;
+        out[q + 2] = a[q + 2] * inv;
+        out[q + 3] = cover * gain;
+      }
+    }
+  }
+
+  // The halo: the light given off in each air block, kept from fading
+  // faster than GLOW_LINGER a frame, blurred wide and boosted.
+  paintGlow() {
+    const { glowAcc: g, glowLast: last, glowTmp } = this;
+    for (let k = 0; k < g.length; k++) {
+      const kept = last[k] * GLOW_LINGER;
+      if (g[k] < kept) g[k] = kept;
+    }
+    last.set(g);
+    const { cols, rows } = this.world.air;
+    blur(g, glowTmp, cols, 3, 0, 0, cols - 1, rows - 1);
+    blur(g, glowTmp, cols, 3, 0, 0, cols - 1, rows - 1);
     const gp = this.glowImage.data;
-    const n = cols * air.rows;
-    const gain = 1 / (CELL * CELL) * 2.2;
-    for (let k = 0; k < n; k++) {
-      gp[k * 4] = Math.min(255, glow[k * 3] * gain);
-      gp[k * 4 + 1] = Math.min(255, glow[k * 3 + 1] * gain);
-      gp[k * 4 + 2] = Math.min(255, glow[k * 3 + 2] * gain);
+    const gain = (1 / (CELL * CELL)) * GLOW_GAIN;
+    for (let k = 0; k < cols * rows; k++) {
+      gp[k * 4] = Math.min(255, g[k * 3] * gain);
+      gp[k * 4 + 1] = Math.min(255, g[k * 3 + 1] * gain);
+      gp[k * 4 + 2] = Math.min(255, g[k * 3 + 2] * gain);
       gp[k * 4 + 3] = 255;
     }
   }
@@ -10338,7 +11277,7 @@ class Renderer {
   }
 }
 
-return { Renderer };
+return { SOFT, Renderer };
 })();
 
 __modules["src/game/tree.js"] = (() => {
@@ -12366,6 +13305,31 @@ function setReplace(on) {
   $('btn-replace').setAttribute('aria-pressed', String(on));
 }
 
+// The Gas and Glow effects (renderer.js), on unless switched off; the choice
+// is remembered in this browser.
+const DISPLAY_KEY = 'sandbox-crafter:display';
+function setEffect(name, on) {
+  renderer[name] = on;
+  $(`btn-${name}`).setAttribute('aria-pressed', String(on));
+  try {
+    localStorage.setItem(DISPLAY_KEY, JSON.stringify({ gas: renderer.gas, glow: renderer.glow }));
+  } catch {
+    // Storage unavailable: it just won't be remembered.
+  }
+}
+function loadEffects() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(DISPLAY_KEY)) ?? {};
+  } catch {
+    // Unreadable or unavailable: the defaults.
+  }
+  for (const name of ['gas', 'glow']) {
+    renderer[name] = saved[name] !== false;
+    $(`btn-${name}`).setAttribute('aria-pressed', String(renderer[name]));
+  }
+}
+
 // ---- zoom -----------------------------------------------------------------
 
 // Zoom in or out a step, towards the pointer if it's over the world.
@@ -12413,6 +13377,9 @@ $('btn-pause').addEventListener('click', () => setPaused(!game.paused));
 $('btn-step').addEventListener('click', stepOnce);
 $('btn-clear').addEventListener('click', () => world.clearAll());
 $('btn-replace').addEventListener('click', () => setReplace(!game.replace));
+$('btn-gas').addEventListener('click', () => setEffect('gas', !renderer.gas));
+$('btn-glow').addEventListener('click', () => setEffect('glow', !renderer.glow));
+loadEffects();
 for (const b of document.querySelectorAll('[data-shape]')) {
   b.addEventListener('click', () => {
     game.brushShape = b.dataset.shape;

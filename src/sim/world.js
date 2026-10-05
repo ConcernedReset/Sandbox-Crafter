@@ -21,7 +21,7 @@
 import { Air, CELL, AIR_SHARE, BOIL_LOWEST, PHASE_HIGHEST } from './air.js';
 import { DEFS, ID, NUM, State, AMBIENT, REACT } from './elements.js';
 import {
-  MAX_TEMP, MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY,
+  MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY,
 } from './constants.js';
 import {
   COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS, HIGH_PHASE, LOW_PHASE, PHASE_BOIL,
@@ -29,10 +29,25 @@ import {
 import { Behaviors, SNUFF_AT } from './behaviors.js';
 import { Particles, initParticles } from './particles.js';
 import { Machines, initMachines } from './machines.js';
+import { AirMachines } from './machines-air.js';
+import { MotionMachines } from './machines-motion.js';
 import { Gravity, DX8, DY8 } from './gravity.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
+// Heat flow between touching particles: this fraction of the gap a frame,
+// times the smaller of their conductivities (under a half, so it never
+// overshoots). With convection on, a particle trades heat with the air
+// beside it at AIR_TOUCH times its conductivity (but never slower than it
+// would cool to the room without convection).
+const CONDUCT_RATE = 0.35;
+const AIR_TOUCH = 0.009;
+// Air can only take up so much heat from a surface a frame: AIR_FLUX degrees
+// of the particle's (AIR_SHARE times that in the air). Far above what lava or
+// fire gives, it only holds back the likes of a star, whose heat would
+// otherwise flood the whole world through the air.
+const AIR_FLUX = 100;
+const TOUCH = Float32Array.from(COND, (k, t) => (t === 0 ? 0 : Math.max(AIR_COOL[t], k * AIR_TOUCH)));
 // What the Mix tool leaves where it is (see mixArea).
 const FIXED = Uint8Array.from(DEFS, (d) => (d.indestructible ? 1 : 0));
 
@@ -48,7 +63,7 @@ export const VOID_TOP = 1, VOID_BOTTOM = 2, VOID_LEFT = 4, VOID_RIGHT = 8;
 const ZERO_G_RISE = 0.3;
 const ZERO_G_SINK = 0.3 / 0.7;
 
-export { MAX_TEMP, MIN_TEMP };
+export { MIN_TEMP };
 
 export class World {
   constructor(width, height, seed = 12345) {
@@ -239,7 +254,7 @@ export class World {
         const j = ny * w + nx;
         const e = DEFS[type[j]];
         // Other explosives caught in the blast go off too.
-        if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = Math.min(MAX_TEMP, e.ignite + 1);
+        if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = e.ignite + 1;
         const s = e.state;
         if (s !== POWDER && s !== LIQUID && s !== GAS && !this.loose[j]) continue;
         // Push outward; things below the blast (along the gravity arrow)
@@ -321,6 +336,7 @@ export class World {
     air.next = air.blocked;
     air.blocked = next;
     this.stepDoors();
+    this.stepPipes();
     this.computeField();
     this.stepProjectiles();
     this.conductHeat();
@@ -495,7 +511,7 @@ export class World {
       a = this.activity(x, y, d);
       trickle = a + REST;
     }
-    if (d.selfHeat !== 0) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + d.selfHeat * trickle);
+    if (d.selfHeat !== 0) this.temp[i] += d.selfHeat * trickle;
     if (d.emits !== null && a > 0) {
       for (const m of d.emits) if (this.rand() < m.chance * a) this.emitAt(m.id, x, y);
     }
@@ -541,7 +557,7 @@ export class World {
   // Apply a contact reaction between i (at x, y) and its neighbour j.
   // Returns true if i itself changed.
   react(i, j, x, y, r) {
-    if (r.heat) this.temp[i] = Math.min(MAX_TEMP, this.temp[i] + r.heat);
+    if (r.heat) this.temp[i] += r.heat;
     this.reactOther(j, x, y, r);
     const s = r.self;
     if (s.alt >= 0 && this.rand() < s.altChance) { this.convert(i, s.alt, r.keepSelf, s.altRule); return true; }
@@ -552,7 +568,7 @@ export class World {
   // The half of a contact reaction r that happens to the other party, j,
   // and around (x, y): what j turns into, and anything given off.
   reactOther(j, x, y, r) {
-    if (r.heat) this.temp[j] = Math.min(MAX_TEMP, this.temp[j] + r.heat);
+    if (r.heat) this.temp[j] += r.heat;
     const o = r.other;
     if (o.alt >= 0 && this.rand() < o.altChance) this.convert(j, o.alt, r.keepOther, o.altRule);
     else if (o.to >= 0) this.convert(j, o.to, r.keepOther, o.rule);
@@ -989,7 +1005,7 @@ export class World {
           if (u === 0) open++;
           else if (ka > 0) {
             const kb = COND[u];
-            const k = (ka < kb ? ka : kb) * 0.2;
+            const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
             if (k > 0) { const f = (T - temp[i + 1]) * k; T -= f; temp[i + 1] += f; }
           }
         }
@@ -998,7 +1014,7 @@ export class World {
           if (u === 0) open++;
           else if (ka > 0) {
             const kb = COND[u];
-            const k = (ka < kb ? ka : kb) * 0.2;
+            const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
             if (k > 0) { const f = (T - temp[i + w]) * k; T -= f; temp[i + w] += f; }
           }
         }
@@ -1014,7 +1030,7 @@ export class World {
           if (!heat) T += (AMBIENT - T) * AIR_COOL[t] * open;
           else {
             // Convection: heat goes into the air of each empty cell beside it.
-            const r = AIR_COOL[t];
+            const r = TOUCH[t];
             if (x < w - 1 && type[i + 1] === 0) T = this.warmAir(x + 1, y, T, r);
             if (y < h - 1 && type[i + w] === 0) T = this.warmAir(x, y + 1, T, r);
             if (x > 0 && type[i - 1] === 0) T = this.warmAir(x - 1, y, T, r);
@@ -1036,7 +1052,8 @@ export class World {
     const a = air.at(x, y);
     if (air.blocked[a]) return T + (AMBIENT - T) * rate; // no air of its own
     const was = air.t[a];
-    const f = (was - T) * rate;
+    let f = (was - T) * rate;
+    if (f > AIR_FLUX) f = AIR_FLUX; else if (f < -AIR_FLUX) f = -AIR_FLUX;
     const now = T + f;
     let t = was - f * AIR_SHARE;
     if ((f < 0 && t > now) || (f > 0 && t < now)) t = now; // never past the particle
@@ -1133,13 +1150,13 @@ export class World {
       if (air.heat) {
         const a = air.at(x, y);
         if (!air.blocked[a]) {
-          const was = air.t[a], now = Math.min(MAX_TEMP, Math.max(MIN_TEMP, was + share));
+          const was = air.t[a], now = Math.max(MIN_TEMP, was + share);
           air.t[a] = now;
         }
       }
       if (!t) return;
       const T = this.temp[i] + amount;
-      this.temp[i] = T > MAX_TEMP ? MAX_TEMP : T < MIN_TEMP ? MIN_TEMP : T;
+      this.temp[i] = T < MIN_TEMP ? MIN_TEMP : T;
     });
   }
 
@@ -1173,7 +1190,7 @@ export class World {
     area((i, x, y) => {
       const u = this.type[i];
       if (u === 0) {
-        if (this.doorTimer[i] !== 0) this.powerCell(i);
+        if (this.doorTimer[i] !== 0) this.powerCell(i, i);
         else if (density >= 1 || this.rand() < density) this.spawn(i, SPARK);
       } else {
         this.zap(i, x, y, u);
@@ -1184,7 +1201,7 @@ export class World {
   zap(i, x, y, u) {
     if (CONDUCTOR[u]) { if (this.life[i] === 0) this.sparkAt(i); return; }
     if (PRESSABLE[u]) { this.press(i); return; }
-    if (POWERED[u]) { this.powerCell(i); return; }
+    if (POWERED[u]) { this.powerCell(i, i); return; }
     const d = DEFS[u];
     if (d.explode > 0) { this.ignite(i, x, y); return; }
     if (d.excite !== null) {
@@ -1222,4 +1239,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines);
