@@ -105,8 +105,8 @@ it does now.
 - The options strip shows four buttons: ¼×, ½×, 2×, 4×. Painting with the
   Time tool sets the chosen speed on every cell under the brush.
   Right-clicking (or right-dragging) with the Time tool sets cells back to
-  normal speed. Clear leaves speeds as they are; loading the starting scene
-  resets them all.
+  normal speed. Clear removes every time zone (as well as every particle
+  and portal), and so does loading the starting scene.
 - `World.speed` (Uint8Array per cell): 0 normal, then ¼, ½, 2 and 4. It
   belongs to the place, not to what's in it: sand that falls out of a slow
   area speeds back up.
@@ -130,8 +130,16 @@ it does now.
   extra passes can update a particle again. Everything else keyed to the
   frame number (blinking clocks, conveyors, pipe rebuilds, gravity) still
   uses `tick`, once a frame.
-- Drawn with a faint tint over the cell: blue for slow, orange for fast,
-  stronger the further from normal.
+- Time zones are easy to spot, in every view (Normal, Heat, Pressure):
+  - **Tint**: every cell in a zone is tinted, blue for slow and orange for
+    fast, stronger the further from normal (¼× and 4× twice as strong as
+    ½× and 2×). Empty cells show the tint too, so an empty zone is still
+    visible.
+  - **Border**: a zone cell next to a cell of a different speed is drawn as
+    a bright outline in the zone's colour, a dashed line that crawls slowly
+    along (backwards for slow zones, forwards for fast ones), so a zone's
+    edge stands out against whatever is in it.
+  - The inspect line names the speed ("¼× speed").
 - Cost: an area at 4× costs about four times as much to run as it would at
   normal speed. Nothing is spent when no area is fast or slow.
 
@@ -251,7 +259,8 @@ New `test/portals.test.js`, `test/time.test.js`, `test/loops.test.js`,
   of the other; a full exit makes things wait; removing a pair (right-click,
   erase, Clear) removes all its cells; a lone end does nothing; ends can't
   overlap.
-- **Time**: sand in a ¼× area falls about a quarter as far in the same
+- **Time**: Clear removes every zone; zone cells are tinted and their edge
+  cells outlined in the renderer; sand in a ¼× area falls about a quarter as far in the same
   frames as sand beside it, and in a 4× area about four times; a fire in a
   4× area burns out about four times sooner; a photon crossing a ½× area
   slows there; heat crosses a 4× bar faster without overshooting; right-
