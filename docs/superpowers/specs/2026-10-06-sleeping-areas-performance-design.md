@@ -53,8 +53,8 @@ chunks start awake.
   a reaction in a neighbour) without the code that made the change having
   to report it.
 - A sleeping chunk also wakes while the air over it isn't still: any of its
-  air blocks with pressure or wind beyond AIR_STILL (1e-4), or air more than
-  AIR_STILL °C from room temperature.
+  air blocks with pressure or wind beyond AIR_STILL (0.01), or air more than
+  HEAT_STILL (0.1 °C) from room temperature.
 - `setGravity`, `setConvection`, `setEdges`, `addPortal`/`removePortalAt`
   and `paintSpeed` wake every chunk.
 - While Newtonian gravity is on, nothing sleeps (the pull everywhere can
@@ -72,7 +72,7 @@ can change on its own. A chunk stays awake while any cell in it holds:
   pyroelectric, producing fruit) or holds its own temperature;
 - a particle with a countdown running (`life` > 0), torn loose (`loose`),
   or moving (|vx| or |vy| ≥ 0.01);
-- a temperature more than TEMP_STILL (0.05 °C) from room temperature (within
+- a temperature more than HEAT_STILL (0.1 °C) from room temperature (within
   that, it is set to exactly room temperature, so a cooled chunk can sleep);
 - a temperature at or past its own high or low phase change, or ignition
   point;
@@ -85,11 +85,12 @@ The check runs only for chunks that are about to fall asleep.
 ### Still air
 
 When the whole air grid is still (every pressure and both velocities within
-AIR_STILL of 0, and, with convection on, every air temperature within
-AIR_STILL of room temperature), the air step is skipped. Each step starts
-with a cheap scan of the grid, and the air steps again as soon as anything
-has stirred it. When it settles below AIR_STILL, the grid is set to exactly
-still.
+AIR_STILL (0.01) of 0, and, with convection on, every air temperature within
+HEAT_STILL (0.1 °C) of room temperature), the air step is skipped. Each step
+starts with a cheap scan of the grid, and the air steps again as soon as
+anything has stirred it past those. When it settles within them, the grid
+is set to exactly still (and the pressure the air's heat was holding goes
+with it).
 
 ### Seeing it
 
