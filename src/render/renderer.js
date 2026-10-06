@@ -13,6 +13,8 @@
 import { DEFS, ID, NUM, State, AMBIENT } from '../sim/elements.js';
 import { CELL } from '../sim/air.js';
 import { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } from '../sim/world.js';
+import { PASS } from '../sim/walls.js';
+import { portalHues } from '../sim/portals.js';
 
 const BG = [10, 12, 16];
 const SHADES = 8;
@@ -56,20 +58,70 @@ function ramp(stops) {
 const HOT = ramp([[0, '#5a0d04'], [0.12, '#a3200a'], [0.3, '#e2461a'], [0.5, '#ff8f2e'], [0.75, '#ffd46a'], [1, '#fff6e2']]);
 const FIRE = ramp([[0, '#3a0a04'], [0.25, '#b3260b'], [0.55, '#ff7a22'], [0.8, '#ffc04a'], [1, '#fff1b0']]);
 const PLASMA = ramp([[0, '#3a0b5a'], [0.4, '#a02ce0'], [0.75, '#f07cff'], [1, '#fff0ff']]);
-const HEAT = ramp([
-  [0, '#141a5c'], [0.162, '#2350c8'], [0.252, '#2fb4d8'], [0.324, '#3cc47a'],
-  [0.45, '#e8d13c'], [0.612, '#ff7a26'], [0.765, '#e0262a'], [0.9, '#ffffff'], [1, '#b49cff'],
-]);
+// The Heat view's colours. Up to white heat (6000 °C) a thermal camera's
+// ramp: navy at absolute zero, blue, green, yellow, orange, red, white. Past
+// that there's no top temperature, so the colour never stops changing: it
+// fades from white into a bright hue wheel (violet, pink, red, orange,
+// yellow, green, cyan, blue, violet again) and goes round it once every
+// HEAT_TURN powers of ten, for ever. The wheel is kept light, so nothing that
+// hot looks like the deep blues of cold.
+const HEAT_WHITE = 6000;
+const HEAT_FADE = 0.4; // powers of ten from white into the wheel
+const HEAT_TURN = 4; // powers of ten once round the wheel
+const HEAT_ON = HEAT_WHITE * 10 ** HEAT_FADE; // where the wheel starts
+const HEAT_LIGHT = 0.66; // the wheel's lightness (HSL)
 
-// Map a temperature to a 0..255 index on the heat-view ramp: blue through
-// red to white at 6000 °C, then on to violet for the millions and beyond.
+// A colour at hue h (degrees), full saturation, lightness l (HSL).
+function hsl(h, l) {
+  const c = 1 - Math.abs(2 * l - 1);
+  const k = (n) => {
+    const m = (n + h / 30) % 12;
+    return Math.round((l - (c / 2) * Math.max(-1, Math.min(m - 3, 9 - m, 1))) * 255);
+  };
+  return [k(0), k(8), k(4)];
+}
+const toHex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+const WHEEL_START = 270; // violet
+
+// Entries 0..255: the ramp to white and on into the wheel; 256..511: the wheel.
+const HEAT = new Uint8Array(512 * 3);
+HEAT.set(ramp([
+  [0, '#141a5c'], [0.162, '#2350c8'], [0.252, '#2fb4d8'], [0.324, '#3cc47a'],
+  [0.45, '#e8d13c'], [0.612, '#ff7a26'], [0.765, '#e0262a'], [0.9, '#ffffff'],
+  [1, toHex(hsl(WHEEL_START, HEAT_LIGHT))],
+]));
+for (let k = 0; k < 256; k++) HEAT.set(hsl(WHEEL_START + (k / 256) * 360, HEAT_LIGHT), (256 + k) * 3);
+
+// Map a temperature to its entry in HEAT.
 function heatIndex(T) {
+  if (T >= HEAT_ON) {
+    const f = Math.log10(T / HEAT_ON) / HEAT_TURN;
+    return 256 + (((f - Math.floor(f)) * 256) | 0);
+  }
   let u;
   if (T < 22) u = 0.27 * Math.max(0, T + 273) / 295;
-  else if (T <= 6000) u = 0.27 + 0.63 * Math.log1p((T - 22) / 40) / Math.log1p(5978 / 40);
-  else u = 0.9 + 0.1 * Math.min(1, Math.log10(T / 6000) / 9);
+  else if (T <= HEAT_WHITE) u = 0.27 + 0.63 * Math.log1p((T - 22) / 40) / Math.log1p((HEAT_WHITE - 22) / 40);
+  else u = 0.9 + 0.1 * Math.log10(T / HEAT_WHITE) / HEAT_FADE;
   return Math.min(255, Math.max(0, (u * 255) | 0));
 }
+
+// The Heat view's colour for temperature T, as [r, g, b].
+export function heatRGB(T) {
+  const k = heatIndex(T) * 3;
+  return [HEAT[k], HEAT[k + 1], HEAT[k + 2]];
+}
+
+// How a time zone is tinted: blue for slow, orange for fast, stronger the
+// further from normal speed.
+const ZONE_TINT = [null,
+  { rgb: [90, 160, 255], strength: 0.32 }, { rgb: [90, 160, 255], strength: 0.16 },
+  { rgb: [255, 150, 60], strength: 0.16 }, { rgb: [255, 150, 60], strength: 0.32 }];
+export const zoneTint = (code) => ZONE_TINT[code];
+
+// The colour of end `end` (0 or 1) of portal pair `slot`.
+export const portalRGB = (slot, end) => hsl(portalHues(slot)[end], 0.62);
+// The lighter cells of the mesh a wall that lets things through is drawn as.
+const WALL_LIGHT = [124, 132, 148];
 
 // Box-blur an interleaved array of `ch` (3 or 4) channels, w wide, in
 // place, radius 1, across then down, over columns x0..x1 and rows y0..y1
@@ -93,6 +145,35 @@ function blur(a, tmp, w, ch, x0, y0, x1, y1) {
       a[i + 1] = (tmp[u + 1] + tmp[i + 1] + tmp[d + 1]) * k;
       a[i + 2] = (tmp[u + 2] + tmp[i + 2] + tmp[d + 2]) * k;
       if (four) a[i + 3] = (tmp[u + 3] + tmp[i + 3] + tmp[d + 3]) * k;
+    }
+  }
+}
+
+// The Glow halo's blur (three colour channels per air block): like blur,
+// except that light doesn't cross a wall. Blocks with any Wall in them
+// (`mask`) stay dark, and count as the block's own light to the blocks
+// beside them.
+export function glowBlur(a, tmp, w, h, mask) {
+  const k = 1 / 3;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0, c = y * w; x < w; x++, c++) {
+      const i = c * 3;
+      if (mask[c]) { tmp[i] = 0; tmp[i + 1] = 0; tmp[i + 2] = 0; continue; }
+      const l = x > 0 && !mask[c - 1] ? i - 3 : i, r = x < w - 1 && !mask[c + 1] ? i + 3 : i;
+      tmp[i] = (a[l] + a[i] + a[r]) * k;
+      tmp[i + 1] = (a[l + 1] + a[i + 1] + a[r + 1]) * k;
+      tmp[i + 2] = (a[l + 2] + a[i + 2] + a[r + 2]) * k;
+    }
+  }
+  const row = w * 3;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0, c = y * w; x < w; x++, c++) {
+      const i = c * 3;
+      if (mask[c]) { a[i] = 0; a[i + 1] = 0; a[i + 2] = 0; continue; }
+      const u = y > 0 && !mask[c - w] ? i - row : i, d = y < h - 1 && !mask[c + w] ? i + row : i;
+      a[i] = (tmp[u] + tmp[i] + tmp[d]) * k;
+      a[i + 1] = (tmp[u + 1] + tmp[i + 1] + tmp[d + 1]) * k;
+      a[i + 2] = (tmp[u + 2] + tmp[i + 2] + tmp[d + 2]) * k;
     }
   }
 }
@@ -155,6 +236,7 @@ export class Renderer {
     this.glowAcc = new Float32Array(cols * rows * 3);
     this.glowLast = new Float32Array(cols * rows * 3);
     this.glowTmp = new Float32Array(cols * rows * 3);
+    this.glowWall = new Uint8Array(cols * rows); // air blocks with Wall in them
 
     // The gas layer, at half resolution: colour times opacity, and opacity.
     this.gw = Math.ceil(world.w / 2);
@@ -259,15 +341,17 @@ export class Renderer {
         0, 0, canvas.width, canvas.height);
       ctx.globalCompositeOperation = 'source-over';
     }
-    this.drawVoidEdges();
+    this.drawEdges();
     if (brush) this.drawBrush(brush);
   }
 
   // A purple line along each edge of the world that's a void.
-  drawVoidEdges() {
-    const v = this.world.voidEdges;
-    if (!v) return;
+  // Void edges are a solid violet bar; looped ones a dashed teal line on
+  // both sides of the join.
+  drawEdges() {
     const { ctx, canvas, camera: cam, world } = this;
+    const v = world.voidEdges;
+    if (!v && !world.loopX && !world.loopY) return;
     const sx = canvas.width / cam.vw, sy = canvas.height / cam.vh;
     const x0 = -cam.x * sx, y0 = -cam.y * sy;
     const x1 = (world.w - cam.x) * sx, y1 = (world.h - cam.y) * sy;
@@ -277,6 +361,17 @@ export class Renderer {
     if (v & VOID_BOTTOM) ctx.fillRect(x0, y1 - t, x1 - x0, t);
     if (v & VOID_LEFT) ctx.fillRect(x0, y0, t, y1 - y0);
     if (v & VOID_RIGHT) ctx.fillRect(x1 - t, y0, t, y1 - y0);
+    if (world.loopX || world.loopY) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(79, 209, 197, 0.9)';
+      ctx.lineWidth = t;
+      ctx.setLineDash([t * 2, t * 2]);
+      ctx.beginPath();
+      if (world.loopX) { ctx.moveTo(x0 + t / 2, y0); ctx.lineTo(x0 + t / 2, y1); ctx.moveTo(x1 - t / 2, y0); ctx.lineTo(x1 - t / 2, y1); }
+      if (world.loopY) { ctx.moveTo(x0, y0 + t / 2); ctx.lineTo(x1, y0 + t / 2); ctx.moveTo(x0, y1 - t / 2); ctx.lineTo(x1, y1 - t / 2); }
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // A small map of the whole world with the zoomed-in view marked on it.
@@ -337,11 +432,12 @@ export class Renderer {
 
   paint() {
     const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
-    const { w, h, type, temp, life, ctype, shade, loose, doorTimer, doorKind } = world;
+    const { w, h, type, temp, life, ctype, shade, loose, doorTimer, doorKind, wall } = world;
     const air = world.air;
     const cols = air.cols;
-    const glow = this.glowAcc;
+    const glow = this.glowAcc, glowWall = this.glowWall;
     glow.fill(0);
+    glowWall.fill(0);
     const bgR = BG[0], bgG = BG[1], bgB = BG[2];
     const bg = pack(bgR, bgG, bgB);
     const heatView = view === 'heat';
@@ -362,6 +458,8 @@ export class Renderer {
         const t = type[i];
         let r, g, b;
 
+        // Light doesn't get past a wall, unless it lets particles through.
+        if (wall[i] !== 0 && (wall[i] & PASS.particles) === 0) glowWall[gRow + ((x / CELL) | 0)] = 1;
         if (t === 0) {
           if (doorTimer[i] !== 0 && !heatView) {
             // An open doorway: a faint ghost of the door (or valve).
@@ -600,11 +698,69 @@ export class Renderer {
     }
 
     this.count = count;
+    this.paintOverlays();
     this.paintProjectiles(heatView);
 
     this.gasCells = soft ? gasCells : 0;
     if (this.gasCells > 0) this.paintGas(gx0, gy0, gx1, gy1);
     if (this.glow && !heatView) this.paintGlow();
+  }
+
+  // Drawn over the cells, in every view: walls that let things through (a
+  // mesh), time zones (a tint, and a dashed border that crawls along), and
+  // portals.
+  paintOverlays() {
+    const { world, pixels, frame } = this;
+    const { w, h } = world;
+    const blend = (i, rgb, a) => {
+      const c = pixels[i];
+      const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+      pixels[i] = pack((r + (rgb[0] - r) * a) | 0, (g + (rgb[1] - g) * a) | 0, (b + (rgb[2] - b) * a) | 0);
+    };
+    if (world.meshCount !== 0) {
+      const wall = world.wall;
+      for (let y = 0; y < h; y++) {
+        for (let x = y & 1; x < w; x += 2) { // every other cell: a checkerboard
+          const i = y * w + x;
+          if ((wall[i] & 255) !== 0) blend(i, WALL_LIGHT, 0.55);
+        }
+      }
+    }
+    if (world.zoneCount !== 0) {
+      const speed = world.speed;
+      const crawl = frame >> 2;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x, s = speed[i];
+          if (s === 0) continue;
+          const tint = ZONE_TINT[s];
+          const edge = (x > 0 && speed[i - 1] !== s) || (x < w - 1 && speed[i + 1] !== s)
+            || (y > 0 && speed[i - w] !== s) || (y < h - 1 && speed[i + w] !== s);
+          if (edge) {
+            // Backwards for a slow zone, forwards for a fast one.
+            const on = (((x + y + (s <= 2 ? -crawl : crawl)) >> 1) & 1) === 0;
+            blend(i, tint.rgb, on ? 0.95 : tint.strength * 1.6);
+          } else {
+            blend(i, tint.rgb, tint.strength);
+          }
+        }
+      }
+    }
+    if (world.portalCells !== 0) {
+      world.portals.forEach((p, slot) => {
+        if (p === null) return;
+        [p.a, p.b].forEach((e, end) => {
+          if (e === null) return;
+          const [r, g, b] = portalRGB(slot, end);
+          const c = pack(r, g, b);
+          e.cells.forEach((i, pos) => {
+            // A lone end is dashed until its partner is drawn.
+            if (p.b === null && ((pos >> 1) & 1) === 1) return;
+            pixels[i] = c;
+          });
+        });
+      });
+    }
   }
 
   // Turn the gas layer into an image, blurred (here, unless the canvas blurs
@@ -643,7 +799,8 @@ export class Renderer {
   }
 
   // The halo: the light given off in each air block, kept from fading
-  // faster than GLOW_LINGER a frame, blurred wide and boosted.
+  // faster than GLOW_LINGER a frame, blurred wide and boosted. It stops at
+  // walls (glowBlur).
   paintGlow() {
     const { glowAcc: g, glowLast: last, glowTmp } = this;
     for (let k = 0; k < g.length; k++) {
@@ -652,8 +809,8 @@ export class Renderer {
     }
     last.set(g);
     const { cols, rows } = this.world.air;
-    blur(g, glowTmp, cols, 3, 0, 0, cols - 1, rows - 1);
-    blur(g, glowTmp, cols, 3, 0, 0, cols - 1, rows - 1);
+    glowBlur(g, glowTmp, cols, rows, this.glowWall);
+    glowBlur(g, glowTmp, cols, rows, this.glowWall);
     const gp = this.glowImage.data;
     const gain = (1 / (CELL * CELL)) * GLOW_GAIN;
     for (let k = 0; k < cols * rows; k++) {

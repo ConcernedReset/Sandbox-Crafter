@@ -434,7 +434,16 @@ kbd {
   min-height: 0;
 }
 
-.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } /* three rows of three */
+.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } /* rows of three */
+/* The options strip under the tools: the Wall checklist, the Time speeds. */
+.tool-options { margin-top: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--text); }
+.tool-options[hidden] { display: none; }
+.tool-options .opt-head { color: var(--muted); margin-bottom: 4px; }
+.opt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 8px; }
+.opt-check { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.opt-speeds { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.opt-speeds button { padding: 3px 0; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--text); cursor: pointer; font: inherit; }
+.opt-speeds button[aria-checked='true'] { border-color: var(--brass); background: var(--brass-soft); color: var(--brass); }
 .tool {
   display: flex;
   flex-direction: column;
@@ -680,10 +689,13 @@ kbd {
 .edges-box { grid-area: 2 / 2; border: 1px dashed var(--line-strong); border-radius: 2px; }
 .edge { padding: 0; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--panel-2); }
 .edge:hover { border-color: var(--brass); }
-.edge[aria-pressed='true'] {
+.edge[data-state='void'] {
   border-color: #a68cff;
   background: repeating-linear-gradient(45deg, #8b6cff 0 3px, #2b2245 3px 6px);
 }
+/* A loop: dashes along the edge, in the colour of the loop markers on the world. */
+.edge[data-state='loop'] { border-color: #4fd1c5; background: repeating-linear-gradient(90deg, #4fd1c5 0 3px, transparent 3px 6px); }
+.edge-left[data-state='loop'], .edge-right[data-state='loop'] { background: repeating-linear-gradient(0deg, #4fd1c5 0 3px, transparent 3px 6px); }
 .edge-top { grid-area: 1 / 2; }
 .edge-left { grid-area: 2 / 1; }
 .edge-right { grid-area: 2 / 3; }

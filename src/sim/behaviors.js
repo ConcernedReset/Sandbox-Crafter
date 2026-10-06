@@ -321,7 +321,7 @@ export const Behaviors = {
         this.ctype[j] = 0;
         this.life[j] = this.life[cur] - 1;
         this.temp[j] = this.temp[cur];
-        this.clock[j] = this.tick;
+        this.clock[j] = this.pass;
         this.ctype[cur] = 1;
         this.life[cur] = 3 + ((this.rand() * 4) | 0);
         cur = j; cx = nx; cy = ny;

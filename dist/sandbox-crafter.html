@@ -444,7 +444,16 @@ kbd {
   min-height: 0;
 }
 
-.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } /* three rows of three */
+.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } /* rows of three */
+/* The options strip under the tools: the Wall checklist, the Time speeds. */
+.tool-options { margin-top: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--text); }
+.tool-options[hidden] { display: none; }
+.tool-options .opt-head { color: var(--muted); margin-bottom: 4px; }
+.opt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 8px; }
+.opt-check { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.opt-speeds { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.opt-speeds button { padding: 3px 0; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--text); cursor: pointer; font: inherit; }
+.opt-speeds button[aria-checked='true'] { border-color: var(--brass); background: var(--brass-soft); color: var(--brass); }
 .tool {
   display: flex;
   flex-direction: column;
@@ -690,10 +699,13 @@ kbd {
 .edges-box { grid-area: 2 / 2; border: 1px dashed var(--line-strong); border-radius: 2px; }
 .edge { padding: 0; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--panel-2); }
 .edge:hover { border-color: var(--brass); }
-.edge[aria-pressed='true'] {
+.edge[data-state='void'] {
   border-color: #a68cff;
   background: repeating-linear-gradient(45deg, #8b6cff 0 3px, #2b2245 3px 6px);
 }
+/* A loop: dashes along the edge, in the colour of the loop markers on the world. */
+.edge[data-state='loop'] { border-color: #4fd1c5; background: repeating-linear-gradient(90deg, #4fd1c5 0 3px, transparent 3px 6px); }
+.edge-left[data-state='loop'], .edge-right[data-state='loop'] { background: repeating-linear-gradient(0deg, #4fd1c5 0 3px, transparent 3px 6px); }
 .edge-top { grid-area: 1 / 2; }
 .edge-left { grid-area: 2 / 1; }
 .edge-right { grid-area: 2 / 3; }
@@ -986,15 +998,15 @@ kbd {
         <label class="physics-toggle"><input type="checkbox" id="convection"> Convection</label>
         <div class="physics-edges" role="group" aria-labelledby="edges-label">
           <span class="physics-label" id="edges-label">Edges</span>
-          <div class="edges" title="Click a side to make that edge of the world a void: anything that leaves through it vanishes">
-            <button type="button" class="edge edge-top" data-edge="top" aria-pressed="false" aria-label="Roof is a void"></button>
-            <button type="button" class="edge edge-left" data-edge="left" aria-pressed="false" aria-label="Left wall is a void"></button>
+          <div class="edges" title="Click a side: solid, then a void (whatever leaves through it vanishes), then a loop (it comes back in at the opposite side)">
+            <button type="button" class="edge edge-top" data-edge="top" data-name="Roof" aria-pressed="false" aria-label="Roof: solid"></button>
+            <button type="button" class="edge edge-left" data-edge="left" data-name="Left wall" aria-pressed="false" aria-label="Left wall: solid"></button>
             <span class="edges-box" aria-hidden="true"></span>
-            <button type="button" class="edge edge-right" data-edge="right" aria-pressed="false" aria-label="Right wall is a void"></button>
-            <button type="button" class="edge edge-bottom" data-edge="bottom" aria-pressed="false" aria-label="Floor is a void"></button>
+            <button type="button" class="edge edge-right" data-edge="right" data-name="Right wall" aria-pressed="false" aria-label="Right wall: solid"></button>
+            <button type="button" class="edge edge-bottom" data-edge="bottom" data-name="Floor" aria-pressed="false" aria-label="Floor: solid"></button>
           </div>
         </div>
-        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, Newtonian off, convection on, no void edges">Reset</button>
+        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, Newtonian off, convection on, solid edges">Reset</button>
       </section>
       <section class="tree" aria-labelledby="tree-title">
         <canvas id="tree" aria-label="Recipe tree. Drag to move it, Ctrl-scroll or pinch to zoom, click an element to see how it's made."></canvas>
@@ -1023,6 +1035,7 @@ kbd {
     <aside class="panel" aria-label="Elements">
       <div class="panel-body" id="panel-elements">
         <div class="tools" id="tools"></div>
+        <div class="tool-options" id="tool-options" hidden></div>
         <div class="brush">
           <label for="brush">Brush</label>
           <input type="range" id="brush" min="0" max="72" value="4">
@@ -1099,41 +1112,57 @@ __modules["src/sim/air.js"] = (() => {
 //   4. the flow carries itself along (ADVECT), so gusts keep going and curl
 //      into eddies
 // A ring of blocks around the edge is held at zero pressure, so air can
-// escape the map, and blocked blocks (Wall, or a line of strong solid across
-// the block) stop flow entirely so sealed boxes hold pressure.
+// escape the map. With convection on, the edge also drags on the air going
+// through it (EDGE_DRAG), as in The Powder Toy, so a slow warm current turns
+// along the edge instead of pouring out of it. Blocked blocks (Wall, or a line of strong solid across the block) stop flow
+// entirely so sealed boxes hold pressure.
+//
+// With a pair of edges looped (setLoops), the border ring on those sides
+// holds a copy of the inside of the opposite side, so the air carries on
+// across the join (wrapRing, syncSeams), and those sides let nothing out.
+//
+// The open blocks fall into separate pockets (`region`, see label): the
+// room, joined to the border ring, and any pocket shut off from it, such as
+// the inside of a sealed box. Nothing is blurred, carried or sampled from one
+// pocket into another, and only the room loses pressure and heat to the
+// world beyond, so a sealed box keeps both for as long as it stays shut.
 //
 // With convection on (`heat`), each block also has an air temperature.
-// Particles trade heat with it (world.js, warmAir). Warm air presses
-// harder: a block's pressure includes EXPAND for every degree its air is
-// above room temperature (levelling off when very hot, see thermal), so
-// heating sealed air raises the pressure while it stays hot, and in the
-// open hot air pushes out and is drawn back as it cools, with nothing left
-// over once it has; air warmer than the air around it is pushed against
-// gravity and cooler air sinks, so a plume rises over something hot,
-// spreads, comes down at the sides and is drawn back in at the base; the
-// flow carries the heat along; and the air gives its heat back to the room.
-// The border ring stays at room temperature.
+// Particles trade heat with it (world.js, warmAir). Air that takes in heat
+// swells: its pressure rises by EXPAND a degree (levelling off when very hot,
+// see thermal), and falls again as it gives the heat up, so heating sealed
+// air raises the pressure while it stays hot, and in the open hot air pushes
+// out and is drawn back as it cools. Heat the flow merely carries from one
+// block to the next moves no pressure, so a rising plume doesn't set off
+// pressure waves as it goes. Air warmer than the room is pushed gently
+// against gravity, and colder air sinks (The Powder Toy's Boussinesq
+// convection), so a plume rises over something hot, spreads out along the
+// top, comes down at the sides and is drawn back in at the base: two steady
+// rolls. The flow carries the heat along, and the air gives its heat back to
+// the room. The border ring stays at room temperature.
 
 const { AMBIENT } = __modules["src/sim/constants.js"];
 
 const CELL = 4;
+// The region of the room: the border ring and every block joined to it.
+const OUTSIDE = 1;
 
 // Convection. A degree lost by a particle warms its block's air by
 // AIR_SHARE degrees (air holds little heat), and each degree of air above
-// room temperature adds EXPAND to the pressure. Air is pushed against gravity by BUOYANCY
-// per degree it is warmer than the air within MEAN_RADIUS blocks, per g, per
-// frame (cooler air is pushed with it), and gives AIR_TEMP_LOSS of its
-// excess heat back to the room a frame. HEAT_SMOOTH blurs it a little, like the
-// pressure.
+// room temperature adds EXPAND to the pressure. Air is pushed against
+// gravity by BUOYANCY per degree it is warmer than the room, per g, per
+// frame, but by no more than BUOYANT_MAX (colder air sinks), and gives
+// AIR_TEMP_LOSS of its excess heat back to the room a frame. HEAT_SMOOTH
+// blurs it a little, like the pressure.
 const AIR_SHARE = 3;
 const EXPAND = 0.008;
 // ...but not without limit: the pressure heat adds levels off towards
 // THERMAL_MAX (see thermal), so a pocket of million-degree air pushes hard
 // without pinning the pressure at its maximum, or leaving a vacuum behind as
-// it cools. Buoyancy counts at most BUOYANT_MAX degrees of difference.
+// it cools.
 const THERMAL_MAX = 40;
-const BUOYANT_MAX = 1000;
-const BUOYANCY = 0.0015;
+const BUOYANCY = 0.0001;
+const BUOYANT_MAX = 0.01;
 const AIR_TEMP_LOSS = 0.01;
 // Very hot air also radiates its heat away, the faster the hotter (real
 // radiation grows with the fourth power of temperature, so the share of the
@@ -1145,7 +1174,6 @@ const RADIATE_MAX = 0.9;
 // The flow carries heat at most this many blocks a frame, however hard it blows.
 const HEAT_REACH = 1.5;
 const HEAT_SMOOTH = 0.2;
-const MEAN_RADIUS = 14;
 
 const PRESSURE_STEP = 0.3;
 const VELOCITY_STEP = 0.4;
@@ -1153,6 +1181,7 @@ const PRESSURE_LOSS = 0.9999;
 const VELOCITY_LOSS = 0.999;
 const ADVECT = 0.3; // the share of each face's flow traced back along the flow
 const ADVECT_MAX = 3; // how many blocks back, at most
+const EDGE_DRAG = 0.9; // the share of the flow through the map's edge kept a frame
 const MAX_PRESSURE = 256;
 // The Powder Toy's blur kernel, exp(-2 r²) normalised: the block itself,
 // its four sides and its four corners.
@@ -1204,39 +1233,40 @@ function clampBack(v) {
   return d > ADVECT_MAX ? ADVECT_MAX : d < -ADVECT_MAX ? -ADVECT_MAX : d;
 }
 
-// Blur `f` into `out` with the kernel, where `open`; a closed neighbour
-// counts as the block's own value. Closed entries are copied as they are.
-function blur(f, open, out, W, H) {
+// Blur `f` into `out` with the kernel. `key` is each entry's region (0
+// where it's closed): a neighbour in another region, or closed, counts as
+// the entry's own value. Closed entries are copied as they are.
+function blur(f, key, out, W, H) {
   for (let y = 0; y < H; y++) {
     for (let x = 0, i = y * W; x < W; x++, i++) {
-      const own = f[i];
-      if (!open[i]) { out[i] = own; continue; }
+      const own = f[i], k = key[i];
+      if (!k) { out[i] = own; continue; }
       let s = own * K_SELF;
       const l = x > 0, r = x < W - 1, u = y > 0, d = y < H - 1;
-      s += (l && open[i - 1] ? f[i - 1] : own) * K_SIDE;
-      s += (r && open[i + 1] ? f[i + 1] : own) * K_SIDE;
-      s += (u && open[i - W] ? f[i - W] : own) * K_SIDE;
-      s += (d && open[i + W] ? f[i + W] : own) * K_SIDE;
-      s += (l && u && open[i - W - 1] ? f[i - W - 1] : own) * K_CORNER;
-      s += (r && u && open[i - W + 1] ? f[i - W + 1] : own) * K_CORNER;
-      s += (l && d && open[i + W - 1] ? f[i + W - 1] : own) * K_CORNER;
-      s += (r && d && open[i + W + 1] ? f[i + W + 1] : own) * K_CORNER;
+      s += (l && key[i - 1] === k ? f[i - 1] : own) * K_SIDE;
+      s += (r && key[i + 1] === k ? f[i + 1] : own) * K_SIDE;
+      s += (u && key[i - W] === k ? f[i - W] : own) * K_SIDE;
+      s += (d && key[i + W] === k ? f[i + W] : own) * K_SIDE;
+      s += (l && u && key[i - W - 1] === k ? f[i - W - 1] : own) * K_CORNER;
+      s += (r && u && key[i - W + 1] === k ? f[i - W + 1] : own) * K_CORNER;
+      s += (l && d && key[i + W - 1] === k ? f[i + W - 1] : own) * K_CORNER;
+      s += (r && d && key[i + W + 1] === k ? f[i + W + 1] : own) * K_CORNER;
       out[i] = s;
     }
   }
 }
 
 // `f` at (x, y) in its own grid's units, blended from the four entries
-// around; a closed one counts as `own`.
-function sample(f, open, W, H, x, y, own) {
+// around; one not in region `k` counts as `own`.
+function sample(f, key, W, H, x, y, own, k) {
   if (x < 0) x = 0; else if (x > W - 1) x = W - 1;
   if (y < 0) y = 0; else if (y > H - 1) y = H - 1;
   const x0 = x | 0, y0 = y | 0;
   const x1 = x0 < W - 1 ? x0 + 1 : x0, y1 = y0 < H - 1 ? y0 + 1 : y0;
   const fx = x - x0, fy = y - y0;
   const a = y0 * W + x0, b = y0 * W + x1, c = y1 * W + x0, d = y1 * W + x1;
-  const va = open[a] ? f[a] : own, vb = open[b] ? f[b] : own;
-  const vc = open[c] ? f[c] : own, vd = open[d] ? f[d] : own;
+  const va = key[a] === k ? f[a] : own, vb = key[b] === k ? f[b] : own;
+  const vc = key[c] === k ? f[c] : own, vd = key[d] === k ? f[d] : own;
   return (va * (1 - fx) + vb * fx) * (1 - fy) + (vc * (1 - fx) + vd * fx) * fy;
 }
 
@@ -1255,17 +1285,34 @@ class Air {
     this.solid = new Uint8Array(n); // airtight particles counted in each block this frame
     this.scratch = new Float32Array(n);
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
-    this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature already counted in p
+    this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature the pressure has caught up with
     this.heat = false;
     this.voidSides = 0; // which edges are a void (see SPONGE)
+    this.loopX = false; // which pairs of edges are joined (see setLoops)
+    this.loopY = false;
     this.np = new Float32Array(n); // the next pressure and flow, being worked out
     this.nvx = new Float32Array(n);
     this.nvy = new Float32Array(n);
-    this.open = new Uint8Array(n); // which blocks and faces air can be in (see step)
-    this.openX = new Uint8Array(n);
-    this.openY = new Uint8Array(n);
+    // The region of each block (see label), and of each block and face the
+    // air can be in (0 where it can't).
+    this.region = new Int32Array(n);
+    this.regions = OUTSIDE; // how many regions label found
+    this.labelled = false; // labelled since the blocked map last changed hands
+    this.labelledFor = new Uint8Array(n); // the blocked map the regions are for
+    this.labelledOnce = false;
+    this.stack = new Int32Array(n);
+    this.open = new Int32Array(n);
+    this.openX = new Int32Array(n);
+    this.openY = new Int32Array(n);
     this.boil = new Float32Array(n).fill(1); // boiling point factor (see ATM)
     this.melt = new Float32Array(n).fill(1); // melting point factor
+  }
+
+  // Which pairs of edges are joined (world.js, setEdges). See wrapRing.
+  setLoops(x, y) {
+    this.loopX = x;
+    this.loopY = y;
+    this.labelledOnce = false; // the pockets join up differently now
   }
 
   // Index of the air block that contains world cell (x, y).
@@ -1306,20 +1353,127 @@ class Air {
     tPressed.fill(AMBIENT);
   }
 
+  // Number the pockets of air: open blocks joined side to side share a
+  // region. The border ring and all joined to it are OUTSIDE (the room);
+  // each pocket shut off from it gets a number of its own. Blocked blocks
+  // are 0. The world calls this once the frame's blocked map is in place;
+  // while the map stays the same, so do the regions.
+  label() {
+    const { W, H, blocked, region, stack, labelledFor } = this;
+    this.labelled = true;
+    const loops = this.loopX || this.loopY;
+    let same = this.labelledOnce;
+    for (let i = 0; same && i < W * H; i++) same = blocked[i] === labelledFor[i];
+    if (same) return;
+    labelledFor.set(blocked);
+    this.labelledOnce = true;
+    region.fill(0);
+    let top = 0;
+    const edge = (i) => {
+      if (!blocked[i] && region[i] === 0 && !(loops && this.loopRing(i))) { region[i] = OUTSIDE; stack[top++] = i; }
+    };
+    for (let x = 0; x < W; x++) { edge(x); edge((H - 1) * W + x); }
+    for (let y = 1; y < H - 1; y++) { edge(y * W); edge(y * W + W - 1); }
+    const { loopX, loopY } = this;
+    let id = OUTSIDE;
+    for (let start = 0; ; ) {
+      while (top > 0) {
+        const i = stack[--top], r = region[i], x = i % W, y = (i / W) | 0;
+        for (let k = 0; k < 4; k++) {
+          let nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0), ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+          // Across a looped join to the inside of the opposite side.
+          if (loopX && nx === 0 && x === 1) nx = W - 2; else if (loopX && nx === W - 1 && x === W - 2) nx = 1;
+          if (loopY && ny === 0 && y === 1) ny = H - 2; else if (loopY && ny === H - 1 && y === H - 2) ny = 1;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = ny * W + nx;
+          if (!blocked[j] && region[j] === 0 && !(loops && this.loopRing(j))) { region[j] = r; stack[top++] = j; }
+        }
+      }
+      while (start < W * H && (blocked[start] || region[start] !== 0 || (loops && this.loopRing(start)))) start++;
+      if (start === W * H) break;
+      region[start] = ++id;
+      stack[top++] = start;
+    }
+    // A looped ring block belongs to the pocket of the block it copies.
+    if (loops) for (let i = 0; i < W * H; i++) if (this.loopRing(i)) region[i] = region[this.mirror(i)];
+    this.regions = id;
+  }
+
+  // Is block i a border-ring block on a looped side?
+  loopRing(i) {
+    const { W, H } = this, x = i % W, y = (i / W) | 0;
+    return ((x === 0 || x === W - 1) && this.loopX) || ((y === 0 || y === H - 1) && this.loopY);
+  }
+
+  // The inside block a looped ring block copies.
+  mirror(i) {
+    const { W, H } = this;
+    let x = i % W, y = (i / W) | 0;
+    if (this.loopX) x = x === 0 ? W - 2 : x === W - 1 ? 1 : x;
+    if (this.loopY) y = y === 0 ? H - 2 : y === H - 1 ? 1 : y;
+    return y * W + x;
+  }
+
+  // On a looped side the border ring is a copy of the inside of the
+  // opposite side, so blurs, gradients and traces carry on across the join.
+  wrapRing() {
+    if (!this.loopX && !this.loopY) return;
+    const { W, H, p, t } = this;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (x !== 0 && y !== 0 && x !== W - 1 && y !== H - 1) continue;
+        const i = y * W + x;
+        if (!this.loopRing(i)) continue;
+        const j = this.mirror(i);
+        const jx = j % W, jy = (j / W) | 0;
+        if (jx === 0 || jy === 0 || jx === W - 1 || jy === H - 1) continue; // a corner on a side that doesn't loop
+        p[i] = p[j];
+        t[i] = t[j];
+      }
+    }
+  }
+
+  // The face between the ring and the first column on one side is the same
+  // face as the one between the last column and the ring on the other: keep
+  // them equal, so what flows out of one side flows into the other.
+  syncSeams() {
+    const { W, H, vx, vy } = this;
+    if (this.loopX) {
+      for (let y = 0; y < H; y++) {
+        const a = y * W, b = y * W + W - 2, v = (vx[a] + vx[b]) * 0.5;
+        vx[a] = v;
+        vx[b] = v;
+      }
+    }
+    if (this.loopY) {
+      for (let x = 0; x < W; x++) {
+        const a = x, b = (H - 2) * W + x, v = (vy[a] + vy[b]) * 0.5;
+        vy[a] = v;
+        vy[b] = v;
+      }
+    }
+  }
+
   // `gravity` (gravity.js) is only read with convection on.
   step(gravity) {
-    const { W, H, p, vx, vy, blocked } = this;
+    if (!this.labelled) this.label();
+    this.labelled = false;
+    const { W, H, p, vx, vy, blocked, region } = this;
+    const loops = this.loopX || this.loopY;
+    if (loops) this.wrapRing();
 
-    // 1. Pressure from divergence of the face velocities.
+    // 1. Pressure from divergence of the face velocities. Only the room
+    // leaks pressure away.
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
         if (blocked[i]) { p[i] = 0; continue; }
         const div = vx[i] - vx[i - 1] + vy[i] - vy[i - W];
-        let v = p[i] * PRESSURE_LOSS - div * PRESSURE_STEP;
+        let v = (region[i] === OUTSIDE ? p[i] * PRESSURE_LOSS : p[i]) - div * PRESSURE_STEP;
         if (v > MAX_PRESSURE) v = MAX_PRESSURE; else if (v < -MAX_PRESSURE) v = -MAX_PRESSURE;
         p[i] = v;
       }
     }
+    if (loops) this.wrapRing();
 
     // 2. Velocity from the pressure gradient across each face.
     for (let y = 0; y < H; y++) {
@@ -1335,7 +1489,17 @@ class Air {
       }
     }
 
+    // With convection on, the map's edge drags on the air going through it,
+    // so warm air rising off something hot turns along the top instead of
+    // pouring out of it, and comes back down.
+    if (this.heat) {
+      if (!this.loopX) for (let y = 0; y < H; y++) { vx[y * W] *= EDGE_DRAG; vx[y * W + W - 2] *= EDGE_DRAG; }
+      if (!this.loopY) for (let x = 0; x < W; x++) { vy[x] *= EDGE_DRAG; vy[(H - 2) * W + x] *= EDGE_DRAG; }
+    }
+    if (loops) this.syncSeams();
+
     this.thicken();
+    if (loops) { this.syncSeams(); this.wrapRing(); }
     if (this.heat) this.stepHeat(gravity.gx, gravity.gy);
     if (this.voidSides !== 0) this.sponge();
 
@@ -1344,16 +1508,18 @@ class Air {
   // 3. Viscosity: blur the pressure and the flow (see KERNEL). 4. The flow
   // carries itself along: each face takes ADVECT of the flow traced back
   // from it. The border ring keeps no pressure; blocked blocks and the faces
-  // beside them hold no air and no flow, and count as their neighbour's own
-  // value in a blur.
+  // beside them hold no air and no flow, and they and anything in another
+  // pocket count as the block's own value in a blur or a trace.
   thicken() {
-    const { W, H, p, vx, vy, blocked, np, nvx, nvy, open, openX, openY } = this;
+    const { W, H, p, vx, vy, blocked, region, np, nvx, nvy, open, openX, openY } = this;
     for (let y = 0; y < H; y++) {
       for (let x = 0, i = y * W; x < W; x++, i++) {
-        const inside = x > 0 && y > 0 && x < W - 1 && y < H - 1;
-        open[i] = inside && !blocked[i] ? 1 : 0;
-        openX[i] = x < W - 1 && !blocked[i] && !blocked[i + 1] ? 1 : 0;
-        openY[i] = y < H - 1 && !blocked[i] && !blocked[i + W] ? 1 : 0;
+        // The border ring holds no air, unless its side loops (wrapRing).
+        const ring = x === 0 || y === 0 || x === W - 1 || y === H - 1;
+        const open1 = !ring || ((this.loopX || (x > 0 && x < W - 1)) && (this.loopY || (y > 0 && y < H - 1)));
+        open[i] = open1 && !blocked[i] ? region[i] : 0;
+        openX[i] = x < W - 1 && !blocked[i] && !blocked[i + 1] ? region[i] : 0;
+        openY[i] = y < H - 1 && !blocked[i] && !blocked[i + W] ? region[i] : 0;
       }
     }
     blur(p, open, np, W, H);
@@ -1366,13 +1532,13 @@ class Air {
           // The flow at this face, and where it came from.
           const u = vx[i];
           const v = (vy[i] + vy[i + 1] + (y > 0 ? vy[i - W] + vy[i - W + 1] : 0)) * 0.25;
-          const s = sample(vx, openX, W, H, x - clampBack(u), y - clampBack(v), u);
+          const s = sample(vx, openX, W, H, x - clampBack(u), y - clampBack(v), u, openX[i]);
           nvx[i] = nvx[i] * (1 - ADVECT) + s * ADVECT;
         }
         if (openY[i]) {
           const v = vy[i];
           const u = (vx[i] + vx[i + W] + (x > 0 ? vx[i - 1] + vx[i + W - 1] : 0)) * 0.25;
-          const s = sample(vy, openY, W, H, x - clampBack(u), y - clampBack(v), v);
+          const s = sample(vy, openY, W, H, x - clampBack(u), y - clampBack(v), v, openY[i]);
           nvy[i] = nvy[i] * (1 - ADVECT) + s * ADVECT;
         }
       }
@@ -1383,11 +1549,12 @@ class Air {
 
   // Damp the air near void edges (see SPONGE): pressure and flow fade out,
   // and warm or cold air settles to room temperature, the nearer the edge
-  // the faster.
+  // the faster. A sealed pocket is left alone.
   sponge() {
-    const { W, H, p, vx, vy, t, voidSides: v } = this;
+    const { W, H, p, vx, vy, t, region, voidSides: v } = this;
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
+        if (region[i] !== OUTSIDE) continue;
         let d = SPONGE;
         if ((v & SIDE_LEFT) !== 0 && x - 1 < d) d = x - 1;
         if ((v & SIDE_RIGHT) !== 0 && W - 2 - x < d) d = W - 2 - x;
@@ -1444,71 +1611,40 @@ class Air {
     if (melt[b] > melt[i]) melt[i] = melt[b];
   }
 
-  // The average temperature of the open air within MEAN_RADIUS blocks of
-  // each block (a box blur done with running sums, sealed blocks left out).
-  localMean() {
-    const { W, H, t, blocked } = this;
-    const n = W * H;
-    if (!this.mean) {
-      this.mean = new Float32Array(n);
-      this.rowSum = new Float32Array(n);
-      this.rowCount = new Float32Array(n);
-    }
-    const { mean, rowSum, rowCount } = this;
-    const R = MEAN_RADIUS;
-    for (let y = 0; y < H; y++) {
-      const o = y * W;
-      let s = 0, c = 0;
-      for (let x = 0; x < Math.min(R, W); x++) if (!blocked[o + x]) { s += t[o + x]; c++; }
-      for (let x = 0; x < W; x++) {
-        const add = x + R, drop = x - R - 1;
-        if (add < W && !blocked[o + add]) { s += t[o + add]; c++; }
-        if (drop >= 0 && !blocked[o + drop]) { s -= t[o + drop]; c--; }
-        rowSum[o + x] = s;
-        rowCount[o + x] = c;
-      }
-    }
-    for (let x = 0; x < W; x++) {
-      let s = 0, c = 0;
-      for (let y = 0; y < Math.min(R, H); y++) { s += rowSum[y * W + x]; c += rowCount[y * W + x]; }
-      for (let y = 0; y < H; y++) {
-        const add = y + R, drop = y - R - 1;
-        if (add < H) { s += rowSum[add * W + x]; c += rowCount[add * W + x]; }
-        if (drop >= 0) { s -= rowSum[drop * W + x]; c -= rowCount[drop * W + x]; }
-        mean[y * W + x] = c > 0 ? s / c : AMBIENT;
-      }
-    }
-    return mean;
-  }
-
   // Convection: buoyancy, then the flow carrying the heat, then blurring and
   // cooling. (gx, gy) is the pull of gravity per block, in g.
   stepHeat(gx, gy) {
-    const { W, H, t, vx, vy, p, blocked, scratch } = this;
+    const { W, H, t, vx, vy, p, blocked, region, scratch, tPressed } = this;
 
-    // 1. Air warmer than the air around it on average is pushed against
-    // gravity, and cooler air sinks: so air that has risen off something hot
-    // and cooled comes back down, and the loop closes.
-    const mean = this.localMean();
+    // 0. Air that took in or gave up heat since last frame (from particles,
+    // the tools) swells or shrinks.
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] !== tPressed[i] && !blocked[i]) p[i] += thermal(t[i]) - thermal(tPressed[i]);
+    }
+
+    // 1. Air warmer than the room is pushed against gravity, gently, and
+    // colder air sinks. Where air rises, air flows in below to take its
+    // place and the air above is pushed aside, so the loop closes.
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
         if (blocked[i]) continue;
         if (!blocked[i + 1]) {
-          let e = (t[i] + t[i + 1] - mean[i] - mean[i + 1]) * 0.5;
-          if (e > BUOYANT_MAX) e = BUOYANT_MAX; else if (e < -BUOYANT_MAX) e = -BUOYANT_MAX;
-          vx[i] -= BUOYANCY * e * (gx[i] + gx[i + 1]) * 0.5;
+          let e = ((t[i] + t[i + 1]) * 0.5 - AMBIENT) * BUOYANCY;
+          if (e > BUOYANT_MAX) e = BUOYANT_MAX;
+          vx[i] -= e * (gx[i] + gx[i + 1]) * 0.5;
         }
         if (!blocked[i + W]) {
-          let e = (t[i] + t[i + W] - mean[i] - mean[i + W]) * 0.5;
-          if (e > BUOYANT_MAX) e = BUOYANT_MAX; else if (e < -BUOYANT_MAX) e = -BUOYANT_MAX;
-          vy[i] -= BUOYANCY * e * (gy[i] + gy[i + W]) * 0.5;
+          let e = ((t[i] + t[i + W]) * 0.5 - AMBIENT) * BUOYANCY;
+          if (e > BUOYANT_MAX) e = BUOYANT_MAX;
+          vy[i] -= e * (gy[i] + gy[i + W]) * 0.5;
         }
       }
     }
 
     // 2. The flow carries the heat: each block takes the temperature of the
     // air that arrives in it, traced back along the flow. Sealed blocks
-    // neither give nor take any.
+    // neither give nor take any, and the trace doesn't reach into another
+    // pocket.
     scratch.set(t);
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
@@ -1522,15 +1658,16 @@ class Air {
         const x0 = sx | 0, y0 = sy | 0;
         const x1 = x0 < W - 1 ? x0 + 1 : x0, y1 = y0 < H - 1 ? y0 + 1 : y0;
         const fx = sx - x0, fy = sy - y0;
-        const own = scratch[i];
+        const own = scratch[i], r = region[i];
         const a = y0 * W + x0, b = y0 * W + x1, c = y1 * W + x0, d = y1 * W + x1;
-        const ta = blocked[a] ? own : scratch[a], tb = blocked[b] ? own : scratch[b];
-        const tc = blocked[c] ? own : scratch[c], td = blocked[d] ? own : scratch[d];
+        const ta = region[a] === r ? scratch[a] : own, tb = region[b] === r ? scratch[b] : own;
+        const tc = region[c] === r ? scratch[c] : own, td = region[d] === r ? scratch[d] : own;
         t[i] = (ta * (1 - fx) + tb * fx) * (1 - fy) + (tc * (1 - fx) + td * fx) * fy;
       }
     }
 
-    // 3. A little blurring, and 4. the room soaks up the heat.
+    // 3. A little blurring, and 4. the world beyond soaks up the room's
+    // heat (and the air shrinks as it goes). A sealed pocket keeps its own.
     scratch.set(t);
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
@@ -1542,22 +1679,21 @@ class Air {
         if (!blocked[i + W]) { sum += scratch[i + W]; n++; }
         let v = scratch[i];
         if (n) v += (sum / n - v) * HEAT_SMOOTH;
-        t[i] = v + (AMBIENT - v) * airLoss(v);
+        if (region[i] === OUTSIDE) {
+          const c = v + (AMBIENT - v) * airLoss(v);
+          p[i] += thermal(c) - thermal(v);
+          v = c;
+        }
+        t[i] = v;
       }
     }
 
-    // 5. The pressure follows the temperature, however it changed this
-    // frame (particles, tools, the flow, cooling).
-    const { tPressed } = this;
-    for (let i = 0; i < t.length; i++) {
-      if (t[i] === tPressed[i]) continue;
-      if (!blocked[i]) p[i] += thermal(t[i]) - thermal(tPressed[i]);
-      tPressed[i] = t[i];
-    }
+    tPressed.set(t); // the temperature the pressure has caught up with
+    this.wrapRing();
   }
 }
 
-return { CELL, AIR_SHARE, EXPAND, BOIL_LOWEST, PHASE_HIGHEST, thermal, Air };
+return { CELL, OUTSIDE, AIR_SHARE, EXPAND, BOIL_LOWEST, PHASE_HIGHEST, thermal, Air };
 })();
 
 __modules["src/sim/elements-expansion.js"] = (() => {
@@ -6135,8 +6271,7 @@ const ELEMENT_LIST = [
   {
     key: 'WALL', name: 'Wall', sym: 'Wl', cat: null, state: SOLID, always: true,
     colors: ['#565d6b', '#4f5664', '#5d6472'], conduct: 0, acidProof: true, indestructible: true,
-    nAbsorb: 1,
-    desc: 'Indestructible and airtight. Use it to build containers.',
+    desc: 'Indestructible, airtight and a perfect insulator: it stays at room temperature, and bounces back anything that flies into it. Use it to build containers.',
   },
 ];
 
@@ -7409,7 +7544,7 @@ const Behaviors = {
         this.ctype[j] = 0;
         this.life[j] = this.life[cur] - 1;
         this.temp[j] = this.temp[cur];
-        this.clock[j] = this.tick;
+        this.clock[j] = this.pass;
         this.ctype[cur] = 1;
         this.life[cur] = 3 + ((this.rand() * 4) | 0);
         cur = j; cx = nx; cy = ny;
@@ -7897,6 +8032,130 @@ const Behaviors = {
 return { LOOSE_FLAME, FIRE_DRAW, SNUFF_AT, Behaviors };
 })();
 
+__modules["src/sim/walls.js"] = (() => {
+// The wall layer: where walls stand, and what each lets through (the Wall
+// tool's checklist). World.wall holds, per cell, 0 for no wall, or
+// WALL_HERE plus a PASS bit for each kind of thing that may pass. A wall
+// cell's type is WALL when nothing is passing through it; something passing
+// through sits in the cell, with the wall layer still set underneath, the
+// way a spark sits on a wire.
+
+const { DEFS, State } = __modules["src/sim/elements.js"];
+
+const WALL_HERE = 256;
+const PASS = Object.freeze({
+  solid: 1, powder: 2, liquid: 4, gas: 8, energy: 16, particles: 32, heat: 64, air: 128,
+});
+
+// For the inspect line, in checklist order.
+const PASS_ORDER = [
+  ['solids', PASS.solid], ['powders', PASS.powder], ['liquids', PASS.liquid], ['gases', PASS.gas],
+  ['energy', PASS.energy], ['particles', PASS.particles], ['heat', PASS.heat], ['air', PASS.air],
+];
+
+// The bit that lets each element through a wall: by its state (only solid
+// things that move ever try: loose debris and creatures), and flying
+// particles by PARTICLES.
+const PASS_BIT = Uint8Array.from(DEFS, (d) => {
+  if (d.projectile) return PASS.particles;
+  switch (d.state) {
+    case State.SOLID: return PASS.solid;
+    case State.POWDER: return PASS.powder;
+    case State.LIQUID: return PASS.liquid;
+    case State.GAS: return PASS.gas;
+    case State.ENERGY: return PASS.energy;
+    default: return 0;
+  }
+});
+
+// Does the wall layer value `v` stop `bit`? (No wall stops nothing.)
+const stops = (v, bit) => v !== 0 && (v & bit) === 0;
+
+return { WALL_HERE, PASS, PASS_ORDER, PASS_BIT, stops };
+})();
+
+__modules["src/sim/time.js"] = (() => {
+// Time zones: the Time brush paints areas that run slower or faster than
+// the rest of the world. World.speed holds a code per cell: 0 normal, then
+// ¼×, ½×, 2× and 4×. The speed belongs to the place, not to what's in it:
+// sand that falls out of a slow area speeds back up. Mixed into
+// World.prototype.
+
+const SPEEDS = [1, 0.25, 0.5, 2, 4];
+// A slow cell's particle is updated only on every SLOW_EVERY-th frame; a
+// fast one gets EXTRA_PASSES more updates after the frame's normal pass.
+const SLOW_EVERY = [1, 4, 2, 1, 1];
+const EXTRA_PASSES = [0, 0, 0, 1, 3];
+
+const TimeZones = {
+  // Set every cell in `area` to speed `code` (0 puts it back to normal).
+  paintSpeed(area, code) {
+    const { speed } = this;
+    area((i) => {
+      const was = speed[i];
+      if (was === code) return;
+      if (was === 0) this.zoneCount++;
+      if (code === 0) this.zoneCount--;
+      speed[i] = code;
+    });
+    this.findFastBox();
+  },
+
+  // The box round every fast cell, so the extra passes only visit that.
+  findFastBox() {
+    const { w, h, speed } = this;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    if (this.zoneCount > 0) {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (EXTRA_PASSES[speed[y * w + x]] === 0) continue;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    this.zoneBox = x1 < 0 ? null : [x0, y0, x1, y1];
+  },
+
+  clearZones() {
+    this.speed.fill(0);
+    this.zoneCount = 0;
+    this.zoneBox = null;
+  },
+
+  // After the frame's normal pass: extra passes over the fast area, one
+  // for 2× cells and three for 4×, in the same order as the normal pass.
+  // Each updates the particles that are (still) in a cell that fast.
+  fastPasses(fromBottom) {
+    const box = this.zoneBox;
+    if (box === null) return;
+    const [x0, y0, x1, y1] = box;
+    const { w, type, clock, speed } = this;
+    const wallId = this.WALL_ID;
+    for (let p = 1; p <= 3; p++) {
+      const pass = ++this.pass;
+      for (let n = 0; n <= y1 - y0; n++) {
+        const y = fromBottom ? y1 - n : y0 + n;
+        const leftToRight = ((this.tick + y + p) & 1) === 0;
+        for (let k = 0; k <= x1 - x0; k++) {
+          const x = leftToRight ? x0 + k : x1 - k;
+          const i = y * w + x;
+          if (EXTRA_PASSES[speed[i]] < p) continue;
+          const t = type[i];
+          if (t === 0 || t === wallId || clock[i] === pass) continue;
+          clock[i] = pass;
+          this.update(i, x, y, t);
+        }
+      }
+    }
+  },
+};
+
+return { SPEEDS, SLOW_EVERY, EXTRA_PASSES, TimeZones };
+})();
+
 __modules["src/sim/particles.js"] = (() => {
 // The particle layer: photons, electrons, protons, neutrons, positrons and
 // neutrinos. Like The Powder Toy's photons, they live outside the grid, so
@@ -7918,8 +8177,10 @@ const { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL, State } = __modules["src/sim/e
 const { MIN_TEMP, FISSION_HOT, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } = __modules["src/sim/constants.js"];
 const { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED } = __modules["src/sim/lookups.js"];
 const { LENS } = __modules["src/sim/gravity.js"];
+const { PASS, stops } = __modules["src/sim/walls.js"];
+const { SPEEDS, SLOW_EVERY } = __modules["src/sim/time.js"];
 
-const PASS = 0, DEAD = 1, BOUNCE = 2;
+const THROUGH = 0, DEAD = 1, BOUNCE = 2;
 const LUMP = 13; // of the 24 cells around a split (see inLump)
 const { SOLID } = State;
 const CAPACITY = 12000;
@@ -7928,6 +8189,9 @@ const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO } = ID;
 // A proton hotter than this sets fuel and explosives alight as it passes.
 const PROTON_IGNITES = 500;
 const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
+// Wall bounces back every particle, whatever it is, and takes no harm.
+const WALLS = Uint8Array.from(DEFS, (d) => (d.id === ID.WALL ? 1 : 0));
+const WALL_ID = ID.WALL;
 // What neutrons bounce off: anything solid, powdery or liquid, except
 // radioactive elements and moderators (graphite, heavy water), which they
 // pass through as they always did, so a reactor pile still needs its
@@ -8050,8 +8314,13 @@ const Particles = {
   moveProjectile(k) {
     const t = this.ptype[k];
     const d = DEFS[t];
-    if (--this.plife[k] <= 0) { this.expireProjectile(k, t); return; }
     const { w, h, type } = this;
+    // In a time zone a particle moves (and ages) at that area's speed.
+    let zone = 0;
+    if (this.zoneCount !== 0) zone = this.speed[(this.py[k] | 0) * w + (this.px[k] | 0)];
+    const age = zone === 0 ? 1 : SPEEDS[zone] >= 1 ? SPEEDS[zone] : (this.tick % SLOW_EVERY[zone] === 0 ? 1 : 0);
+    this.plife[k] -= age;
+    if (this.plife[k] <= 0) { this.expireProjectile(k, t); return; }
 
     if (d.charge !== 0 && this.fieldActive) {
       const f = this.field[this.air.at(this.px[k] | 0, this.py[k] | 0)];
@@ -8087,15 +8356,32 @@ const Particles = {
       vx *= f;
       vy *= f;
     }
+    if (zone !== 0) { vx *= SPEEDS[zone]; vy *= SPEEDS[zone]; }
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(vx), Math.abs(vy))));
     const sx = vx / steps, sy = vy / steps;
     let cx = x | 0, cy = y | 0;
     for (let s = 0; s < steps; s++) {
-      const nx = x + sx, ny = y + sy;
+      let nx = x + sx, ny = y + sy;
+      // Across a looped edge, on round to the other side.
+      if (nx < 0 || nx >= w) { if (!this.loopX) { this.killProjectile(k); return; } nx += nx < 0 ? w : -w; }
+      if (ny < 0 || ny >= h) { if (!this.loopY) { this.killProjectile(k); return; } ny += ny < 0 ? h : -h; }
       const ix = Math.floor(nx), iy = Math.floor(ny);
-      if (ix < 0 || iy < 0 || ix >= w || iy >= h) { this.killProjectile(k); return; }
       if (ix !== cx || iy !== cy) {
+        // No slipping between two wall cells that only touch at a corner.
+        if (ix !== cx && iy !== cy && stops(this.wall[cy * w + ix], PASS.particles) && stops(this.wall[iy * w + cx], PASS.particles)) {
+          this.bounce(k, ix, iy, cx, cy, WALLS);
+          break;
+        }
         const j = iy * w + ix;
+        // Into a portal: out of the other end, turned. The rest of this
+        // frame's travel is dropped (at most one frame's step).
+        if (this.portalCells !== 0 && this.portalAt[j] !== 0 && this.portalProjectile(k, j)) {
+          x = this.px[k];
+          y = this.py[k];
+          cx = x | 0;
+          cy = y | 0;
+          break;
+        }
         const u = type[j];
         if (u !== 0) {
           const res = this.hitCell(k, t, d, j, u, ix, iy, cx, cy);
@@ -8120,6 +8406,11 @@ const Particles = {
   },
 
   hitCell(k, t, d, j, u, ix, iy, lx, ly) {
+    const wl = this.wall[j];
+    if (wl !== 0) {
+      if ((wl & PASS.particles) === 0) { this.bounce(k, ix, iy, lx, ly, WALLS); return BOUNCE; }
+      if (u === WALL_ID) return THROUGH; // through the wall, as through empty space
+    }
     const e = DEFS[u];
     const r = HIT[t * NUM + u];
     if (r !== null && (r.recover === 0 || this.life[j] === 0)) {
@@ -8143,13 +8434,13 @@ const Particles = {
       this.kick(j, ix, iy, e);
       return DEAD;
     }
-    if (e.detector) { this.detect(j, ix, iy); return PASS; }
+    if (e.detector) { this.detect(j, ix, iy); return THROUGH; }
     // A photocell turns light into current instead of heat.
     if (LIGHT_SENSOR[u] && (d.pmode === PMODE.photon || d.pmode === PMODE.uv)) { this.lightUp(j); return DEAD; }
 
     switch (d.pmode) {
       case PMODE.photon:
-        if (GASLIKE[u] && !e.opaque) return PASS;
+        if (GASLIKE[u] && !e.opaque) return THROUGH;
         // Light bouncing off something takes on its colour; a true mirror
         // (and a half-silvered one) reflects it unchanged.
         if (e.reflect > 0 && (this.rand() < e.reflect || this.backed(lx, ly))) {
@@ -8161,7 +8452,7 @@ const Particles = {
         // unless a mirror, a laser or a ruby coloured it: those colours win.
         if (e.transparent) {
           if (!e.colorless && FILTERED[this.ptint[k]]) this.ptint[k] = u;
-          return PASS;
+          return THROUGH;
         }
         return this.impact(j, lx, ly, d);
       case PMODE.electron:
@@ -8169,7 +8460,7 @@ const Particles = {
           if (this.life[j] === 0) this.sparkAt(j);
           return this.impact(j, lx, ly, d);
         }
-        if (e.transparent || GASLIKE[u]) return PASS;
+        if (e.transparent || GASLIKE[u]) return THROUGH;
         return this.impact(j, lx, ly, d);
       case PMODE.proton: {
         // As in The Powder Toy, a proton flies straight through matter (Wall
@@ -8182,14 +8473,14 @@ const Particles = {
         if (T > PROTON_IGNITES && (e.flammable > 0 || e.explode > 0) && this.ignite(j, ix, iy)) {
           this.air.addPressure(this.air.at(ix, iy), 1);
         }
-        return PASS;
+        return THROUGH;
       }
       case PMODE.neutron: {
         // Neutrons go through gases, radioactive elements and moderators
         // (graphite and heavy water slow them), but bounce off anything else
         // solid, powdery or liquid, battering it (see batter). Lead and boron
         // soak them up.
-        if (GASLIKE[u]) return PASS;
+        if (GASLIKE[u]) return THROUGH;
         if (e.moderator) {
           const v2 = this.pvx[k] * this.pvx[k] + this.pvy[k] * this.pvy[k];
           if (v2 > 1.05) {
@@ -8199,13 +8490,13 @@ const Particles = {
           }
         }
         if (e.nAbsorb > 0 && this.rand() < e.nAbsorb) return this.impact(j, lx, ly, d);
-        if (!NEUTRON_STOPS[u]) return PASS; // radioactive elements and moderators
+        if (!NEUTRON_STOPS[u]) return THROUGH; // radioactive elements and moderators
         this.batter(k, j, e, lx, ly, d);
         this.bounce(k, ix, iy, lx, ly, NEUTRON_STOPS);
         return BOUNCE;
       }
       case PMODE.positron:
-        if (GASLIKE[u]) return PASS;
+        if (GASLIKE[u]) return THROUGH;
         // Annihilation: two photons fly off in opposite directions.
         this.annihilate(k, ix, iy);
         return this.impact(j, lx, ly, d);
@@ -8213,7 +8504,7 @@ const Particles = {
       case PMODE.ion: {
         // Heavy and slow: stopped by the first thing that isn't a gas (even
         // paper), where it picks up electrons and settles as an atom.
-        if (GASLIKE[u]) return PASS;
+        if (GASLIKE[u]) return THROUGH;
         const li = ly * this.w + lx;
         const ex = d.expire;
         if (ex && this.type[li] === 0 && this.rand() < 0.5) {
@@ -8225,23 +8516,23 @@ const Particles = {
       case PMODE.gamma: {
         // Dense matter soaks up gamma rays; light matter barely slows them. A
         // cell of lead stops about half, as a centimetre of real lead does.
-        if (GASLIKE[u]) return PASS;
+        if (GASLIKE[u]) return THROUGH;
         const stop = e.indestructible ? 1 : Math.min(0.9, e.density * 0.05);
-        if (this.rand() >= stop) return PASS;
+        if (this.rand() >= stop) return THROUGH;
         return this.impact(j, lx, ly, d);
       }
       case PMODE.xray:
         // Straight through flesh, wood and water; stopped by bone and metal.
-        if (GASLIKE[u] || (!e.xrayOpaque && !e.indestructible && e.density < 3)) return PASS;
+        if (GASLIKE[u] || (!e.xrayOpaque && !e.indestructible && e.density < 3)) return THROUGH;
         return this.impact(j, lx, ly, d);
       case PMODE.uv:
         // Like light, except ordinary glass blocks it (quartz doesn't).
-        if (GASLIKE[u] && !e.opaque) return PASS;
+        if (GASLIKE[u] && !e.opaque) return THROUGH;
         if (e.reflect > 0 && (this.rand() < e.reflect || this.backed(lx, ly))) {
           this.bounce(k, ix, iy, lx, ly);
           return BOUNCE;
         }
-        if (e.transparent && !e.uvBlock) return PASS;
+        if (e.transparent && !e.uvBlock) return THROUGH;
         return this.impact(j, lx, ly, d);
       case PMODE.microwave:
         // Metal reflects them and arcs; anything wet soaks them up and heats.
@@ -8253,11 +8544,11 @@ const Particles = {
         if (e.indestructible) return DEAD;
         if (e.wet) {
           this.impact(j, lx, ly, d);
-          return this.rand() < 0.3 ? DEAD : PASS;
+          return this.rand() < 0.3 ? DEAD : THROUGH;
         }
-        return PASS;
+        return THROUGH;
       default:
-        return PASS; // neutrinos, muons and other ghosts
+        return THROUGH; // neutrinos, muons and other ghosts
     }
   },
 
@@ -8322,7 +8613,7 @@ const Particles = {
         this.record(r.pTo, r.pRule);
       }
     }
-    return r.keep ? PASS : DEAD;
+    return r.keep ? THROUGH : DEAD;
   },
 
   // A particle disturbs a stable radioactive atom (element def `e`, in cell
@@ -9272,7 +9563,7 @@ const MotionMachines = {
     const tx = x - downX, ty = y - downY;
     if (!this.inBounds(tx, ty)) return;
     const j = ty * w + tx, u = type[j];
-    if (u === 0 || this.clock[j] === this.tick || !(CARRIED[u] || this.loose[j])) return;
+    if (u === 0 || this.clock[j] === this.pass || !(CARRIED[u] || this.loose[j])) return;
     const across = downY !== 0; // the belt runs along x when gravity is up or down
     const f = this.powerFrom[i];
     let s = across ? Math.sign(x - (f % w)) : Math.sign(y - ((f / w) | 0));
@@ -9346,6 +9637,249 @@ const MotionMachines = {
 return { MotionMachines };
 })();
 
+__modules["src/sim/portals.js"] = (() => {
+// Portals: pairs of lines. Anything crossing one end comes out of the other
+// at the same fraction of the way along, on the far side, still going, its
+// direction turned by the angle between the two lines: a window between two
+// places, always two-way. Each end is read in whichever direction makes the
+// turn 90° or less, so parallel ends never flip anything.
+//
+// World.portalAt marks the cells of every end: ((slot + 1) << 17) |
+// (end << 16) | position along the end. Portal cells are ordinary empty
+// space as far as movement goes, except that a move stops on one; a
+// particle sitting on one goes through when it's next updated
+// (crossPortal). Flying particles go through as they enter the cell
+// (portalProjectile). The air on each side of one end evens out with the air
+// on the matching side of the other (stepPortalAir). Mixed into
+// World.prototype; initPortals sets up the storage.
+
+const { DEFS, State } = __modules["src/sim/elements.js"];
+const { CELL } = __modules["src/sim/air.js"];
+
+const MAX_PORTALS = 32;
+const PORTAL_SHARE = 0.2;
+const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
+// Pairs of hues for the two ends: blue and orange, green and magenta, ...
+const HUES = [[210, 30], [120, 300], [55, 235], [170, 350], [270, 90], [0, 180], [85, 265], [145, 325]];
+const portalHues = (slot) => {
+  const [a, b] = HUES[slot % HUES.length];
+  const shift = Math.floor(slot / HUES.length) * 15;
+  return [(a + shift) % 360, (b + shift) % 360];
+};
+
+function initPortals(world) {
+  world.portals = []; // slot → { a, b, cos, sin } or null; b is null until drawn
+  world.portalAt = new Int32Array(world.w * world.h);
+  world.portalCells = 0;
+}
+
+// The cells of a straight line from (x0, y0) to (x1, y1), 4-connected so
+// nothing slips between them diagonally.
+function lineCells(x0, y0, x1, y1) {
+  const out = [[x0, y0]];
+  const dx = x1 - x0, dy = y1 - y0;
+  const n = Math.max(Math.abs(dx), Math.abs(dy));
+  let px = x0, py = y0;
+  for (let s = 1; s <= n; s++) {
+    const x = Math.round(x0 + (dx * s) / n), y = Math.round(y0 + (dy * s) / n);
+    if (x !== px && y !== py) out.push([x, py]); // fill the corner
+    out.push([x, y]);
+    px = x;
+    py = y;
+  }
+  return out;
+}
+
+// An end: its cells, its unit tangent (first cell to last) and normal.
+function makeEnd(cells, w) {
+  const xa = cells[0] % w, ya = (cells[0] / w) | 0;
+  const last = cells[cells.length - 1];
+  const xb = last % w, yb = (last / w) | 0;
+  const len = Math.hypot(xb - xa, yb - ya) || 1;
+  const tx = cells.length > 1 ? (xb - xa) / len : 1, ty = cells.length > 1 ? (yb - ya) / len : 0;
+  return { cells, tx, ty, nx: -ty, ny: tx };
+}
+
+const sign = (v) => (v < 0 ? -1 : 1);
+
+const Portals = {
+  // Draw an end from (x0, y0) to (x1, y1). It's the second end of the pair
+  // waiting for one, if there is one; otherwise the first end of a new pair.
+  // Returns { slot, end }, 'full' when there are MAX_PORTALS pairs already,
+  // or null when no cell of the line is free.
+  addPortal(x0, y0, x1, y1) {
+    const { w, h, portalAt, portals } = this;
+    const open = portals.findIndex((p) => p !== null && p.b === null);
+    let slot = open;
+    if (slot < 0) {
+      slot = portals.indexOf(null);
+      if (slot < 0) slot = portals.length;
+      if (slot >= MAX_PORTALS) return 'full';
+    }
+    const cells = [];
+    for (const [x, y] of lineCells(x0, y0, x1, y1)) {
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const i = y * w + x;
+      if (portalAt[i] === 0 && !cells.includes(i)) cells.push(i);
+    }
+    if (cells.length === 0) return null;
+    const end = open < 0 ? 0 : 1;
+    const e = makeEnd(cells, w);
+    if (end === 0) {
+      portals[slot] = { a: e, b: null, cos: 1, sin: 0 };
+    } else {
+      const p = portals[slot];
+      p.b = e;
+      // Read b the way that turns things least.
+      let ang = Math.atan2(e.ty, e.tx) - Math.atan2(p.a.ty, p.a.tx);
+      ang = Math.atan2(Math.sin(ang), Math.cos(ang));
+      if (Math.abs(ang) > Math.PI / 2 + 1e-9) {
+        e.cells.reverse();
+        e.tx = -e.tx; e.ty = -e.ty; e.nx = -e.nx; e.ny = -e.ny;
+        ang = Math.atan2(Math.sin(ang + Math.PI), Math.cos(ang + Math.PI));
+      }
+      p.cos = Math.cos(ang);
+      p.sin = Math.sin(ang);
+    }
+    e.cells.forEach((i, pos) => { portalAt[i] = ((slot + 1) << 17) | (end << 16) | pos; });
+    this.portalCells += e.cells.length;
+    return { slot, end };
+  },
+
+  // Remove the pair that cell i belongs to. Returns whether there was one.
+  removePortalAt(i) {
+    const v = this.portalAt[i];
+    if (v === 0) return false;
+    const slot = (v >> 17) - 1, p = this.portals[slot];
+    for (const e of [p.a, p.b]) {
+      if (e === null) continue;
+      for (const c of e.cells) this.portalAt[c] = 0;
+      this.portalCells -= e.cells.length;
+    }
+    this.portals[slot] = null;
+    return true;
+  },
+
+  clearPortals() {
+    this.portals.length = 0;
+    this.portalAt.fill(0);
+    this.portalCells = 0;
+  },
+
+  // Which pair and end cell i is on, for the inspect line.
+  portalInfo(i) {
+    const v = this.portalAt[i];
+    if (v === 0) return null;
+    const slot = (v >> 17) - 1;
+    return { slot, end: (v >> 16) & 1, paired: this.portals[slot].b !== null };
+  },
+
+  // From portal cell i, going to the `side` (+1 or -1) of its end: the
+  // cell just past the matching place on the other end, and the turn
+  // (cos, sin) to apply. null when the pair isn't complete.
+  portalExit(i, side) {
+    const v = this.portalAt[i];
+    const p = this.portals[(v >> 17) - 1];
+    if (p.b === null) return null;
+    const endNo = (v >> 16) & 1, pos = v & 0xffff;
+    const from = endNo === 0 ? p.a : p.b, to = endNo === 0 ? p.b : p.a;
+    const k = from.cells.length > 1
+      ? Math.round((pos * (to.cells.length - 1)) / (from.cells.length - 1)) : 0;
+    const base = to.cells[k];
+    // One cell out, along the 4-neighbour closest to the normal on that side.
+    const nx = to.nx * side, ny = to.ny * side;
+    const ox = Math.abs(nx) >= Math.abs(ny) ? sign(nx) : 0, oy = ox === 0 ? sign(ny) : 0;
+    const j = this.cellAt((base % this.w) + ox, ((base / this.w) | 0) + oy);
+    // Going from a to b turns by (cos, sin); from b to a by the opposite.
+    return { j, cos: p.cos, sin: endNo === 0 ? p.sin : -p.sin };
+  },
+
+  // A particle sitting on a portal cell goes through, if it moves at all.
+  // Returns true when it went (or is waiting on the line for room).
+  crossPortal(i, x, y, t) {
+    const d = DEFS[t];
+    const moves = d.state === POWDER || d.state === LIQUID || d.state === GAS
+      || (d.state === ENERGY && !d.fixed) || (d.state === SOLID && (this.loose[i] || d.cat === 'creature'));
+    if (!moves) return false;
+    const v = this.portalAt[i];
+    const p = this.portals[(v >> 17) - 1];
+    if (p.b === null) return false;
+    const e = ((v >> 16) & 1) === 0 ? p.a : p.b;
+    // Which side it's going: its velocity across the end, or its fall (a
+    // gas rises), or either.
+    let s = this.vx[i] * e.nx + this.vy[i] * e.ny;
+    if (Math.abs(s) < 0.05) {
+      const g = this.gravity, a = this.air.at(x, y);
+      const down = (g.ux[a] * e.nx + g.uy[a] * e.ny) * (d.state === GAS || d.state === ENERGY ? -1 : 1);
+      s = Math.abs(down) > 0.05 ? down : this.rand() - 0.5;
+    }
+    const out = this.portalExit(i, sign(s));
+    if (out === null) return false;
+    const { j, cos, sin } = out;
+    if (j < 0 || this.portalAt[j] !== 0 || !this.canEnter(d, j, 0)) return true; // waits
+    this.swap(i, j);
+    const vx = this.vx[j], vy = this.vy[j];
+    this.vx[j] = vx * cos - vy * sin;
+    this.vy[j] = vx * sin + vy * cos;
+    return true;
+  },
+
+  // A flying particle k entering portal cell j: out of the other end,
+  // turned. Returns true if it went through.
+  portalProjectile(k, j) {
+    const v = this.portalAt[j];
+    const p = this.portals[(v >> 17) - 1];
+    if (p.b === null) return false;
+    const e = ((v >> 16) & 1) === 0 ? p.a : p.b;
+    const vx = this.pvx[k], vy = this.pvy[k];
+    const out = this.portalExit(j, sign(vx * e.nx + vy * e.ny));
+    if (out === null || out.j < 0) return false;
+    const { cos, sin } = out;
+    this.px[k] = (out.j % this.w) + 0.5;
+    this.py[k] = ((out.j / this.w) | 0) + 0.5;
+    this.pvx[k] = vx * cos - vy * sin;
+    this.pvy[k] = vx * sin + vy * cos;
+    return true;
+  },
+
+  // Every CELL cells along each pair, the air two cells past one end on
+  // its −n side evens out with the air two cells past the other on its +n
+  // side, and the other way round: pressure, and air heat (moving heat
+  // moves no pressure, so tPressed moves with it).
+  stepPortalAir() {
+    const { air, w, h } = this;
+    const { p, t, tPressed, blocked } = air;
+    const share = (a, b) => {
+      if (a < 0 || b < 0 || a === b || blocked[a] || blocked[b]) return;
+      const dp = (p[b] - p[a]) * PORTAL_SHARE;
+      p[a] += dp;
+      p[b] -= dp;
+      if (air.heat) {
+        const dt = (t[b] - t[a]) * PORTAL_SHARE;
+        t[a] += dt; t[b] -= dt;
+        tPressed[a] += dt; tPressed[b] -= dt;
+      }
+    };
+    const blockAt = (c, ox, oy) => {
+      const x = Math.round((c % w) + ox), y = Math.round(((c / w) | 0) + oy);
+      return x < 0 || y < 0 || x >= w || y >= h ? -1 : air.at(x, y);
+    };
+    for (const pr of this.portals) {
+      if (pr === null || pr.b === null) continue;
+      const { a, b } = pr;
+      for (let k = 0; k < a.cells.length; k += CELL) {
+        const kb = a.cells.length > 1 ? Math.round((k * (b.cells.length - 1)) / (a.cells.length - 1)) : 0;
+        const ca = a.cells[k], cb = b.cells[kb];
+        share(blockAt(ca, -2 * a.nx, -2 * a.ny), blockAt(cb, 2 * b.nx, 2 * b.ny));
+        share(blockAt(cb, -2 * b.nx, -2 * b.ny), blockAt(ca, 2 * a.nx, 2 * a.ny));
+      }
+    }
+  },
+};
+
+return { MAX_PORTALS, PORTAL_SHARE, portalHues, initPortals, Portals };
+})();
+
 __modules["src/sim/world.js"] = (() => {
 // The particle simulation. The world is a grid where every cell holds at
 // most one particle; per-cell data lives in parallel typed arrays so the
@@ -9367,7 +9901,7 @@ __modules["src/sim/world.js"] = (() => {
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
-const { Air, CELL, AIR_SHARE, BOIL_LOWEST, PHASE_HIGHEST } = __modules["src/sim/air.js"];
+const { Air, CELL, OUTSIDE, AIR_SHARE, BOIL_LOWEST, PHASE_HIGHEST } = __modules["src/sim/air.js"];
 const { DEFS, ID, NUM, State, AMBIENT, REACT } = __modules["src/sim/elements.js"];
 const { MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY } = __modules["src/sim/constants.js"];
 const { COND, AIR_COOL, CONDUCTOR, AIRTIGHT, POWERED, PRESSABLE, MASS, HIGH_PHASE, LOW_PHASE, PHASE_BOIL } = __modules["src/sim/lookups.js"];
@@ -9377,6 +9911,9 @@ const { Machines, initMachines } = __modules["src/sim/machines.js"];
 const { AirMachines } = __modules["src/sim/machines-air.js"];
 const { MotionMachines } = __modules["src/sim/machines-motion.js"];
 const { Gravity, DX8, DY8 } = __modules["src/sim/gravity.js"];
+const { WALL_HERE, PASS, PASS_BIT, stops } = __modules["src/sim/walls.js"];
+const { TimeZones, SPEEDS, SLOW_EVERY } = __modules["src/sim/time.js"];
+const { Portals, initPortals } = __modules["src/sim/portals.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -9392,6 +9929,9 @@ const AIR_TOUCH = 0.009;
 // fire gives, it only holds back the likes of a star, whose heat would
 // otherwise flood the whole world through the air.
 const AIR_FLUX = 100;
+// A wall that lets heat through conducts like metal.
+const WALL_COND = 0.9;
+const WALL_TOUCH = WALL_COND * AIR_TOUCH;
 const TOUCH = Float32Array.from(COND, (k, t) => (t === 0 ? 0 : Math.max(AIR_COOL[t], k * AIR_TOUCH)));
 // What the Mix tool leaves where it is (see mixArea).
 const FIXED = Uint8Array.from(DEFS, (d) => (d.indestructible ? 1 : 0));
@@ -9399,10 +9939,27 @@ const FIXED = Uint8Array.from(DEFS, (d) => (d.indestructible ? 1 : 0));
 // An air block is sealed once this many of its 16 cells are airtight solid:
 // any unbroken line of strong solid across it.
 const SEAL_COUNT = 4;
+// How far from a sealed block's cell to look for its air (see airOf).
+const AIR_REACH = 2 * CELL;
 
 // Edges of the world that are a void: anything that moves out through one
 // vanishes (see setVoidEdges).
 const VOID_TOP = 1, VOID_BOTTOM = 2, VOID_LEFT = 4, VOID_RIGHT = 8;
+
+// A pair's heat exchange share k at the slower of two time-zone speeds:
+// as many steps of k as the speed says (a fraction of one for a slow
+// area), so a 4× cell conducts as four steps would and never overshoots.
+function zoneRate(k, a, b) {
+  const s = Math.min(SPEEDS[a], SPEEDS[b]);
+  return (1 - (1 - 2 * k) ** s) / 2;
+}
+
+// How far along a liquid lying on top looks for a drop to flow towards
+// (see dropAhead).
+const FLOW_REACH = 48;
+// How far across a stream of its own kind a sinking particle looks for room
+// to push a liquid aside into (see sinkInto).
+const ASIDE_REACH = 8;
 
 // With no gravity, gases spread evenly: as likely to step either way.
 const ZERO_G_RISE = 0.3;
@@ -9425,8 +9982,13 @@ class World {
     this.vy = new Float32Array(n);
     this.shade = new Uint8Array(n); // random per particle, picks a colour variant
     this.loose = new Uint8Array(n); // 1 for a solid particle torn off by pressure
-    this.clock = new Uint32Array(n); // tick on which the cell was last updated
-    this.tick = 1;
+    this.clock = new Uint32Array(n); // the pass in which the cell was last updated
+    this.tick = 1; // frames
+    this.pass = 1; // update passes: one a frame, more with fast time zones (time.js)
+    this.speed = new Uint8Array(n); // time zones (time.js): 0 normal, 1-4 for ¼× ½× 2× 4×
+    this.zoneCount = 0;
+    this.zoneBox = null;
+    this.WALL_ID = WALL;
     this.air = new Air(Math.ceil(width / CELL), Math.ceil(height / CELL));
     this.gravity = new Gravity(this.air);
     this.seed = (seed >>> 0) || 1;
@@ -9436,10 +9998,16 @@ class World {
     this.blockedMoving = false;
     this.brushShape = 'circle';
     this.replace = false; // painting overwrites what's in the way
-    this.voidEdges = 0; // VOID_TOP | VOID_BOTTOM | ... (see setVoidEdges)
+    this.voidEdges = 0; // VOID_TOP | VOID_BOTTOM | ... (see setEdges)
+    this.wall = new Uint16Array(n); // the wall layer (walls.js)
+    this.wallMask = 0; // what the next Wall placed lets through (the Wall tool sets it)
+    this.meshCount = 0; // wall cells that let anything through (for the renderer)
+    this.loopX = false; // the left and right edges are joined (see setEdges)
+    this.loopY = false; // the top and bottom edges are joined
     this.vanished = false; // the last travel took the particle off a void edge
     initParticles(this);
     initMachines(this);
+    initPortals(this);
   }
 
   rand() {
@@ -9457,7 +10025,10 @@ class World {
 
   // ---- cell operations ----------------------------------------------------
 
+  // Empty cell i. Clearing a wall removes it; clearing something passing
+  // through a wall leaves the wall standing (see walls.js).
   clearCell(i) {
+    const wasWall = this.type[i] === WALL;
     this.type[i] = 0;
     this.temp[i] = AMBIENT;
     this.life[i] = 0;
@@ -9465,6 +10036,17 @@ class World {
     this.vx[i] = 0;
     this.vy[i] = 0;
     this.loose[i] = 0;
+    if (this.wall[i] !== 0) {
+      if (wasWall) this.setWall(i, 0);
+      else this.type[i] = WALL;
+    }
+  }
+
+  // Set cell i's wall layer, keeping meshCount up to date.
+  setWall(i, v) {
+    if ((this.wall[i] & 255) !== 0) this.meshCount--;
+    if ((v & 255) !== 0) this.meshCount++;
+    this.wall[i] = v;
   }
 
   clearAll() {
@@ -9475,6 +10057,10 @@ class World {
     this.vx.fill(0);
     this.vy.fill(0);
     this.loose.fill(0);
+    this.wall.fill(0);
+    this.meshCount = 0;
+    this.clearZones();
+    this.clearPortals();
     this.air.clear();
     this.pn = 0;
     this.doorTimer.fill(0);
@@ -9491,6 +10077,7 @@ class World {
     const d = DEFS[t];
     if (d.projectile) { this.emitAt(t, i % this.w, (i / this.w) | 0); return; }
     this.type[i] = t;
+    if (t === WALL) this.setWall(i, WALL_HERE | this.wallMask);
     this.temp[i] = d.temp;
     this.ctype[i] = 0;
     this.vx[i] = 0;
@@ -9498,7 +10085,7 @@ class World {
     this.loose[i] = 0;
     this.shade[i] = (this.rand() * 256) | 0;
     this.initLife(i, t);
-    this.clock[i] = this.tick;
+    this.clock[i] = this.pass;
   }
 
   // Turn an existing particle into something else as the result of a rule.
@@ -9517,7 +10104,7 @@ class World {
     this.loose[i] = 0;
     if (!keepTemp) this.temp[i] = DEFS[to].temp;
     this.initLife(i, to);
-    this.clock[i] = this.tick;
+    this.clock[i] = this.pass;
     if (rule >= 0) this.record(to, rule);
   }
 
@@ -9539,15 +10126,28 @@ class World {
     a = vy[i]; vy[i] = vy[j]; vy[j] = a;
     a = shade[i]; shade[i] = shade[j]; shade[j] = a;
     a = loose[i]; loose[i] = loose[j]; loose[j] = a;
-    this.clock[i] = this.tick;
-    this.clock[j] = this.tick;
+    this.clock[i] = this.pass;
+    this.clock[j] = this.pass;
+    // Walls stay where they are: something passing through one leaves it
+    // standing behind.
+    if ((this.wall[i] | this.wall[j]) !== 0) { this.keepWall(i); this.keepWall(j); }
+  }
+
+  // After a swap: a wall cell left empty is a wall again, and a wall moved
+  // out of its place is gone (see the wall layer, walls.js).
+  keepWall(c) {
+    if (this.wall[c] !== 0) {
+      if (this.type[c] === 0) { this.type[c] = WALL; this.temp[c] = AMBIENT; this.vx[c] = 0; this.vy[c] = 0; }
+    } else if (this.type[c] === WALL) {
+      this.clearCell(c);
+    }
   }
 
   sparkAt(j) {
     this.ctype[j] = this.type[j];
     this.type[j] = SPARK;
     this.life[j] = 4;
-    this.clock[j] = this.tick;
+    this.clock[j] = this.pass;
   }
 
   // Set cell i alight. Returns true if the cell changed. Fire needs air:
@@ -9598,10 +10198,12 @@ class World {
         if (d2 > r * r) continue;
         const j = ny * w + nx;
         const e = DEFS[type[j]];
+        const s = e.state;
+        const moves = s === POWDER || s === LIQUID || s === GAS || this.loose[j];
+        if ((e.explode === 0 && !moves) || this.wallBetween(x, y, nx, ny)) continue; // walls shield
         // Other explosives caught in the blast go off too.
         if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = e.ignite + 1;
-        const s = e.state;
-        if (s !== POWDER && s !== LIQUID && s !== GAS && !this.loose[j]) continue;
+        if (!moves) continue;
         // Push outward; things below the blast (along the gravity arrow)
         // bounce off the ground and get thrown up, which digs a crater.
         const dist = Math.sqrt(d2);
@@ -9619,8 +10221,7 @@ class World {
     const r = (this.rand() * 4) | 0;
     let nx = x, ny = y;
     if (r === 0) nx++; else if (r === 1) nx--; else if (r === 2) ny++; else ny--;
-    if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) return -1;
-    return ny * this.w + nx;
+    return this.cellAt(nx, ny);
   }
 
   // Settings from the Physics panel: { angle, strength, newtonian }.
@@ -9628,14 +10229,41 @@ class World {
     this.gravity.set(opts);
   }
 
-  // Which edges of the world are a void: { top, bottom, left, right }.
-  // Whatever moves out through one is gone; things that stay put (a stone
-  // floor along it) stay. Pressure waves and heat go out through it too,
-  // instead of bouncing back off the edge.
-  setVoidEdges({ top = false, bottom = false, left = false, right = false } = {}) {
-    this.voidEdges = (top ? VOID_TOP : 0) | (bottom ? VOID_BOTTOM : 0)
-      | (left ? VOID_LEFT : 0) | (right ? VOID_RIGHT : 0);
+  // What each edge of the world is: 'solid' (the default), 'void' or
+  // 'loop'. Whatever moves out through a void is gone (things that stay
+  // put, a stone floor along it, stay), and pressure waves and heat go out
+  // through it too, instead of bouncing back off the edge. A loop joins the
+  // opposite edge: what leaves one comes in at the other. Loops come in
+  // pairs, so a loop on either side of a pair loops both.
+  setEdges({ top = 'solid', bottom = 'solid', left = 'solid', right = 'solid' } = {}) {
+    this.loopX = left === 'loop' || right === 'loop';
+    this.loopY = top === 'loop' || bottom === 'loop';
+    const v = (side, bit) => (side === 'void' ? bit : 0);
+    this.voidEdges = (this.loopY ? 0 : v(top, VOID_TOP) | v(bottom, VOID_BOTTOM))
+      | (this.loopX ? 0 : v(left, VOID_LEFT) | v(right, VOID_RIGHT));
     this.air.voidSides = this.voidEdges; // and the air lets waves and heat out there
+    this.air.setLoops(this.loopX, this.loopY);
+  }
+
+  // The older form: which edges are a void, as booleans.
+  setVoidEdges({ top = false, bottom = false, left = false, right = false } = {}) {
+    const s = (on) => (on ? 'void' : 'solid');
+    this.setEdges({ top: s(top), bottom: s(bottom), left: s(left), right: s(right) });
+  }
+
+  // The index of cell (x, y), across a looped edge if it's just off one;
+  // -1 off a solid or void edge.
+  cellAt(x, y) {
+    const { w, h } = this;
+    if (x < 0 || x >= w) {
+      if (!this.loopX) return -1;
+      x = x < 0 ? x + w : x - w;
+    }
+    if (y < 0 || y >= h) {
+      if (!this.loopY) return -1;
+      y = y < 0 ? y + h : y - h;
+    }
+    return y * w + x;
   }
 
   // Is (x, y), just outside the world, through a void edge?
@@ -9648,8 +10276,10 @@ class World {
   // ---- main loop ----------------------------------------------------------
 
   step() {
-    const { w, h, type, clock, air, loose } = this;
+    const { w, h, type, clock, air, loose, wall, speed } = this;
     const tick = ++this.tick;
+    const pass = ++this.pass;
+    const zones = this.zoneCount !== 0;
     this.stepGravity();
     air.phaseFactors(); // the pressure as it stands now moves boiling and melting points
     // Particles read last frame's complete blocked map while this frame's is built.
@@ -9669,19 +10299,29 @@ class World {
         const i = row + x;
         const t = type[i];
         if (t === 0) continue;
-        if (t === WALL) { next[air.at(x, y)] = 1; continue; }
+        const wl = wall[i];
+        if (wl !== 0) {
+          // A wall blocks its air block, unless it lets air through.
+          if ((wl & PASS.air) === 0) next[air.at(x, y)] = 1;
+          if (t === WALL) continue;
+        }
         // Metal carrying a spark is still metal as far as the air is concerned.
         if ((AIRTIGHT[t] || (t === SPARK && AIRTIGHT[this.ctype[i]])) && !loose[i]) air.solid[air.at(x, y)]++;
-        if (clock[i] === tick) continue;
-        clock[i] = tick;
+        if (clock[i] === pass) continue;
+        clock[i] = pass;
+        // A slow area's particles sit out the frames in between.
+        if (zones && speed[i] !== 0 && tick % SLOW_EVERY[speed[i]] !== 0) continue;
         this.update(i, x, y, t);
       }
     }
+    if (this.zoneBox !== null) this.fastPasses(fromBottom);
     for (let a = 0; a < next.length; a++) if (air.solid[a] >= SEAL_COUNT) next[a] = 1;
     air.next = air.blocked;
     air.blocked = next;
+    air.label();
     this.stepDoors();
     this.stepPipes();
+    if (this.portalCells !== 0) this.stepPortalAir();
     this.computeField();
     this.stepProjectiles();
     this.conductHeat();
@@ -9708,6 +10348,8 @@ class World {
   }
 
   update(i, x, y, t) {
+    // Something sitting on a portal goes through it (portals.js).
+    if (this.portalCells !== 0 && this.portalAt[i] !== 0 && this.crossPortal(i, x, y, t)) return;
     const d = DEFS[t];
 
     if (d.holdTemp) {
@@ -9937,6 +10579,8 @@ class World {
   canEnter(d, j, dy) {
     const u = this.type[j];
     if (u === 0) return true;
+    // A wall lets in what its checklist lets through (see walls.js).
+    if (u === WALL) return (this.wall[j] & PASS_BIT[d.id]) !== 0;
     const e = DEFS[u];
     if (!e.displaceable) {
       // Neutronium sinks through powders; liquids drain through gravel.
@@ -9950,7 +10594,9 @@ class World {
       return d.state !== POWDER || e.state !== LIQUID || this.rand() < 0.5;
     }
     if (dy < 0) return d.density < e.density;
-    if (e.state === LIQUID) return false;
+    // Sideways, a liquid only pushes past a lighter one: a denser liquid
+    // spreads out along the bottom under it instead of piling up.
+    if (e.state === LIQUID) return d.state === LIQUID && d.density > e.density;
     if (d.state === GAS || d.state === ENERGY) return this.rand() < 0.3;
     return true;
   }
@@ -9969,15 +10615,17 @@ class World {
       const nx = x + Math.floor((vx * s) / n + rx);
       const ny = y + Math.floor((vy * s) / n + ry);
       if (nx === cx && ny === cy) continue;
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) {
+      const j = this.cellAt(nx, ny);
+      if (j < 0) {
         if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { this.clearCell(cur); this.vanished = true; return cur; }
         this.blockedMoving = true;
         break;
       }
-      const j = ny * this.w + nx;
       if (!this.canEnter(d, j, ny - cy)) { this.blockedMoving = true; break; }
-      this.swap(cur, j);
+      if (ny > cy && this.type[j] !== 0) this.sinkInto(cur, cx, cy, j, 1, 0);
+      else this.swap(cur, j);
       cur = j; cx = nx; cy = ny;
+      if (this.portalCells !== 0 && this.portalAt[j] !== 0) break; // through it next update
     }
     return cur;
   }
@@ -9996,18 +10644,45 @@ class World {
       const nx = x + Math.floor((vx * s) / n + rx);
       const ny = y + Math.floor((vy * s) / n + ry);
       if (nx === cx && ny === cy) continue;
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) {
+      const j = this.cellAt(nx, ny);
+      if (j < 0) {
         if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { this.clearCell(cur); this.vanished = true; return cur; }
         this.blockedMoving = true;
         break;
       }
-      const j = ny * this.w + nx;
       const along = (nx - cx) * ux + (ny - cy) * uy;
       if (!this.canEnter(d, j, along > 0.3 ? 1 : along < -0.3 ? -1 : 0)) { this.blockedMoving = true; break; }
-      this.swap(cur, j);
+      if (along > 0.3 && this.type[j] !== 0) this.sinkInto(cur, cx, cy, j, Math.round(uy), Math.round(-ux));
+      else this.swap(cur, j);
       cur = j; cx = nx; cy = ny;
+      if (this.portalCells !== 0 && this.portalAt[j] !== 0) break; // through it next update
     }
     return cur;
+  }
+
+  // Particle cur (at cx, cy) sinks into cell j below it. A liquid it sinks
+  // into is pushed aside, into the nearest open space beside the particle
+  // (across a stream of the particle's own kind, or more of the same
+  // liquid, if it's in one), (px, py) being sideways; only where there's no
+  // room beside it, under the surface, do the two just change places.
+  // Otherwise a stream poured into a pool would carry the pool up with it,
+  // each grain swapping the water up into the place it left.
+  sinkInto(cur, cx, cy, j, px, py) {
+    const pushed = this.type[j];
+    if (DEFS[pushed].state === LIQUID) {
+      const me = this.type[cur];
+      const r = this.rand() < 0.5 ? 1 : -1;
+      for (let n = 0, side = r; n < 2; n++, side = -side) {
+        for (let k = 1; k <= ASIDE_REACH; k++) {
+          const c = this.cellAt(cx + px * side * k, cy + py * side * k);
+          if (c < 0) break;
+          const t = this.type[c];
+          if (t === 0) { this.swap(j, c); this.swap(cur, j); return; }
+          if (t !== me && t !== pushed) break;
+        }
+      }
+    }
+    this.swap(cur, j);
   }
 
   // Wind pushes the particle along, drag slows it down, gravity pulls it:
@@ -10048,7 +10723,7 @@ class World {
 
   movePowder(i, x, y, d) {
     const g = this.gravity;
-    if (g.straight) { this.movePowderDown(i, x, y, d); return; }
+    if (g.straight && !this.loopX && !this.loopY) { this.movePowderDown(i, x, y, d); return; }
     const a = this.air.at(x, y);
     this.pushByAir(i, a, d, g.gx[a], g.gy[a]);
     if (d.fallRate < 1 && this.rand() > d.fallRate) return;
@@ -10071,15 +10746,15 @@ class World {
       return;
     }
     // Blocked straight away: slide off diagonally, like a grain on a slope.
-    if (this.inBounds(x + DX8[k], y + DY8[k])) {
+    if (this.cellAt(x + DX8[k], y + DY8[k]) >= 0) {
       let s = this.rand() < 0.5 ? 1 : 7;
       for (let n = 0; n < 2; n++, s = 8 - s) {
         const r = (k + s) & 7;
-        const nx = x + DX8[r], ny = y + DY8[r];
-        if (!this.inBounds(nx, ny)) continue;
-        const jj = ny * this.w + nx;
+        const jj = this.cellAt(x + DX8[r], y + DY8[r]);
+        if (jj < 0) continue;
         if (this.canEnter(d, jj, 1)) {
-          this.swap(i, jj);
+          if (this.type[jj] !== 0) this.sinkInto(i, x, y, jj, Math.round(uy), Math.round(-ux));
+          else this.swap(i, jj);
           this.vx[jj] = 0.5 * ux;
           this.vy[jj] = 0.5 * uy;
           return;
@@ -10091,7 +10766,7 @@ class World {
 
   moveLiquid(i, x, y, d) {
     const g = this.gravity;
-    if (g.straight) { this.moveLiquidDown(i, x, y, d); return; }
+    if (g.straight && !this.loopX && !this.loopY) { this.moveLiquidDown(i, x, y, d); return; }
     const a = this.air.at(x, y);
     this.pushByAir(i, a, d, g.gx[a], g.gy[a]);
     const ux = g.ux[a], uy = g.uy[a];
@@ -10121,14 +10796,14 @@ class World {
     const fx = DX8[k], fy = DY8[k];
 
     // Diagonal down.
-    if (this.inBounds(x + fx, y + fy)) {
+    if (this.cellAt(x + fx, y + fy) >= 0) {
       for (let n = 0, dir = flow; n < 2; n++, dir = -dir) {
         const r = (k + (dir > 0 ? 7 : 1)) & 7;
-        const nx = x + DX8[r], ny = y + DY8[r];
-        if (!this.inBounds(nx, ny)) continue;
-        const jj = ny * w + nx;
+        const jj = this.cellAt(x + DX8[r], y + DY8[r]);
+        if (jj < 0) continue;
         if (this.canEnter(d, jj, 1)) {
-          this.swap(i, jj);
+          if (this.type[jj] !== 0) this.sinkInto(i, x, y, jj, Math.round(px), Math.round(py));
+          else this.swap(i, jj);
           this.vx[jj] = dir * 0.5 * px + 0.5 * ux;
           this.vy[jj] = dir * 0.5 * py + 0.5 * uy;
           return;
@@ -10138,37 +10813,40 @@ class World {
 
     // Flow sideways, remembering the direction so the liquid keeps going.
     // A liquid only rushes sideways when something is pressing down on it or
-    // there is a drop to fall into; otherwise a thin film would skitter back
-    // and forth forever. Liquid stacked on liquid creeps one cell at a time
-    // so puddles still flatten out; a film on bare ground barely moves.
+    // there is a drop to fall into (close by, or further along: dropAhead);
+    // otherwise a thin film would skitter back and forth forever. Liquid
+    // stacked on liquid creeps one cell at a time so puddles still flatten
+    // out; a film on bare ground barely moves.
     this.stopAlong(i, ux, uy, 1);
     if (d.viscosity > 0 && this.rand() < d.viscosity) return;
-    const ax = x - fx, ay = y - fy;
-    const above = this.inBounds(ax, ay) ? DEFS[this.type[ay * w + ax]].state : 0;
+    const aj = this.cellAt(x - fx, y - fy);
+    const above = aj >= 0 ? DEFS[this.type[aj]].state : 0;
     const pushed = above === LIQUID || above === POWDER;
-    const bx = x + fx, by = y + fy;
-    const creep = this.inBounds(bx, by) && DEFS[this.type[by * w + bx]].state === LIQUID ? 0.1 : 0.01;
+    const bj = this.cellAt(x + fx, y + fy);
+    const creep = bj >= 0 && DEFS[this.type[bj]].state === LIQUID ? 0.1 : 0.01;
     for (let n = 0, dir = flow; n < 2; n++, dir = -dir) {
       const r = (k + (dir > 0 ? 6 : 2)) & 7;
       const sx = DX8[r], sy = DY8[r];
       let target = -1;
       let drop = false;
-      for (let s = 1; s <= d.spread; s++) {
+      let s = 1;
+      for (; s <= d.spread; s++) {
         const nx = x + sx * s, ny = y + sy * s;
-        if (!this.inBounds(nx, ny)) {
+        const jj = this.cellAt(nx, ny);
+        if (jj < 0) {
           // A void side is a cliff edge: the liquid pours off it.
           if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { if (s === 1) { this.clearCell(i); return; } drop = true; }
           break;
         }
-        const jj = ny * w + nx;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
-        const dx = nx + fx, dy = ny + fy;
-        if (this.inBounds(dx, dy) && this.canEnter(d, dy * w + dx, 1)) { drop = true; break; }
+        if (this.portalCells !== 0 && this.portalAt[jj] !== 0) { drop = true; break; } // into a portal
+        const dj = this.cellAt(nx + fx, ny + fy);
+        if (dj >= 0 && this.canEnter(d, dj, 1)) { drop = true; break; }
       }
       if (target < 0) continue;
-      if (!drop && !pushed) {
-        if (this.rand() < creep) target = (y + sy) * w + x + sx; else continue;
+      if (!drop && !pushed && !(s > d.spread && this.dropAhead(d, x, y, sx, sy, fx, fy, s))) {
+        if (this.rand() < creep) target = this.cellAt(x + sx, y + sy); else continue;
       }
       this.swap(i, target);
       this.vx[target] = dir * 0.5 * px;
@@ -10179,11 +10857,28 @@ class World {
     this.vy[i] = -flow * 0.1 * py;
   }
 
+  // Is there a drop for a liquid at (x, y) to fall into further along the
+  // way it's flowing, (sx, sy), from `from` cells on, as far as FLOW_REACH,
+  // with nothing in the way? (fx, fy) is down. Then a liquid lying on top
+  // flows on towards it, so a mound of liquid levels out step by step
+  // instead of wandering about on each flat terrace.
+  dropAhead(d, x, y, sx, sy, fx, fy, from) {
+    for (let s = from; s <= FLOW_REACH; s++) {
+      const nx = x + sx * s, ny = y + sy * s;
+      const c = this.cellAt(nx, ny);
+      if (c < 0) return this.voidEdges !== 0 && this.offEdge(nx, ny); // a void side is a drop too
+      if (!this.canEnter(d, c, 0)) return false;
+      const b = this.cellAt(nx + fx, ny + fy);
+      if (b >= 0 && this.canEnter(d, b, 1)) return true;
+    }
+    return false;
+  }
+
   // Gases (and drifting energy) rise against the gravity arrow and sink
   // along it, with a random jitter across it.
   moveGas(i, x, y, d) {
     const g = this.gravity;
-    if (g.straight) { this.moveGasUp(i, x, y, d); return; }
+    if (g.straight && !this.loopX && !this.loopY) { this.moveGasUp(i, x, y, d); return; }
     const a = this.air.at(x, y);
     // Newtonian gravity pulls gases too, but only through their velocity.
     if (g.newtonian) this.pushByAir(i, a, d, g.fx[a], g.fy[a]);
@@ -10211,7 +10906,8 @@ class World {
     if (j !== i) return;
     const side = this.rand() < 0.5 ? -1 : 1;
     const nx = x + side * cx, ny = y + side * cy;
-    if (this.inBounds(nx, ny)) { if (this.canEnter(d, ny * this.w + nx, 0)) this.swap(i, ny * this.w + nx); }
+    const jj = this.cellAt(nx, ny);
+    if (jj >= 0) { if (this.canEnter(d, jj, 0)) this.swap(i, jj); }
     else if (this.voidEdges !== 0 && this.offEdge(nx, ny)) this.clearCell(i);
   }
 
@@ -10241,7 +10937,8 @@ class World {
         if (nx < 0 || nx >= this.w) continue;
         const jj = i + this.w + dir;
         if (this.canEnter(d, jj, 1)) {
-          this.swap(i, jj);
+          if (this.type[jj] !== 0) this.sinkInto(i, x, y, jj, 1, 0);
+          else this.swap(i, jj);
           this.vx[jj] = 0;
           this.vy[jj] = 0.5;
           return;
@@ -10272,7 +10969,8 @@ class World {
         if (nx < 0 || nx >= w) continue;
         const jj = i + w + dir;
         if (this.canEnter(d, jj, 1)) {
-          this.swap(i, jj);
+          if (this.type[jj] !== 0) this.sinkInto(i, x, y, jj, 1, 0);
+          else this.swap(i, jj);
           this.vx[jj] = dir * 0.5;
           this.vy[jj] = 0.5;
           return;
@@ -10289,7 +10987,8 @@ class World {
     for (let k = 0, dir = flow; k < 2; k++, dir = -dir) {
       let target = -1;
       let drop = false;
-      for (let s = 1; s <= d.spread; s++) {
+      let s = 1;
+      for (; s <= d.spread; s++) {
         const nx = x + dir * s;
         if (nx < 0 || nx >= w) {
           if (this.voidEdges !== 0 && this.offEdge(nx, y)) { if (s === 1) { this.clearCell(i); return; } drop = true; }
@@ -10298,10 +10997,11 @@ class World {
         const jj = i + dir * s;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
+        if (this.portalCells !== 0 && this.portalAt[jj] !== 0) { drop = true; break; } // into a portal
         if (y + 1 < h && this.canEnter(d, jj + w, 1)) { drop = true; break; }
       }
       if (target < 0) continue;
-      if (!drop && !pushed) {
+      if (!drop && !pushed && !(s > d.spread && this.dropAhead(d, x, y, dir, 0, 0, 1, s))) {
         if (this.rand() < creep) target = i + dir; else continue;
       }
       this.swap(i, target);
@@ -10331,7 +11031,8 @@ class World {
   // ---- heat -----------------------------------------------------------------
 
   conductHeat() {
-    const { w, h, type, temp } = this;
+    const { w, h, type, temp, wall, speed } = this;
+    const zones = this.zoneCount !== 0;
     const heat = this.air.heat;
     const sides = this.voidEdges;
     let count = 0;
@@ -10342,15 +11043,22 @@ class World {
         const t = type[i];
         if (t === 0) continue;
         count++;
-        const ka = COND[t];
+        // Wall is a perfect insulator, unless it lets heat through: then it
+        // conducts like metal.
+        let ka = COND[t];
+        if (t === WALL) {
+          if ((wall[i] & PASS.heat) === 0) { temp[i] = AMBIENT; continue; }
+          ka = WALL_COND;
+        }
         let T = temp[i];
         let open = 0;
         if (x < w - 1) {
           const u = type[i + 1];
           if (u === 0) open++;
           else if (ka > 0) {
-            const kb = COND[u];
-            const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+            const kb = u === WALL ? ((wall[i + 1] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[u];
+            let k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+            if (zones && (speed[i] | speed[i + 1]) !== 0) k = zoneRate(k, speed[i], speed[i + 1]);
             if (k > 0) { const f = (T - temp[i + 1]) * k; T -= f; temp[i + 1] += f; }
           }
         }
@@ -10358,8 +11066,9 @@ class World {
           const u = type[i + w];
           if (u === 0) open++;
           else if (ka > 0) {
-            const kb = COND[u];
-            const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+            const kb = u === WALL ? ((wall[i + w] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[u];
+            let k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+            if (zones && (speed[i] | speed[i + w]) !== 0) k = zoneRate(k, speed[i], speed[i + w]);
             if (k > 0) { const f = (T - temp[i + w]) * k; T -= f; temp[i + w] += f; }
           }
         }
@@ -10372,10 +11081,14 @@ class World {
           if (out) T += (AMBIENT - T) * AIR_COOL[t] * out;
         }
         if (open) {
-          if (!heat) T += (AMBIENT - T) * AIR_COOL[t] * open;
-          else {
+          if (!heat) {
+            // Without convection the room's air soaks up heat; the air
+            // shut in a sealed box takes none (with no box, every side is the room).
+            const room = this.air.regions === OUTSIDE ? open : this.roomSides(x, y);
+            if (room) T += (AMBIENT - T) * AIR_COOL[t] * room;
+          } else {
             // Convection: heat goes into the air of each empty cell beside it.
-            const r = TOUCH[t];
+            const r = t === WALL ? WALL_TOUCH : TOUCH[t];
             if (x < w - 1 && type[i + 1] === 0) T = this.warmAir(x + 1, y, T, r);
             if (y < h - 1 && type[i + w] === 0) T = this.warmAir(x, y + 1, T, r);
             if (x > 0 && type[i - 1] === 0) T = this.warmAir(x - 1, y, T, r);
@@ -10385,7 +11098,75 @@ class World {
         temp[i] = T;
       }
     }
+    // Across a looped edge, touching particles trade heat as neighbours do.
+    if (this.loopX) for (let y = 0; y < h; y++) this.conductPair(y * w + w - 1, y * w);
+    if (this.loopY) for (let x = 0; x < w; x++) this.conductPair((h - 1) * w + x, x);
     this.count = count;
+  }
+
+  // Two touching cells trade heat (when both hold something), as in conductHeat.
+  conductPair(i, j) {
+    const { type, temp } = this;
+    const a = type[i], b = type[j];
+    if (a === 0 || b === 0) return;
+    const wall = this.wall;
+    const ka = a === WALL ? ((wall[i] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[a];
+    const kb = b === WALL ? ((wall[j] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[b];
+    const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+    if (k <= 0) return;
+    const f = (temp[i] - temp[j]) * k;
+    temp[i] -= f;
+    temp[j] += f;
+  }
+
+  // How many of the empty cells beside (x, y) hold the room's air.
+  roomSides(x, y) {
+    const { w, h, type } = this;
+    const region = this.air.region;
+    let n = 0;
+    if (x < w - 1 && type[y * w + x + 1] === 0 && region[this.airOf(x + 1, y)] === OUTSIDE) n++;
+    if (y < h - 1 && type[(y + 1) * w + x] === 0 && region[this.airOf(x, y + 1)] === OUTSIDE) n++;
+    if (x > 0 && type[y * w + x - 1] === 0 && region[this.airOf(x - 1, y)] === OUTSIDE) n++;
+    if (y > 0 && type[(y - 1) * w + x] === 0 && region[this.airOf(x, y - 1)] === OUTSIDE) n++;
+    return n;
+  }
+
+  // The air block whose air is at cell (x, y). Usually the block the cell
+  // is in; but a block a wall runs through (or a strong solid seals) has no
+  // air of its own, so then it's the nearest open block that can be reached
+  // in a straight line from the cell without passing a wall or a strong
+  // solid, up to AIR_REACH cells away. A cell right inside a box's one-cell
+  // wall has the box's air, and one right outside it the room's. -1 if
+  // there's none (a tiny pocket, shut in).
+  airOf(x, y) {
+    const { w, h, type, loose, air } = this;
+    const a = air.at(x, y);
+    if (!air.blocked[a]) return a;
+    let best = -1, near = AIR_REACH + 1;
+    for (let k = 0; k < 4; k++) {
+      const dx = k === 0 ? 1 : k === 1 ? -1 : 0, dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+      for (let s = 1; s < near; s++) {
+        const nx = x + dx * s, ny = y + dy * s;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) break;
+        const j = ny * w + nx, u = type[j];
+        if (stops(this.wall[j], PASS.air) || (AIRTIGHT[u] && !loose[j])) break;
+        const b = air.at(nx, ny);
+        if (!air.blocked[b]) { best = b; near = s; break; }
+      }
+    }
+    return best;
+  }
+
+  // Is there a wall on the straight line between two cells (not counting
+  // the cells themselves)?
+  wallBetween(x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const n = Math.max(Math.abs(dx), Math.abs(dy));
+    for (let s = 1; s < n; s++) {
+      const x = Math.round(x0 + (dx * s) / n), y = Math.round(y0 + (dy * s) / n);
+      if (stops(this.wall[y * this.w + x], PASS.air)) return true;
+    }
+    return false;
   }
 
   // Convection: a particle trades heat with the air in the empty cell (x,
@@ -10394,8 +11175,8 @@ class World {
   // the particle's new temperature.
   warmAir(x, y, T, rate) {
     const air = this.air;
-    const a = air.at(x, y);
-    if (air.blocked[a]) return T + (AMBIENT - T) * rate; // no air of its own
+    const a = this.airOf(x, y);
+    if (a < 0) return T; // shut in with no air to warm
     const was = air.t[a];
     let f = (was - T) * rate;
     if (f > AIR_FLUX) f = AIR_FLUX; else if (f < -AIR_FLUX) f = -AIR_FLUX;
@@ -10461,7 +11242,10 @@ class World {
       // an element over itself leaves it be).
       if (u !== 0 && (!this.replace || u === t)) return;
       if (density >= 1 || this.rand() < density) {
-        if (u !== 0) this.clearCell(i);
+        if (u !== 0) {
+          if (this.wall[i] !== 0) this.setWall(i, 0); // painting over a wall removes it
+          this.clearCell(i);
+        }
         this.spawn(i, t);
       }
     });
@@ -10472,6 +11256,8 @@ class World {
     const mask = this.eraseMask ??= new Uint8Array(this.w * this.h);
     const cells = [];
     area((i) => {
+      if (this.wall[i] !== 0) this.setWall(i, 0);
+      if (this.portalAt[i] !== 0) this.removePortalAt(i); // the whole pair
       if (this.type[i]) this.clearCell(i);
       this.doorTimer[i] = 0; // an erased doorway doesn't shut again
       mask[i] = 1;
@@ -10491,7 +11277,7 @@ class World {
     const share = amount / (CELL * CELL);
     area((i, x, y) => {
       const t = this.type[i];
-      if (t === WALL) return;
+      if (t === WALL && (this.wall[i] & PASS.heat) === 0) return;
       if (air.heat) {
         const a = air.at(x, y);
         if (!air.blocked[a]) {
@@ -10584,7 +11370,7 @@ class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals);
 
 return { VOID_TOP, World, MIN_TEMP };
 })();
@@ -10605,6 +11391,8 @@ __modules["src/render/renderer.js"] = (() => {
 const { DEFS, ID, NUM, State, AMBIENT } = __modules["src/sim/elements.js"];
 const { CELL } = __modules["src/sim/air.js"];
 const { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } = __modules["src/sim/world.js"];
+const { PASS } = __modules["src/sim/walls.js"];
+const { portalHues } = __modules["src/sim/portals.js"];
 
 const BG = [10, 12, 16];
 const SHADES = 8;
@@ -10648,20 +11436,70 @@ function ramp(stops) {
 const HOT = ramp([[0, '#5a0d04'], [0.12, '#a3200a'], [0.3, '#e2461a'], [0.5, '#ff8f2e'], [0.75, '#ffd46a'], [1, '#fff6e2']]);
 const FIRE = ramp([[0, '#3a0a04'], [0.25, '#b3260b'], [0.55, '#ff7a22'], [0.8, '#ffc04a'], [1, '#fff1b0']]);
 const PLASMA = ramp([[0, '#3a0b5a'], [0.4, '#a02ce0'], [0.75, '#f07cff'], [1, '#fff0ff']]);
-const HEAT = ramp([
-  [0, '#141a5c'], [0.162, '#2350c8'], [0.252, '#2fb4d8'], [0.324, '#3cc47a'],
-  [0.45, '#e8d13c'], [0.612, '#ff7a26'], [0.765, '#e0262a'], [0.9, '#ffffff'], [1, '#b49cff'],
-]);
+// The Heat view's colours. Up to white heat (6000 °C) a thermal camera's
+// ramp: navy at absolute zero, blue, green, yellow, orange, red, white. Past
+// that there's no top temperature, so the colour never stops changing: it
+// fades from white into a bright hue wheel (violet, pink, red, orange,
+// yellow, green, cyan, blue, violet again) and goes round it once every
+// HEAT_TURN powers of ten, for ever. The wheel is kept light, so nothing that
+// hot looks like the deep blues of cold.
+const HEAT_WHITE = 6000;
+const HEAT_FADE = 0.4; // powers of ten from white into the wheel
+const HEAT_TURN = 4; // powers of ten once round the wheel
+const HEAT_ON = HEAT_WHITE * 10 ** HEAT_FADE; // where the wheel starts
+const HEAT_LIGHT = 0.66; // the wheel's lightness (HSL)
 
-// Map a temperature to a 0..255 index on the heat-view ramp: blue through
-// red to white at 6000 °C, then on to violet for the millions and beyond.
+// A colour at hue h (degrees), full saturation, lightness l (HSL).
+function hsl(h, l) {
+  const c = 1 - Math.abs(2 * l - 1);
+  const k = (n) => {
+    const m = (n + h / 30) % 12;
+    return Math.round((l - (c / 2) * Math.max(-1, Math.min(m - 3, 9 - m, 1))) * 255);
+  };
+  return [k(0), k(8), k(4)];
+}
+const toHex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+const WHEEL_START = 270; // violet
+
+// Entries 0..255: the ramp to white and on into the wheel; 256..511: the wheel.
+const HEAT = new Uint8Array(512 * 3);
+HEAT.set(ramp([
+  [0, '#141a5c'], [0.162, '#2350c8'], [0.252, '#2fb4d8'], [0.324, '#3cc47a'],
+  [0.45, '#e8d13c'], [0.612, '#ff7a26'], [0.765, '#e0262a'], [0.9, '#ffffff'],
+  [1, toHex(hsl(WHEEL_START, HEAT_LIGHT))],
+]));
+for (let k = 0; k < 256; k++) HEAT.set(hsl(WHEEL_START + (k / 256) * 360, HEAT_LIGHT), (256 + k) * 3);
+
+// Map a temperature to its entry in HEAT.
 function heatIndex(T) {
+  if (T >= HEAT_ON) {
+    const f = Math.log10(T / HEAT_ON) / HEAT_TURN;
+    return 256 + (((f - Math.floor(f)) * 256) | 0);
+  }
   let u;
   if (T < 22) u = 0.27 * Math.max(0, T + 273) / 295;
-  else if (T <= 6000) u = 0.27 + 0.63 * Math.log1p((T - 22) / 40) / Math.log1p(5978 / 40);
-  else u = 0.9 + 0.1 * Math.min(1, Math.log10(T / 6000) / 9);
+  else if (T <= HEAT_WHITE) u = 0.27 + 0.63 * Math.log1p((T - 22) / 40) / Math.log1p((HEAT_WHITE - 22) / 40);
+  else u = 0.9 + 0.1 * Math.log10(T / HEAT_WHITE) / HEAT_FADE;
   return Math.min(255, Math.max(0, (u * 255) | 0));
 }
+
+// The Heat view's colour for temperature T, as [r, g, b].
+function heatRGB(T) {
+  const k = heatIndex(T) * 3;
+  return [HEAT[k], HEAT[k + 1], HEAT[k + 2]];
+}
+
+// How a time zone is tinted: blue for slow, orange for fast, stronger the
+// further from normal speed.
+const ZONE_TINT = [null,
+  { rgb: [90, 160, 255], strength: 0.32 }, { rgb: [90, 160, 255], strength: 0.16 },
+  { rgb: [255, 150, 60], strength: 0.16 }, { rgb: [255, 150, 60], strength: 0.32 }];
+const zoneTint = (code) => ZONE_TINT[code];
+
+// The colour of end `end` (0 or 1) of portal pair `slot`.
+const portalRGB = (slot, end) => hsl(portalHues(slot)[end], 0.62);
+// The lighter cells of the mesh a wall that lets things through is drawn as.
+const WALL_LIGHT = [124, 132, 148];
 
 // Box-blur an interleaved array of `ch` (3 or 4) channels, w wide, in
 // place, radius 1, across then down, over columns x0..x1 and rows y0..y1
@@ -10685,6 +11523,35 @@ function blur(a, tmp, w, ch, x0, y0, x1, y1) {
       a[i + 1] = (tmp[u + 1] + tmp[i + 1] + tmp[d + 1]) * k;
       a[i + 2] = (tmp[u + 2] + tmp[i + 2] + tmp[d + 2]) * k;
       if (four) a[i + 3] = (tmp[u + 3] + tmp[i + 3] + tmp[d + 3]) * k;
+    }
+  }
+}
+
+// The Glow halo's blur (three colour channels per air block): like blur,
+// except that light doesn't cross a wall. Blocks with any Wall in them
+// (`mask`) stay dark, and count as the block's own light to the blocks
+// beside them.
+function glowBlur(a, tmp, w, h, mask) {
+  const k = 1 / 3;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0, c = y * w; x < w; x++, c++) {
+      const i = c * 3;
+      if (mask[c]) { tmp[i] = 0; tmp[i + 1] = 0; tmp[i + 2] = 0; continue; }
+      const l = x > 0 && !mask[c - 1] ? i - 3 : i, r = x < w - 1 && !mask[c + 1] ? i + 3 : i;
+      tmp[i] = (a[l] + a[i] + a[r]) * k;
+      tmp[i + 1] = (a[l + 1] + a[i + 1] + a[r + 1]) * k;
+      tmp[i + 2] = (a[l + 2] + a[i + 2] + a[r + 2]) * k;
+    }
+  }
+  const row = w * 3;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0, c = y * w; x < w; x++, c++) {
+      const i = c * 3;
+      if (mask[c]) { a[i] = 0; a[i + 1] = 0; a[i + 2] = 0; continue; }
+      const u = y > 0 && !mask[c - w] ? i - row : i, d = y < h - 1 && !mask[c + w] ? i + row : i;
+      a[i] = (tmp[u] + tmp[i] + tmp[d]) * k;
+      a[i + 1] = (tmp[u + 1] + tmp[i + 1] + tmp[d + 1]) * k;
+      a[i + 2] = (tmp[u + 2] + tmp[i + 2] + tmp[d + 2]) * k;
     }
   }
 }
@@ -10747,6 +11614,7 @@ class Renderer {
     this.glowAcc = new Float32Array(cols * rows * 3);
     this.glowLast = new Float32Array(cols * rows * 3);
     this.glowTmp = new Float32Array(cols * rows * 3);
+    this.glowWall = new Uint8Array(cols * rows); // air blocks with Wall in them
 
     // The gas layer, at half resolution: colour times opacity, and opacity.
     this.gw = Math.ceil(world.w / 2);
@@ -10851,15 +11719,17 @@ class Renderer {
         0, 0, canvas.width, canvas.height);
       ctx.globalCompositeOperation = 'source-over';
     }
-    this.drawVoidEdges();
+    this.drawEdges();
     if (brush) this.drawBrush(brush);
   }
 
   // A purple line along each edge of the world that's a void.
-  drawVoidEdges() {
-    const v = this.world.voidEdges;
-    if (!v) return;
+  // Void edges are a solid violet bar; looped ones a dashed teal line on
+  // both sides of the join.
+  drawEdges() {
     const { ctx, canvas, camera: cam, world } = this;
+    const v = world.voidEdges;
+    if (!v && !world.loopX && !world.loopY) return;
     const sx = canvas.width / cam.vw, sy = canvas.height / cam.vh;
     const x0 = -cam.x * sx, y0 = -cam.y * sy;
     const x1 = (world.w - cam.x) * sx, y1 = (world.h - cam.y) * sy;
@@ -10869,6 +11739,17 @@ class Renderer {
     if (v & VOID_BOTTOM) ctx.fillRect(x0, y1 - t, x1 - x0, t);
     if (v & VOID_LEFT) ctx.fillRect(x0, y0, t, y1 - y0);
     if (v & VOID_RIGHT) ctx.fillRect(x1 - t, y0, t, y1 - y0);
+    if (world.loopX || world.loopY) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(79, 209, 197, 0.9)';
+      ctx.lineWidth = t;
+      ctx.setLineDash([t * 2, t * 2]);
+      ctx.beginPath();
+      if (world.loopX) { ctx.moveTo(x0 + t / 2, y0); ctx.lineTo(x0 + t / 2, y1); ctx.moveTo(x1 - t / 2, y0); ctx.lineTo(x1 - t / 2, y1); }
+      if (world.loopY) { ctx.moveTo(x0, y0 + t / 2); ctx.lineTo(x1, y0 + t / 2); ctx.moveTo(x0, y1 - t / 2); ctx.lineTo(x1, y1 - t / 2); }
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // A small map of the whole world with the zoomed-in view marked on it.
@@ -10929,11 +11810,12 @@ class Renderer {
 
   paint() {
     const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
-    const { w, h, type, temp, life, ctype, shade, loose, doorTimer, doorKind } = world;
+    const { w, h, type, temp, life, ctype, shade, loose, doorTimer, doorKind, wall } = world;
     const air = world.air;
     const cols = air.cols;
-    const glow = this.glowAcc;
+    const glow = this.glowAcc, glowWall = this.glowWall;
     glow.fill(0);
+    glowWall.fill(0);
     const bgR = BG[0], bgG = BG[1], bgB = BG[2];
     const bg = pack(bgR, bgG, bgB);
     const heatView = view === 'heat';
@@ -10954,6 +11836,8 @@ class Renderer {
         const t = type[i];
         let r, g, b;
 
+        // Light doesn't get past a wall, unless it lets particles through.
+        if (wall[i] !== 0 && (wall[i] & PASS.particles) === 0) glowWall[gRow + ((x / CELL) | 0)] = 1;
         if (t === 0) {
           if (doorTimer[i] !== 0 && !heatView) {
             // An open doorway: a faint ghost of the door (or valve).
@@ -11192,11 +12076,69 @@ class Renderer {
     }
 
     this.count = count;
+    this.paintOverlays();
     this.paintProjectiles(heatView);
 
     this.gasCells = soft ? gasCells : 0;
     if (this.gasCells > 0) this.paintGas(gx0, gy0, gx1, gy1);
     if (this.glow && !heatView) this.paintGlow();
+  }
+
+  // Drawn over the cells, in every view: walls that let things through (a
+  // mesh), time zones (a tint, and a dashed border that crawls along), and
+  // portals.
+  paintOverlays() {
+    const { world, pixels, frame } = this;
+    const { w, h } = world;
+    const blend = (i, rgb, a) => {
+      const c = pixels[i];
+      const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+      pixels[i] = pack((r + (rgb[0] - r) * a) | 0, (g + (rgb[1] - g) * a) | 0, (b + (rgb[2] - b) * a) | 0);
+    };
+    if (world.meshCount !== 0) {
+      const wall = world.wall;
+      for (let y = 0; y < h; y++) {
+        for (let x = y & 1; x < w; x += 2) { // every other cell: a checkerboard
+          const i = y * w + x;
+          if ((wall[i] & 255) !== 0) blend(i, WALL_LIGHT, 0.55);
+        }
+      }
+    }
+    if (world.zoneCount !== 0) {
+      const speed = world.speed;
+      const crawl = frame >> 2;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x, s = speed[i];
+          if (s === 0) continue;
+          const tint = ZONE_TINT[s];
+          const edge = (x > 0 && speed[i - 1] !== s) || (x < w - 1 && speed[i + 1] !== s)
+            || (y > 0 && speed[i - w] !== s) || (y < h - 1 && speed[i + w] !== s);
+          if (edge) {
+            // Backwards for a slow zone, forwards for a fast one.
+            const on = (((x + y + (s <= 2 ? -crawl : crawl)) >> 1) & 1) === 0;
+            blend(i, tint.rgb, on ? 0.95 : tint.strength * 1.6);
+          } else {
+            blend(i, tint.rgb, tint.strength);
+          }
+        }
+      }
+    }
+    if (world.portalCells !== 0) {
+      world.portals.forEach((p, slot) => {
+        if (p === null) return;
+        [p.a, p.b].forEach((e, end) => {
+          if (e === null) return;
+          const [r, g, b] = portalRGB(slot, end);
+          const c = pack(r, g, b);
+          e.cells.forEach((i, pos) => {
+            // A lone end is dashed until its partner is drawn.
+            if (p.b === null && ((pos >> 1) & 1) === 1) return;
+            pixels[i] = c;
+          });
+        });
+      });
+    }
   }
 
   // Turn the gas layer into an image, blurred (here, unless the canvas blurs
@@ -11235,7 +12177,8 @@ class Renderer {
   }
 
   // The halo: the light given off in each air block, kept from fading
-  // faster than GLOW_LINGER a frame, blurred wide and boosted.
+  // faster than GLOW_LINGER a frame, blurred wide and boosted. It stops at
+  // walls (glowBlur).
   paintGlow() {
     const { glowAcc: g, glowLast: last, glowTmp } = this;
     for (let k = 0; k < g.length; k++) {
@@ -11244,8 +12187,8 @@ class Renderer {
     }
     last.set(g);
     const { cols, rows } = this.world.air;
-    blur(g, glowTmp, cols, 3, 0, 0, cols - 1, rows - 1);
-    blur(g, glowTmp, cols, 3, 0, 0, cols - 1, rows - 1);
+    glowBlur(g, glowTmp, cols, rows, this.glowWall);
+    glowBlur(g, glowTmp, cols, rows, this.glowWall);
     const gp = this.glowImage.data;
     const gain = (1 / (CELL * CELL)) * GLOW_GAIN;
     for (let k = 0; k < cols * rows; k++) {
@@ -11277,7 +12220,7 @@ class Renderer {
   }
 }
 
-return { SOFT, Renderer };
+return { heatRGB, zoneTint, portalRGB, glowBlur, SOFT, Renderer };
 })();
 
 __modules["src/game/tree.js"] = (() => {
@@ -12085,7 +13028,7 @@ const WIND_STRENGTH = 0.6;
 // neutrons...) are sprayed instead, this densely (see World.paintArea).
 const PARTICLE_DENSITY = 0.6;
 
-const TOOLS = ['erase', 'wall', 'spark', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum'];
+const TOOLS = ['erase', 'wall', 'spark', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum', 'portal', 'time'];
 // The tools hard mode takes away: heat, cold and pressure have to come from
 // the elements themselves.
 const HARD_BLOCKED = new Set(['heat', 'cool', 'wind', 'pressure', 'vacuum']);
@@ -12106,6 +13049,7 @@ class Input {
     this.lastY = 0;
     this.shape = null; // { kind: 'line' | 'box', x0, y0, erase } while Shift/Ctrl-dragging
     this.onHover = null;
+    this.onPortal = null; // told what drawing a portal end did (World.addPortal's result)
     this.clientX = 0; // where the pointer last was, in page pixels
     this.clientY = 0;
     this.touches = new Map(); // fingers on the screen, for pinching
@@ -12173,6 +13117,18 @@ class Input {
     }
     this.toCell(e);
     this.over = true;
+    const sel = this.state.selection;
+    if (sel.kind === 'tool' && sel.id === 'portal') {
+      // Drag a line for a portal end; right-click removes a pair.
+      if (e.button === 2) {
+        const world = this.getWorld();
+        world.removePortalAt(this.y * world.w + this.x);
+      } else {
+        this.shape = { kind: 'portal', x0: this.x, y0: this.y, erase: false };
+      }
+      this.hover();
+      return;
+    }
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
       this.shape = { kind: e.shiftKey ? 'line' : 'box', x0: this.x, y0: this.y, erase: e.button === 2 };
       this.hover();
@@ -12289,6 +13245,11 @@ class Input {
   // Draw the finished line (with the brush) or fill the finished box.
   commitShape(shape) {
     const world = this.getWorld();
+    if (shape.kind === 'portal') {
+      const r = world.addPortal(shape.x0, shape.y0, this.x, this.y);
+      if (this.onPortal) this.onPortal(r);
+      return;
+    }
     world.brushShape = this.state.brushShape;
     world.replace = this.state.replace;
     const { x0, y0 } = shape, x1 = this.x, y1 = this.y;
@@ -12302,8 +13263,13 @@ class Input {
   }
 
   act(world, area, dx, dy, erasing) {
-    if (erasing) { world.eraseArea(area); return; }
     const sel = this.state.selection;
+    if (erasing) {
+      // Right-dragging with the Time brush sets the area back to normal speed.
+      if (sel.kind === 'tool' && sel.id === 'time') world.paintSpeed(area, 0);
+      else world.eraseArea(area);
+      return;
+    }
     if (sel.kind === 'element') {
       world.paintArea(area, sel.id, DEFS[sel.id].projectile ? PARTICLE_DENSITY : 1);
       return;
@@ -12311,7 +13277,13 @@ class Input {
     if (this.state.hard && HARD_BLOCKED.has(sel.id)) return;
     switch (sel.id) {
       case 'erase': world.eraseArea(area); break;
-      case 'wall': world.paintArea(area, ID.WALL, 1); break;
+      case 'wall':
+        world.wallMask = this.state.toolOptions.wallMask;
+        world.paintArea(area, ID.WALL, 1);
+        world.wallMask = 0;
+        break;
+      case 'time': world.paintSpeed(area, this.state.toolOptions.timeSpeed); break;
+      case 'portal': break; // drawn as a line when the drag ends (commitShape)
       case 'spark': world.sparkArea(area); break;
       case 'heat': world.heatArea(area, HEAT_RATE); break;
       case 'cool': world.heatArea(area, -HEAT_RATE); break;
@@ -12554,6 +13526,32 @@ function loadDemoScene(world) {
 return { loadDemoScene };
 })();
 
+__modules["src/game/cell-notes.js"] = (() => {
+// Extra notes for the inspect line about cell i: a wall that lets things
+// through, a time zone, a portal.
+
+const { PASS_ORDER } = __modules["src/sim/walls.js"];
+
+const SPEED_NAMES = ['', '¼×', '½×', '2×', '4×'];
+
+function cellNotes(world, i) {
+  const notes = [];
+  const wl = world.wall[i] & 255;
+  if (wl !== 0) notes.push(`lets ${PASS_ORDER.filter(([, b]) => wl & b).map(([n]) => n).join(', ')} through`);
+  const s = world.speed[i];
+  if (s !== 0) notes.push(`${SPEED_NAMES[s]} speed`);
+  const p = world.portalInfo(i);
+  if (p) {
+    // The first pair is blue and orange; later pairs have other colours.
+    const name = p.slot === 0 ? (p.end === 0 ? 'blue' : 'orange') : (p.end === 0 ? 'first' : 'second');
+    notes.push(`Portal ${p.slot + 1}, ${name} end${p.paired ? '' : ' (draw the other end)'}`);
+  }
+  return notes;
+}
+
+return { cellNotes };
+})();
+
 __modules["src/game/ui.js"] = (() => {
 // Builds and updates everything around the canvas: the discovery meter, the
 // tool bar, the element palette, the recipe tree's card and count, toasts and
@@ -12563,6 +13561,8 @@ const { DEFS, ID, CATEGORIES, COLLECTIBLE, RULES, State, ruleLabel, rulesFor, ha
 const { TOOLS, HARD_BLOCKED, HEAT_RATE } = __modules["src/game/input.js"];
 const { clue, processName } = __modules["src/game/tree.js"];
 const { AIRTIGHT, HIGH_PHASE, LOW_PHASE } = __modules["src/sim/lookups.js"];
+const { PASS_ORDER } = __modules["src/sim/walls.js"];
+const { cellNotes } = __modules["src/game/cell-notes.js"];
 
 const $ = (id) => document.getElementById(id);
 
@@ -12597,7 +13597,17 @@ const TOOL_INFO = {
   wall: {
     name: 'Wall', color: '#9aa3b2',
     icon: '<path d="M3 4h14v12H3zM3 8h14M3 12h14M8 4v4M12 8v4M8 12v4"/>',
-    desc: 'Indestructible and airtight. Build sealed boxes to hold pressure, or containers for liquids.',
+    desc: 'Indestructible, airtight and a perfect insulator. Tick boxes below to let things through the walls you paint next: a grate for water, a vent for gas, a window for light.',
+  },
+  portal: {
+    name: 'Portal', color: '#5aa8ff',
+    icon: '<path d="M6 3c-2 2-2 12 0 14M14 3c2 2 2 12 0 14M3 10h4M13 10h4M5.5 8L7 10l-1.5 2M15.5 8L17 10l-1.5 2"/>',
+    desc: 'Drag a line for one end of a portal, then another for the other end. Anything crossing one end comes out of the other, still going, and air flows through. Right-click a portal to remove the pair.',
+  },
+  time: {
+    name: 'Time', color: '#ffb347',
+    icon: '<path d="M10 3.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM10 6.5V10l2.5 2"/>',
+    desc: 'Paint an area that runs slower or faster than the rest of the world. Right-click to put an area back to normal speed. Clear removes every area.',
   },
   heat: {
     name: 'Heat', color: '#ff7d3f',
@@ -12700,10 +13710,43 @@ class UI {
       const b = e.target.closest('[data-tool]');
       if (b) this.game.select({ kind: 'tool', id: b.dataset.tool });
     });
+    $('tool-options').addEventListener('change', (e) => {
+      const bit = Number(e.target.dataset.pass);
+      if (!bit) return;
+      const m = this.game.toolOptions.wallMask;
+      this.game.setToolOptions({ wallMask: e.target.checked ? m | bit : m & ~bit });
+    });
+    $('tool-options').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-speed]');
+      if (b) this.game.setToolOptions({ timeSpeed: Number(b.dataset.speed) });
+    });
     $('palette').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
       if (b) this.game.select({ kind: 'element', id: Number(b.dataset.id) });
     });
+  }
+
+  // The options strip: the Wall checklist, or the Time brush's speeds.
+  renderToolOptions() {
+    const box = $('tool-options');
+    const { selection: sel, toolOptions: o } = this.game;
+    const id = sel.kind === 'tool' ? sel.id : null;
+    if (id === 'wall') {
+      box.innerHTML = `<div class="opt-head">Lets through</div><div class="opt-grid">${PASS_ORDER.map(([name, bit]) =>
+        `<label class="opt-check"><input type="checkbox" data-pass="${bit}"${o.wallMask & bit ? ' checked' : ''}> ${name[0].toUpperCase()}${name.slice(1)}</label>`).join('')}</div>`;
+    } else if (id === 'time') {
+      box.innerHTML = `<div class="opt-head">Speed</div><div class="opt-speeds" role="radiogroup" aria-label="Speed">${['¼×', '½×', '2×', '4×'].map((s, k) =>
+        `<button type="button" role="radio" data-speed="${k + 1}" aria-checked="${o.timeSpeed === k + 1}">${s}</button>`).join('')}</div>`;
+    } else {
+      box.innerHTML = '';
+    }
+    box.hidden = id !== 'wall' && id !== 'time';
+  }
+
+  // A short message in the HUD line for a couple of seconds.
+  flash(text) {
+    this.flashText = text;
+    this.flashUntil = performance.now() + 2000;
   }
 
   bindBrush() {
@@ -12913,6 +13956,7 @@ class UI {
     this.renderMeter();
     this.renderPalette();
     this.renderInspect();
+    this.renderToolOptions();
     this.renderTreeCount();
     if (this.cardId !== null) this.showCard(this.cardId, this.cardLink);
   }
@@ -12940,7 +13984,9 @@ class UI {
 
   renderHud(world, hover) {
     const cell = $('hud-cell');
-    if (!hover || !world.inBounds(hover.x, hover.y)) {
+    if (this.flashUntil && performance.now() < this.flashUntil) {
+      cell.textContent = this.flashText;
+    } else if (!hover || !world.inBounds(hover.x, hover.y)) {
       cell.textContent = 'Point at a particle to inspect it';
     } else {
       const i = hover.y * world.w + hover.x;
@@ -12957,6 +14003,8 @@ class UI {
       const airT = world.air.heat ? fmtTemp(world.air.t[world.air.at(hover.x, hover.y)]) : '';
       let temp = t ? `${sep}${fmtTemp(world.temp[i])}` : '';
       if (airT) temp += t ? `${sep}air ${airT}` : `${sep}${airT}`;
+      const notes = cellNotes(world, i);
+      if (notes.length) temp = `${sep}${esc(notes.join(' · '))}${temp}`;
       cell.innerHTML = `<b>${esc(name)}</b>${temp}${sep}pressure ${p >= 0 ? '+' : ''}${p.toFixed(1)}${sep}x ${hover.x} y ${hover.y}`;
     }
   }
@@ -12972,16 +14020,43 @@ return { toolColor, UI };
 
 __modules["src/game/physics-panel.js"] = (() => {
 // The Physics panel under the game: which way gravity pulls (a dial you
-// turn), how hard (a text box), Newtonian gravity, convection, and which
-// edges of the world are a void (a box whose sides you click). Settings
+// turn), how hard (a text box), Newtonian gravity, convection, and what each
+// edge of the world is: solid, a void or a loop (a box whose sides you click
+// round the three). Settings
 // are kept in localStorage, guarded like saved progress, and applied to the
 // world at start.
 
 const { MAX_STRENGTH } = __modules["src/sim/gravity.js"];
 
 const KEY = 'sandbox-crafter:physics';
-const NO_EDGES = Object.freeze({ top: false, bottom: false, left: false, right: false });
-const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: true, edges: NO_EDGES });
+const SOLID_EDGES = Object.freeze({ top: 'solid', bottom: 'solid', left: 'solid', right: 'solid' });
+const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: true, edges: SOLID_EDGES });
+const OPPOSITE = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
+const CYCLE = { solid: 'void', void: 'loop', loop: 'solid' };
+
+// One edge's saved state: 'solid', 'void' or 'loop' (older saves stored
+// true for a void).
+const edgeState = (v) => (v === true || v === 'void' ? 'void' : v === 'loop' ? 'loop' : 'solid');
+
+// Loops come in pairs: if either side of a pair loops, both do.
+function pairLoops(e) {
+  for (const [a, b] of [['top', 'bottom'], ['left', 'right']]) {
+    if (e[a] === 'loop' || e[b] === 'loop') { e[a] = 'loop'; e[b] = 'loop'; }
+  }
+  return e;
+}
+
+// The edges after clicking `side`: solid, then void, then loop, then solid
+// again. A loop takes the opposite side with it, and leaving a loop puts
+// both sides back to solid.
+function nextEdges(edges, side) {
+  const e = { ...edges };
+  const now = CYCLE[e[side]] ?? 'void';
+  e[side] = now;
+  if (now === 'loop') e[OPPOSITE[side]] = 'loop';
+  else if (edges[side] === 'loop') e[OPPOSITE[side]] = 'solid';
+  return e;
+}
 const NAMES = ['Down', 'Down-left', 'Left', 'Up-left', 'Up', 'Up-right', 'Right', 'Down-right'];
 // Keys that turn the dial, in degrees clockwise.
 const TURN = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15, PageUp: 45, PageDown: -45 };
@@ -13020,9 +14095,10 @@ function loadSettings(storage = globalThis.localStorage) {
       strength: parseStrength(data.strength) ?? DEFAULTS.strength,
       newtonian: !!data.newtonian,
       convection: data.convection === undefined ? DEFAULTS.convection : !!data.convection,
-      edges: {
-        top: !!data.edges?.top, bottom: !!data.edges?.bottom, left: !!data.edges?.left, right: !!data.edges?.right,
-      },
+      edges: pairLoops({
+        top: edgeState(data.edges?.top), bottom: edgeState(data.edges?.bottom),
+        left: edgeState(data.edges?.left), right: edgeState(data.edges?.right),
+      }),
     };
   } catch {
     return { ...DEFAULTS }; // unreadable or unavailable storage
@@ -13059,8 +14135,13 @@ class PhysicsPanel {
     const s = this.settings;
     this.world.setGravity({ angle: s.angle, strength: s.strength, newtonian: s.newtonian });
     this.world.setConvection(s.convection);
-    this.world.setVoidEdges(s.edges);
-    for (const b of this.edges) b.setAttribute('aria-pressed', String(s.edges[b.dataset.edge]));
+    this.world.setEdges(s.edges);
+    for (const b of this.edges) {
+      const st = s.edges[b.dataset.edge];
+      b.dataset.state = st;
+      b.setAttribute('aria-pressed', String(st !== 'solid'));
+      b.setAttribute('aria-label', `${b.dataset.name}: ${st}`);
+    }
     this.arrow.setAttribute('transform', `rotate(${s.angle})`);
     this.dial.setAttribute('aria-valuenow', String(s.angle));
     this.dial.setAttribute('aria-valuetext', angleText(s.angle));
@@ -13109,15 +14190,47 @@ class PhysicsPanel {
     this.convect.addEventListener('change', () => this.update({ convection: this.convect.checked }));
     for (const b of this.edges) {
       b.addEventListener('click', () => {
-        const side = b.dataset.edge;
-        this.update({ edges: { ...this.settings.edges, [side]: !this.settings.edges[side] } });
+        this.update({ edges: nextEdges(this.settings.edges, b.dataset.edge) });
       });
     }
     reset.addEventListener('click', () => { this.settings = { ...DEFAULTS }; this.apply(); });
   }
 }
 
-return { DEFAULTS, angleText, parseStrength, dialAngle, loadSettings, saveSettings, PhysicsPanel };
+return { DEFAULTS, nextEdges, angleText, parseStrength, dialAngle, loadSettings, saveSettings, PhysicsPanel };
+})();
+
+__modules["src/game/tool-options.js"] = (() => {
+// The options strip under the tools: the Wall checklist (a PASS mask, see
+// walls.js) and the Time brush's speed (1-4: ¼× ½× 2× 4×). Kept in
+// localStorage, guarded like the other saved settings.
+
+const KEY = 'sandbox-crafter:tool-options';
+const TOOL_OPTION_DEFAULTS = Object.freeze({ wallMask: 0, timeSpeed: 1 });
+
+function loadToolOptions(storage = globalThis.localStorage) {
+  try {
+    const data = JSON.parse(storage.getItem(KEY));
+    if (!data || typeof data !== 'object') return { ...TOOL_OPTION_DEFAULTS };
+    const m = Number(data.wallMask), s = Number(data.timeSpeed);
+    return {
+      wallMask: Number.isInteger(m) && m >= 0 && m <= 255 ? m : TOOL_OPTION_DEFAULTS.wallMask,
+      timeSpeed: Number.isInteger(s) && s >= 1 && s <= 4 ? s : TOOL_OPTION_DEFAULTS.timeSpeed,
+    };
+  } catch {
+    return { ...TOOL_OPTION_DEFAULTS }; // unreadable or unavailable storage
+  }
+}
+
+function saveToolOptions(options, storage = globalThis.localStorage) {
+  try {
+    storage.setItem(KEY, JSON.stringify(options));
+  } catch {
+    // Nothing to do; the options just won't be remembered.
+  }
+}
+
+return { TOOL_OPTION_DEFAULTS, loadToolOptions, saveToolOptions };
 })();
 
 __modules["src/main.js"] = (() => {
@@ -13135,6 +14248,7 @@ const { loadDemoScene } = __modules["src/game/scene.js"];
 const { UI, toolColor } = __modules["src/game/ui.js"];
 const { buildTree, focusTree } = __modules["src/game/tree.js"];
 const { PhysicsPanel } = __modules["src/game/physics-panel.js"];
+const { loadToolOptions, saveToolOptions } = __modules["src/game/tool-options.js"];
 
 const WIDTH = 400;
 const HEIGHT = 240;
@@ -13152,11 +14266,18 @@ const game = {
   brushShape: 'circle',
   paused: false,
   replace: false, // painting overwrites what's in the way
+  toolOptions: loadToolOptions(), // the Wall checklist and the Time speed
+  setToolOptions(change) {
+    Object.assign(this.toolOptions, change);
+    saveToolOptions(this.toolOptions);
+    ui.renderToolOptions();
+  },
   get hard() { return progress.hard; },
   select(sel) {
     this.selection = sel;
     ui.renderPalette();
     ui.renderInspect();
+    ui.renderToolOptions();
     followSelection(sel);
   },
   setBrush(r) {
@@ -13172,6 +14293,7 @@ const renderer = new Renderer(canvas, world, camera);
 const input = new Input(canvas, () => world, game, camera);
 let hover = null;
 input.onHover = (pos) => { hover = pos; };
+input.onPortal = (r) => { if (r === 'full') ui.flash('32 portal pairs is the most: remove one first'); };
 
 loadDemoScene(world);
 ui.setBrush(game.brush);
@@ -13485,8 +14607,9 @@ function brushOutline() {
   if (input.erasing || shape?.erase) color = toolColor('erase');
   else if (sel.kind === 'tool') color = toolColor(sel.id);
   else color = DEFS[sel.id].colors[0];
-  const outline = { x: hover.x, y: hover.y, r: game.brush, square: game.brushShape === 'square', color };
-  if (shape) outline.from = { kind: shape.kind, x: shape.x0, y: shape.y0 };
+  const portal = sel.kind === 'tool' && sel.id === 'portal'; // drawn as a one-cell line
+  const outline = { x: hover.x, y: hover.y, r: portal ? 0 : game.brush, square: game.brushShape === 'square', color };
+  if (shape) outline.from = { kind: shape.kind === 'portal' ? 'line' : shape.kind, x: shape.x0, y: shape.y0 };
   return outline;
 }
 

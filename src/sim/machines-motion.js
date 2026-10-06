@@ -34,7 +34,7 @@ export const MotionMachines = {
     const tx = x - downX, ty = y - downY;
     if (!this.inBounds(tx, ty)) return;
     const j = ty * w + tx, u = type[j];
-    if (u === 0 || this.clock[j] === this.tick || !(CARRIED[u] || this.loose[j])) return;
+    if (u === 0 || this.clock[j] === this.pass || !(CARRIED[u] || this.loose[j])) return;
     const across = downY !== 0; // the belt runs along x when gravity is up or down
     const f = this.powerFrom[i];
     let s = across ? Math.sign(x - (f % w)) : Math.sign(y - ((f / w) | 0));

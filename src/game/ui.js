@@ -8,6 +8,8 @@ import {
 import { TOOLS, HARD_BLOCKED, HEAT_RATE } from './input.js';
 import { clue, processName } from './tree.js';
 import { AIRTIGHT, HIGH_PHASE, LOW_PHASE } from '../sim/lookups.js';
+import { PASS_ORDER } from '../sim/walls.js';
+import { cellNotes } from './cell-notes.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -42,7 +44,17 @@ const TOOL_INFO = {
   wall: {
     name: 'Wall', color: '#9aa3b2',
     icon: '<path d="M3 4h14v12H3zM3 8h14M3 12h14M8 4v4M12 8v4M8 12v4"/>',
-    desc: 'Indestructible and airtight. Build sealed boxes to hold pressure, or containers for liquids.',
+    desc: 'Indestructible, airtight and a perfect insulator. Tick boxes below to let things through the walls you paint next: a grate for water, a vent for gas, a window for light.',
+  },
+  portal: {
+    name: 'Portal', color: '#5aa8ff',
+    icon: '<path d="M6 3c-2 2-2 12 0 14M14 3c2 2 2 12 0 14M3 10h4M13 10h4M5.5 8L7 10l-1.5 2M15.5 8L17 10l-1.5 2"/>',
+    desc: 'Drag a line for one end of a portal, then another for the other end. Anything crossing one end comes out of the other, still going, and air flows through. Right-click a portal to remove the pair.',
+  },
+  time: {
+    name: 'Time', color: '#ffb347',
+    icon: '<path d="M10 3.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM10 6.5V10l2.5 2"/>',
+    desc: 'Paint an area that runs slower or faster than the rest of the world. Right-click to put an area back to normal speed. Clear removes every area.',
   },
   heat: {
     name: 'Heat', color: '#ff7d3f',
@@ -145,10 +157,43 @@ export class UI {
       const b = e.target.closest('[data-tool]');
       if (b) this.game.select({ kind: 'tool', id: b.dataset.tool });
     });
+    $('tool-options').addEventListener('change', (e) => {
+      const bit = Number(e.target.dataset.pass);
+      if (!bit) return;
+      const m = this.game.toolOptions.wallMask;
+      this.game.setToolOptions({ wallMask: e.target.checked ? m | bit : m & ~bit });
+    });
+    $('tool-options').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-speed]');
+      if (b) this.game.setToolOptions({ timeSpeed: Number(b.dataset.speed) });
+    });
     $('palette').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
       if (b) this.game.select({ kind: 'element', id: Number(b.dataset.id) });
     });
+  }
+
+  // The options strip: the Wall checklist, or the Time brush's speeds.
+  renderToolOptions() {
+    const box = $('tool-options');
+    const { selection: sel, toolOptions: o } = this.game;
+    const id = sel.kind === 'tool' ? sel.id : null;
+    if (id === 'wall') {
+      box.innerHTML = `<div class="opt-head">Lets through</div><div class="opt-grid">${PASS_ORDER.map(([name, bit]) =>
+        `<label class="opt-check"><input type="checkbox" data-pass="${bit}"${o.wallMask & bit ? ' checked' : ''}> ${name[0].toUpperCase()}${name.slice(1)}</label>`).join('')}</div>`;
+    } else if (id === 'time') {
+      box.innerHTML = `<div class="opt-head">Speed</div><div class="opt-speeds" role="radiogroup" aria-label="Speed">${['¼×', '½×', '2×', '4×'].map((s, k) =>
+        `<button type="button" role="radio" data-speed="${k + 1}" aria-checked="${o.timeSpeed === k + 1}">${s}</button>`).join('')}</div>`;
+    } else {
+      box.innerHTML = '';
+    }
+    box.hidden = id !== 'wall' && id !== 'time';
+  }
+
+  // A short message in the HUD line for a couple of seconds.
+  flash(text) {
+    this.flashText = text;
+    this.flashUntil = performance.now() + 2000;
   }
 
   bindBrush() {
@@ -358,6 +403,7 @@ export class UI {
     this.renderMeter();
     this.renderPalette();
     this.renderInspect();
+    this.renderToolOptions();
     this.renderTreeCount();
     if (this.cardId !== null) this.showCard(this.cardId, this.cardLink);
   }
@@ -385,7 +431,9 @@ export class UI {
 
   renderHud(world, hover) {
     const cell = $('hud-cell');
-    if (!hover || !world.inBounds(hover.x, hover.y)) {
+    if (this.flashUntil && performance.now() < this.flashUntil) {
+      cell.textContent = this.flashText;
+    } else if (!hover || !world.inBounds(hover.x, hover.y)) {
       cell.textContent = 'Point at a particle to inspect it';
     } else {
       const i = hover.y * world.w + hover.x;
@@ -402,6 +450,8 @@ export class UI {
       const airT = world.air.heat ? fmtTemp(world.air.t[world.air.at(hover.x, hover.y)]) : '';
       let temp = t ? `${sep}${fmtTemp(world.temp[i])}` : '';
       if (airT) temp += t ? `${sep}air ${airT}` : `${sep}${airT}`;
+      const notes = cellNotes(world, i);
+      if (notes.length) temp = `${sep}${esc(notes.join(' · '))}${temp}`;
       cell.innerHTML = `<b>${esc(name)}</b>${temp}${sep}pressure ${p >= 0 ? '+' : ''}${p.toFixed(1)}${sep}x ${hover.x} y ${hover.y}`;
     }
   }

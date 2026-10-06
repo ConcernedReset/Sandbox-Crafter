@@ -68,8 +68,42 @@ back to system ones; progress is saved per file location.)
 - **Replace** (next to the view buttons, or `R`): while it's on, painting
   overwrites whatever is in the way, Wall included, instead of only filling
   empty space. Painting an element over itself leaves it alone.
-- **Tools:** Erase, Wall (indestructible and airtight), Spark, Heat, Cool,
-  Wind (drag to blow), Mix, Pressure and Vacuum.
+- **Tools:** Erase, Wall (indestructible, airtight, a perfect insulator and a
+  perfect reflector), Spark, Heat, Cool,
+  Wind (drag to blow), Mix, Pressure, Vacuum, Portal and Time. Wall and Time
+  have options, in a strip under the tools that shows while they're picked;
+  the game remembers your choices.
+  - **Wall** has a checklist of what may pass: Solids (loose debris and
+    creatures), Powders, Liquids, Gases, Energy (fire, plasma, lightning),
+    Particles (light, neutrons and the rest), Heat and Air. With nothing
+    ticked a wall is a perfect wall. Each wall remembers the boxes that were
+    ticked when it was painted, so one world can have a perfect wall next to
+    a grate for water, a vent for gas or a window for light. Things that are
+    let through seep through the wall cell by cell (the wall never moves);
+    a heat wall conducts like metal; an air wall lets pressure, wind and
+    blasts through. Walls that let anything through are drawn as a mesh.
+  - **Portal**: drag a line for one end, then another for the other end.
+    The pair is a window between two places, always two-way: anything that
+    crosses one end comes out of the other at the same point along it and
+    keeps going, its direction turned by the angle between the two lines
+    (never more than 90°, so parallel ends never flip anything: a floor end
+    and a ceiling end make an endless fall). Powders, liquids, gases,
+    flames, loose debris and creatures go through, and so do light and
+    every flying particle, and the air on either side evens out with the air
+    on the matching side of the other end, so wind and warm air come
+    through too. If the way out is blocked, things wait on the line. The
+    first pair is blue and orange, later pairs have their own colours, and
+    an end still waiting for its partner is dashed. Right-click a portal (or
+    erase any of it) to remove the pair; Clear removes them all. Up to 32
+    pairs.
+  - **Time** paints areas that run at ¼×, ½×, 2× or 4× speed: everything in
+    them falls, flows, burns, decays, reacts and conducts heat at that
+    speed, and flying particles slow down or speed up crossing them. The
+    speed belongs to the place, so sand that falls out of a slow area speeds
+    back up. Slow areas are tinted blue and fast ones orange, with a dashed
+    border that crawls slowly backwards or forwards. Right-click to put an
+    area back to normal speed; Clear removes every area. The air isn't
+    affected.
   - **Spark** is electricity. It fills empty space with sparks, and works
     inside things as well as on them: metal and wires carry a pulse from
     wherever you click, switches flip, machines run, explosives go off,
@@ -85,8 +119,11 @@ back to system ones; progress is saved per file location.)
   sparks) a wide soft halo that lingers for a moment. Both only change the
   Normal view.
 - **Views:** Normal, Heat (a thermal camera) and Pressure (the air grid). In
-  the Heat view white is 6000 °C; past that it shades to violet for the
-  millions of degrees of a Star.
+  the Heat view white is 6000 °C. There's no top temperature, so past that
+  the colour never stops changing: it fades into a bright colour wheel
+  (violet, pink, red, orange, yellow, green, cyan, blue and round again) and
+  goes once round it every four powers of ten. Plasma is violet, plutonium
+  in a lump yellow-green, a Star cyan, Quark-Gluon Plasma pink.
 - **Keys:** `Space` pause, `.` step one frame, `[` `]` brush size, `1` `2` `3` views,
   `R` replace, `+` `-` `0` zoom, arrows pan.
 - The **Recipe tree** under the simulation shows everything you've found,
@@ -153,24 +190,28 @@ The strip between the status line and the recipe tree changes the rules:
   sand falls onto it from every side and gases gather round it. Solid blocks
   stay put but still pull.
 - **Convection.** The air gets a temperature of its own. Hot things warm the
-  air beside them; the warm air swells (pushing outwards) and rises against
-  the arrow, spreads out, cools, sinks back down at the sides and is drawn
-  back in at the base. So a hot block sits in a loop of moving air that
-  gradually cools it, and smoke and steam ride round with it (in a closed
-  box especially; in the open some of the plume escapes off the top of the
-  map). The Heat and Cool tools warm and chill the air too, even over empty
+  air beside them; the warm air swells (pushing outwards) and rises gently
+  against the arrow, spreads out along the top, sinks back down at the
+  sides and is drawn back in at the base. So a big heat source in the middle
+  of the floor drives two steady rolls, as in The Powder Toy: anticlockwise
+  on the left, clockwise on the right. A hot block sits in a loop of moving
+  air that gradually cools it, and smoke and steam ride round with it. The Heat and Cool tools warm and chill the air too, even over empty
   space: a warm bubble rises, a cold pocket sinks. The Heat view shows the
   air's temperature, and pointing at a cell shows it too.
 - **Edges.** A little box whose four sides are the roof, floor and walls of
-  the world. Click a side to shade it and that edge becomes a void: anything
-  that moves out through it vanishes, so a void floor drains away every loose
-  grain and drop, water pours off a void side like a waterfall, and smoke
-  escapes through a void roof. Things that stay put, like a stone floor
-  along the edge, stay. Pressure waves and heat go out through a void edge
-  too, instead of bouncing back off it as they do off a solid one. Void
-  edges are marked with a purple line on the game.
+  the world. Click a side to cycle it: solid, a void, a loop, and back to
+  solid. Anything that moves out through a void vanishes, so a void floor
+  drains away every loose grain and drop, water pours off a void side like a
+  waterfall, and smoke escapes through a void roof. Things that stay put,
+  like a stone floor along the edge, stay. Pressure waves and heat go out
+  through a void edge too, instead of bouncing back off it as they do off a
+  solid one. A loop joins an edge to the opposite one, so loops come in
+  pairs: sand that falls off the floor comes in at the roof, water runs off
+  one side and in at the other, and light, air, wind and heat carry on round
+  too. A world looped on all four sides leaks nothing at all. Void edges are
+  marked with a purple line on the game, looped ones with a dashed teal one.
 - **Reset** puts everything back: down, strength 1, Newtonian
-  gravity off, convection on, no void edges (how the game starts). The
+  gravity off, convection on, solid edges (how the game starts). The
   settings are remembered in your browser.
 
 ## How the physics works
@@ -186,9 +227,15 @@ Each frame (60 per second):
    ("Bottom" is wherever gravity points: the scan starts from that end.)
    - *Powders* fall, accelerate, and slide off slopes diagonally, so they pile up.
    - *Liquids* fall, then flow sideways, and remember their flow direction.
+     Liquid lying on top flows on towards the nearest drop it can see along
+     the surface, so a heap of water levels out within a few seconds. A
+     denser liquid flows sideways under a lighter one too, so salt water
+     poured into water spreads out flat along the bottom.
    - *Gases* random-walk with a buoyant bias against gravity.
    - Anything heavier sinks through lighter liquids and gases (sand sinks in
-     water, oil floats on it, steam bubbles up through it).
+     water, oil floats on it, steam bubbles up through it). Something sinking
+     into a liquid pushes it aside into open space next to it where it can,
+     so a stream poured into a pool doesn't carry the pool up with it.
    - Particles are pushed by the air and can be flung by explosions.
 2. **Reactions and phase changes.** Each particle checks one random neighbour
    against a reaction table, and checks its own temperature and the local air
@@ -210,6 +257,16 @@ Each frame (60 per second):
    explosion pushes out a slow, smooth, rounded front instead of a sharp
    ringing one. A sealed Wall box can hold the pressure needed to make
    diamonds, and explosions send out a visible shockwave in the Pressure view.
+
+   **Wall is a perfect container.** It stays at room temperature whatever
+   touches it, and nothing gets through it, even a wall one cell thick or
+   drawn on the diagonal: no air, pressure or heat, no flying particle (each
+   one bounces off it, neutrinos included), no blast and no Glow halo. Only
+   the open air, joined to the edges of the map, slowly loses its pressure
+   and its heat to the world beyond; air shut in a sealed box keeps both for
+   as long as the box stays shut. So a box of hot air stays hot, a lump of
+   lava in a box only warms the air in it, and a plutonium reaction in a box
+   leaves the outside untouched.
 
    **Fire uses up air.** Every flame lowers the pressure around it a little,
    so a fire draws air (and smoke and dust) in towards it. In the open, air
@@ -234,14 +291,19 @@ Each frame (60 per second):
    Particles next to empty cells trade heat with that air instead of with the
    room, the better they conduct the faster (lava at one end of a sealed box
    melts ice at the other in a few seconds); the air warms three times as
-   fast as they cool, presses harder the hotter it is (so heating the air in
-   a sealed box raises its pressure until it cools again, and in the open hot
-   air pushes outwards and is drawn back as it cools; the extra pressure
-   levels off at +40, however hot), is pushed against gravity in proportion
-   to how much warmer it is than the air around it (so air that has cooled
-   below its surroundings sinks), is carried along by the wind, spreads its
-   heat to the air beside it, and loses its heat to the room. The loop this
-   makes is the convection current. Very hot air radiates its heat away fast
+   fast as they cool, and swells as it takes in heat and shrinks as it gives
+   it up (so heating the air in a sealed box raises its pressure for as long
+   as it stays hot, and in the open hot air pushes outwards and is drawn
+   back as it cools; the extra pressure levels off at +40, however hot).
+   Heat the wind merely carries along moves no pressure, so a plume rises
+   smoothly instead of setting off pressure waves. The air is pushed gently
+   against gravity in proportion to how much warmer than the room it is, up
+   to a limit, and colder air sinks (The Powder Toy's Boussinesq
+   convection); with convection on the map's edges drag on the air going
+   through them, so a rising plume turns along the top and comes back down
+   instead of pouring off the map. The air is carried along by the wind,
+   spreads its heat to the air beside it, and loses its heat to the room.
+   The loop this makes is the convection current. Very hot air radiates its heat away fast
    (radiation grows steeply with temperature), and air can only take up so
    much heat from a surface each frame, so the air beside a Star is searing
    but its heat doesn't flood the whole world.
@@ -641,10 +703,11 @@ boiling away in a vacuum, staying liquid past 100 °C in a pressure cooker,
 and metal that won't melt under heavy pressure. The convection tests cover a
 rising plume, the plume turning with the arrow, air flowing in at its base,
 the hot block cooling, the pressure rising in a heated sealed box and
-settling once it cools, hot air pushing out and being drawn back in the open,
-a full loop in a closed box (markers carried up come
-back down), the Heat and Cool tools warming and chilling the
-air, and a sealed fire still going out. The heat tests cover heat running
+lasting until the box is opened, hot air pushing out and being drawn back in
+the open, a full loop in a closed box (markers carried up come back down),
+two steady rolls with calm pressure over a big heat source on the floor, the
+Heat and Cool tools warming and chilling the air, and a sealed fire still
+going out. The heat tests cover heat running
 along a metal bar, hot air carrying heat across a room, no top temperature,
 the hottest elements' real temperatures, plutonium being a million degrees
 only in a lump, the pressure from hot air levelling off and going as it
@@ -656,9 +719,24 @@ shutting, a conveyor both ways, a piston pushing and pulling back (and
 stopping at a wall), an inverter and a delay line, the three sensors, an
 igniter and a neutron source. A
 pressure test checks the air is thick: a burst spreads as one smooth front
-instead of ringing. The recipe tests
-run all 1235 production rules in the real simulation. About 1,420 tests in
-all, and they run in a few seconds.
+instead of ringing. The wall tests check a one-cell Wall box keeps its
+pressure and its heat, lets nothing out (heat, pressure, a plutonium
+reaction, any kind of flying particle, a blast or the Glow halo), not even
+through a diagonal wall, and stays at room temperature itself. The
+wall-filter tests check the checklist: water through a liquids wall but not
+sand, smoke out of a gas box but not water, light through a particles wall,
+heat through a heat wall, pressure through an air wall, and walls staying
+whole as things pass through them. The portal tests cover the endless fall,
+light turned by perpendicular ends and kept straight by parallel ones, smoke
+escaping a box through a pair, air through a pair, things waiting when the
+way out is blocked, a lone end doing nothing, and removing pairs. The time
+tests cover sand falling slower and faster, flames dying sooner and later,
+light slowing in a slow area, and heat crossing a fast bar without
+overshooting. The loop tests cover sand, water, heat, a gust of pressure and
+light crossing the join, and a world looped all round keeping its pressure.
+A render test checks the Heat view keeps changing colour, however hot things
+get. The recipe tests run all 1235 production rules in the real simulation.
+About 1,475 tests in all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.

@@ -12,41 +12,57 @@
 //   4. the flow carries itself along (ADVECT), so gusts keep going and curl
 //      into eddies
 // A ring of blocks around the edge is held at zero pressure, so air can
-// escape the map, and blocked blocks (Wall, or a line of strong solid across
-// the block) stop flow entirely so sealed boxes hold pressure.
+// escape the map. With convection on, the edge also drags on the air going
+// through it (EDGE_DRAG), as in The Powder Toy, so a slow warm current turns
+// along the edge instead of pouring out of it. Blocked blocks (Wall, or a line of strong solid across the block) stop flow
+// entirely so sealed boxes hold pressure.
+//
+// With a pair of edges looped (setLoops), the border ring on those sides
+// holds a copy of the inside of the opposite side, so the air carries on
+// across the join (wrapRing, syncSeams), and those sides let nothing out.
+//
+// The open blocks fall into separate pockets (`region`, see label): the
+// room, joined to the border ring, and any pocket shut off from it, such as
+// the inside of a sealed box. Nothing is blurred, carried or sampled from one
+// pocket into another, and only the room loses pressure and heat to the
+// world beyond, so a sealed box keeps both for as long as it stays shut.
 //
 // With convection on (`heat`), each block also has an air temperature.
-// Particles trade heat with it (world.js, warmAir). Warm air presses
-// harder: a block's pressure includes EXPAND for every degree its air is
-// above room temperature (levelling off when very hot, see thermal), so
-// heating sealed air raises the pressure while it stays hot, and in the
-// open hot air pushes out and is drawn back as it cools, with nothing left
-// over once it has; air warmer than the air around it is pushed against
-// gravity and cooler air sinks, so a plume rises over something hot,
-// spreads, comes down at the sides and is drawn back in at the base; the
-// flow carries the heat along; and the air gives its heat back to the room.
-// The border ring stays at room temperature.
+// Particles trade heat with it (world.js, warmAir). Air that takes in heat
+// swells: its pressure rises by EXPAND a degree (levelling off when very hot,
+// see thermal), and falls again as it gives the heat up, so heating sealed
+// air raises the pressure while it stays hot, and in the open hot air pushes
+// out and is drawn back as it cools. Heat the flow merely carries from one
+// block to the next moves no pressure, so a rising plume doesn't set off
+// pressure waves as it goes. Air warmer than the room is pushed gently
+// against gravity, and colder air sinks (The Powder Toy's Boussinesq
+// convection), so a plume rises over something hot, spreads out along the
+// top, comes down at the sides and is drawn back in at the base: two steady
+// rolls. The flow carries the heat along, and the air gives its heat back to
+// the room. The border ring stays at room temperature.
 
 import { AMBIENT } from './constants.js';
 
 export const CELL = 4;
+// The region of the room: the border ring and every block joined to it.
+export const OUTSIDE = 1;
 
 // Convection. A degree lost by a particle warms its block's air by
 // AIR_SHARE degrees (air holds little heat), and each degree of air above
-// room temperature adds EXPAND to the pressure. Air is pushed against gravity by BUOYANCY
-// per degree it is warmer than the air within MEAN_RADIUS blocks, per g, per
-// frame (cooler air is pushed with it), and gives AIR_TEMP_LOSS of its
-// excess heat back to the room a frame. HEAT_SMOOTH blurs it a little, like the
-// pressure.
+// room temperature adds EXPAND to the pressure. Air is pushed against
+// gravity by BUOYANCY per degree it is warmer than the room, per g, per
+// frame, but by no more than BUOYANT_MAX (colder air sinks), and gives
+// AIR_TEMP_LOSS of its excess heat back to the room a frame. HEAT_SMOOTH
+// blurs it a little, like the pressure.
 export const AIR_SHARE = 3;
 export const EXPAND = 0.008;
 // ...but not without limit: the pressure heat adds levels off towards
 // THERMAL_MAX (see thermal), so a pocket of million-degree air pushes hard
 // without pinning the pressure at its maximum, or leaving a vacuum behind as
-// it cools. Buoyancy counts at most BUOYANT_MAX degrees of difference.
+// it cools.
 const THERMAL_MAX = 40;
-const BUOYANT_MAX = 1000;
-const BUOYANCY = 0.0015;
+const BUOYANCY = 0.0001;
+const BUOYANT_MAX = 0.01;
 const AIR_TEMP_LOSS = 0.01;
 // Very hot air also radiates its heat away, the faster the hotter (real
 // radiation grows with the fourth power of temperature, so the share of the
@@ -58,7 +74,6 @@ const RADIATE_MAX = 0.9;
 // The flow carries heat at most this many blocks a frame, however hard it blows.
 const HEAT_REACH = 1.5;
 const HEAT_SMOOTH = 0.2;
-const MEAN_RADIUS = 14;
 
 const PRESSURE_STEP = 0.3;
 const VELOCITY_STEP = 0.4;
@@ -66,6 +81,7 @@ const PRESSURE_LOSS = 0.9999;
 const VELOCITY_LOSS = 0.999;
 const ADVECT = 0.3; // the share of each face's flow traced back along the flow
 const ADVECT_MAX = 3; // how many blocks back, at most
+const EDGE_DRAG = 0.9; // the share of the flow through the map's edge kept a frame
 const MAX_PRESSURE = 256;
 // The Powder Toy's blur kernel, exp(-2 r²) normalised: the block itself,
 // its four sides and its four corners.
@@ -117,39 +133,40 @@ function clampBack(v) {
   return d > ADVECT_MAX ? ADVECT_MAX : d < -ADVECT_MAX ? -ADVECT_MAX : d;
 }
 
-// Blur `f` into `out` with the kernel, where `open`; a closed neighbour
-// counts as the block's own value. Closed entries are copied as they are.
-function blur(f, open, out, W, H) {
+// Blur `f` into `out` with the kernel. `key` is each entry's region (0
+// where it's closed): a neighbour in another region, or closed, counts as
+// the entry's own value. Closed entries are copied as they are.
+function blur(f, key, out, W, H) {
   for (let y = 0; y < H; y++) {
     for (let x = 0, i = y * W; x < W; x++, i++) {
-      const own = f[i];
-      if (!open[i]) { out[i] = own; continue; }
+      const own = f[i], k = key[i];
+      if (!k) { out[i] = own; continue; }
       let s = own * K_SELF;
       const l = x > 0, r = x < W - 1, u = y > 0, d = y < H - 1;
-      s += (l && open[i - 1] ? f[i - 1] : own) * K_SIDE;
-      s += (r && open[i + 1] ? f[i + 1] : own) * K_SIDE;
-      s += (u && open[i - W] ? f[i - W] : own) * K_SIDE;
-      s += (d && open[i + W] ? f[i + W] : own) * K_SIDE;
-      s += (l && u && open[i - W - 1] ? f[i - W - 1] : own) * K_CORNER;
-      s += (r && u && open[i - W + 1] ? f[i - W + 1] : own) * K_CORNER;
-      s += (l && d && open[i + W - 1] ? f[i + W - 1] : own) * K_CORNER;
-      s += (r && d && open[i + W + 1] ? f[i + W + 1] : own) * K_CORNER;
+      s += (l && key[i - 1] === k ? f[i - 1] : own) * K_SIDE;
+      s += (r && key[i + 1] === k ? f[i + 1] : own) * K_SIDE;
+      s += (u && key[i - W] === k ? f[i - W] : own) * K_SIDE;
+      s += (d && key[i + W] === k ? f[i + W] : own) * K_SIDE;
+      s += (l && u && key[i - W - 1] === k ? f[i - W - 1] : own) * K_CORNER;
+      s += (r && u && key[i - W + 1] === k ? f[i - W + 1] : own) * K_CORNER;
+      s += (l && d && key[i + W - 1] === k ? f[i + W - 1] : own) * K_CORNER;
+      s += (r && d && key[i + W + 1] === k ? f[i + W + 1] : own) * K_CORNER;
       out[i] = s;
     }
   }
 }
 
 // `f` at (x, y) in its own grid's units, blended from the four entries
-// around; a closed one counts as `own`.
-function sample(f, open, W, H, x, y, own) {
+// around; one not in region `k` counts as `own`.
+function sample(f, key, W, H, x, y, own, k) {
   if (x < 0) x = 0; else if (x > W - 1) x = W - 1;
   if (y < 0) y = 0; else if (y > H - 1) y = H - 1;
   const x0 = x | 0, y0 = y | 0;
   const x1 = x0 < W - 1 ? x0 + 1 : x0, y1 = y0 < H - 1 ? y0 + 1 : y0;
   const fx = x - x0, fy = y - y0;
   const a = y0 * W + x0, b = y0 * W + x1, c = y1 * W + x0, d = y1 * W + x1;
-  const va = open[a] ? f[a] : own, vb = open[b] ? f[b] : own;
-  const vc = open[c] ? f[c] : own, vd = open[d] ? f[d] : own;
+  const va = key[a] === k ? f[a] : own, vb = key[b] === k ? f[b] : own;
+  const vc = key[c] === k ? f[c] : own, vd = key[d] === k ? f[d] : own;
   return (va * (1 - fx) + vb * fx) * (1 - fy) + (vc * (1 - fx) + vd * fx) * fy;
 }
 
@@ -168,17 +185,34 @@ export class Air {
     this.solid = new Uint8Array(n); // airtight particles counted in each block this frame
     this.scratch = new Float32Array(n);
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
-    this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature already counted in p
+    this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature the pressure has caught up with
     this.heat = false;
     this.voidSides = 0; // which edges are a void (see SPONGE)
+    this.loopX = false; // which pairs of edges are joined (see setLoops)
+    this.loopY = false;
     this.np = new Float32Array(n); // the next pressure and flow, being worked out
     this.nvx = new Float32Array(n);
     this.nvy = new Float32Array(n);
-    this.open = new Uint8Array(n); // which blocks and faces air can be in (see step)
-    this.openX = new Uint8Array(n);
-    this.openY = new Uint8Array(n);
+    // The region of each block (see label), and of each block and face the
+    // air can be in (0 where it can't).
+    this.region = new Int32Array(n);
+    this.regions = OUTSIDE; // how many regions label found
+    this.labelled = false; // labelled since the blocked map last changed hands
+    this.labelledFor = new Uint8Array(n); // the blocked map the regions are for
+    this.labelledOnce = false;
+    this.stack = new Int32Array(n);
+    this.open = new Int32Array(n);
+    this.openX = new Int32Array(n);
+    this.openY = new Int32Array(n);
     this.boil = new Float32Array(n).fill(1); // boiling point factor (see ATM)
     this.melt = new Float32Array(n).fill(1); // melting point factor
+  }
+
+  // Which pairs of edges are joined (world.js, setEdges). See wrapRing.
+  setLoops(x, y) {
+    this.loopX = x;
+    this.loopY = y;
+    this.labelledOnce = false; // the pockets join up differently now
   }
 
   // Index of the air block that contains world cell (x, y).
@@ -219,20 +253,127 @@ export class Air {
     tPressed.fill(AMBIENT);
   }
 
+  // Number the pockets of air: open blocks joined side to side share a
+  // region. The border ring and all joined to it are OUTSIDE (the room);
+  // each pocket shut off from it gets a number of its own. Blocked blocks
+  // are 0. The world calls this once the frame's blocked map is in place;
+  // while the map stays the same, so do the regions.
+  label() {
+    const { W, H, blocked, region, stack, labelledFor } = this;
+    this.labelled = true;
+    const loops = this.loopX || this.loopY;
+    let same = this.labelledOnce;
+    for (let i = 0; same && i < W * H; i++) same = blocked[i] === labelledFor[i];
+    if (same) return;
+    labelledFor.set(blocked);
+    this.labelledOnce = true;
+    region.fill(0);
+    let top = 0;
+    const edge = (i) => {
+      if (!blocked[i] && region[i] === 0 && !(loops && this.loopRing(i))) { region[i] = OUTSIDE; stack[top++] = i; }
+    };
+    for (let x = 0; x < W; x++) { edge(x); edge((H - 1) * W + x); }
+    for (let y = 1; y < H - 1; y++) { edge(y * W); edge(y * W + W - 1); }
+    const { loopX, loopY } = this;
+    let id = OUTSIDE;
+    for (let start = 0; ; ) {
+      while (top > 0) {
+        const i = stack[--top], r = region[i], x = i % W, y = (i / W) | 0;
+        for (let k = 0; k < 4; k++) {
+          let nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0), ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+          // Across a looped join to the inside of the opposite side.
+          if (loopX && nx === 0 && x === 1) nx = W - 2; else if (loopX && nx === W - 1 && x === W - 2) nx = 1;
+          if (loopY && ny === 0 && y === 1) ny = H - 2; else if (loopY && ny === H - 1 && y === H - 2) ny = 1;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = ny * W + nx;
+          if (!blocked[j] && region[j] === 0 && !(loops && this.loopRing(j))) { region[j] = r; stack[top++] = j; }
+        }
+      }
+      while (start < W * H && (blocked[start] || region[start] !== 0 || (loops && this.loopRing(start)))) start++;
+      if (start === W * H) break;
+      region[start] = ++id;
+      stack[top++] = start;
+    }
+    // A looped ring block belongs to the pocket of the block it copies.
+    if (loops) for (let i = 0; i < W * H; i++) if (this.loopRing(i)) region[i] = region[this.mirror(i)];
+    this.regions = id;
+  }
+
+  // Is block i a border-ring block on a looped side?
+  loopRing(i) {
+    const { W, H } = this, x = i % W, y = (i / W) | 0;
+    return ((x === 0 || x === W - 1) && this.loopX) || ((y === 0 || y === H - 1) && this.loopY);
+  }
+
+  // The inside block a looped ring block copies.
+  mirror(i) {
+    const { W, H } = this;
+    let x = i % W, y = (i / W) | 0;
+    if (this.loopX) x = x === 0 ? W - 2 : x === W - 1 ? 1 : x;
+    if (this.loopY) y = y === 0 ? H - 2 : y === H - 1 ? 1 : y;
+    return y * W + x;
+  }
+
+  // On a looped side the border ring is a copy of the inside of the
+  // opposite side, so blurs, gradients and traces carry on across the join.
+  wrapRing() {
+    if (!this.loopX && !this.loopY) return;
+    const { W, H, p, t } = this;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (x !== 0 && y !== 0 && x !== W - 1 && y !== H - 1) continue;
+        const i = y * W + x;
+        if (!this.loopRing(i)) continue;
+        const j = this.mirror(i);
+        const jx = j % W, jy = (j / W) | 0;
+        if (jx === 0 || jy === 0 || jx === W - 1 || jy === H - 1) continue; // a corner on a side that doesn't loop
+        p[i] = p[j];
+        t[i] = t[j];
+      }
+    }
+  }
+
+  // The face between the ring and the first column on one side is the same
+  // face as the one between the last column and the ring on the other: keep
+  // them equal, so what flows out of one side flows into the other.
+  syncSeams() {
+    const { W, H, vx, vy } = this;
+    if (this.loopX) {
+      for (let y = 0; y < H; y++) {
+        const a = y * W, b = y * W + W - 2, v = (vx[a] + vx[b]) * 0.5;
+        vx[a] = v;
+        vx[b] = v;
+      }
+    }
+    if (this.loopY) {
+      for (let x = 0; x < W; x++) {
+        const a = x, b = (H - 2) * W + x, v = (vy[a] + vy[b]) * 0.5;
+        vy[a] = v;
+        vy[b] = v;
+      }
+    }
+  }
+
   // `gravity` (gravity.js) is only read with convection on.
   step(gravity) {
-    const { W, H, p, vx, vy, blocked } = this;
+    if (!this.labelled) this.label();
+    this.labelled = false;
+    const { W, H, p, vx, vy, blocked, region } = this;
+    const loops = this.loopX || this.loopY;
+    if (loops) this.wrapRing();
 
-    // 1. Pressure from divergence of the face velocities.
+    // 1. Pressure from divergence of the face velocities. Only the room
+    // leaks pressure away.
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
         if (blocked[i]) { p[i] = 0; continue; }
         const div = vx[i] - vx[i - 1] + vy[i] - vy[i - W];
-        let v = p[i] * PRESSURE_LOSS - div * PRESSURE_STEP;
+        let v = (region[i] === OUTSIDE ? p[i] * PRESSURE_LOSS : p[i]) - div * PRESSURE_STEP;
         if (v > MAX_PRESSURE) v = MAX_PRESSURE; else if (v < -MAX_PRESSURE) v = -MAX_PRESSURE;
         p[i] = v;
       }
     }
+    if (loops) this.wrapRing();
 
     // 2. Velocity from the pressure gradient across each face.
     for (let y = 0; y < H; y++) {
@@ -248,7 +389,17 @@ export class Air {
       }
     }
 
+    // With convection on, the map's edge drags on the air going through it,
+    // so warm air rising off something hot turns along the top instead of
+    // pouring out of it, and comes back down.
+    if (this.heat) {
+      if (!this.loopX) for (let y = 0; y < H; y++) { vx[y * W] *= EDGE_DRAG; vx[y * W + W - 2] *= EDGE_DRAG; }
+      if (!this.loopY) for (let x = 0; x < W; x++) { vy[x] *= EDGE_DRAG; vy[(H - 2) * W + x] *= EDGE_DRAG; }
+    }
+    if (loops) this.syncSeams();
+
     this.thicken();
+    if (loops) { this.syncSeams(); this.wrapRing(); }
     if (this.heat) this.stepHeat(gravity.gx, gravity.gy);
     if (this.voidSides !== 0) this.sponge();
 
@@ -257,16 +408,18 @@ export class Air {
   // 3. Viscosity: blur the pressure and the flow (see KERNEL). 4. The flow
   // carries itself along: each face takes ADVECT of the flow traced back
   // from it. The border ring keeps no pressure; blocked blocks and the faces
-  // beside them hold no air and no flow, and count as their neighbour's own
-  // value in a blur.
+  // beside them hold no air and no flow, and they and anything in another
+  // pocket count as the block's own value in a blur or a trace.
   thicken() {
-    const { W, H, p, vx, vy, blocked, np, nvx, nvy, open, openX, openY } = this;
+    const { W, H, p, vx, vy, blocked, region, np, nvx, nvy, open, openX, openY } = this;
     for (let y = 0; y < H; y++) {
       for (let x = 0, i = y * W; x < W; x++, i++) {
-        const inside = x > 0 && y > 0 && x < W - 1 && y < H - 1;
-        open[i] = inside && !blocked[i] ? 1 : 0;
-        openX[i] = x < W - 1 && !blocked[i] && !blocked[i + 1] ? 1 : 0;
-        openY[i] = y < H - 1 && !blocked[i] && !blocked[i + W] ? 1 : 0;
+        // The border ring holds no air, unless its side loops (wrapRing).
+        const ring = x === 0 || y === 0 || x === W - 1 || y === H - 1;
+        const open1 = !ring || ((this.loopX || (x > 0 && x < W - 1)) && (this.loopY || (y > 0 && y < H - 1)));
+        open[i] = open1 && !blocked[i] ? region[i] : 0;
+        openX[i] = x < W - 1 && !blocked[i] && !blocked[i + 1] ? region[i] : 0;
+        openY[i] = y < H - 1 && !blocked[i] && !blocked[i + W] ? region[i] : 0;
       }
     }
     blur(p, open, np, W, H);
@@ -279,13 +432,13 @@ export class Air {
           // The flow at this face, and where it came from.
           const u = vx[i];
           const v = (vy[i] + vy[i + 1] + (y > 0 ? vy[i - W] + vy[i - W + 1] : 0)) * 0.25;
-          const s = sample(vx, openX, W, H, x - clampBack(u), y - clampBack(v), u);
+          const s = sample(vx, openX, W, H, x - clampBack(u), y - clampBack(v), u, openX[i]);
           nvx[i] = nvx[i] * (1 - ADVECT) + s * ADVECT;
         }
         if (openY[i]) {
           const v = vy[i];
           const u = (vx[i] + vx[i + W] + (x > 0 ? vx[i - 1] + vx[i + W - 1] : 0)) * 0.25;
-          const s = sample(vy, openY, W, H, x - clampBack(u), y - clampBack(v), v);
+          const s = sample(vy, openY, W, H, x - clampBack(u), y - clampBack(v), v, openY[i]);
           nvy[i] = nvy[i] * (1 - ADVECT) + s * ADVECT;
         }
       }
@@ -296,11 +449,12 @@ export class Air {
 
   // Damp the air near void edges (see SPONGE): pressure and flow fade out,
   // and warm or cold air settles to room temperature, the nearer the edge
-  // the faster.
+  // the faster. A sealed pocket is left alone.
   sponge() {
-    const { W, H, p, vx, vy, t, voidSides: v } = this;
+    const { W, H, p, vx, vy, t, region, voidSides: v } = this;
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
+        if (region[i] !== OUTSIDE) continue;
         let d = SPONGE;
         if ((v & SIDE_LEFT) !== 0 && x - 1 < d) d = x - 1;
         if ((v & SIDE_RIGHT) !== 0 && W - 2 - x < d) d = W - 2 - x;
@@ -357,71 +511,40 @@ export class Air {
     if (melt[b] > melt[i]) melt[i] = melt[b];
   }
 
-  // The average temperature of the open air within MEAN_RADIUS blocks of
-  // each block (a box blur done with running sums, sealed blocks left out).
-  localMean() {
-    const { W, H, t, blocked } = this;
-    const n = W * H;
-    if (!this.mean) {
-      this.mean = new Float32Array(n);
-      this.rowSum = new Float32Array(n);
-      this.rowCount = new Float32Array(n);
-    }
-    const { mean, rowSum, rowCount } = this;
-    const R = MEAN_RADIUS;
-    for (let y = 0; y < H; y++) {
-      const o = y * W;
-      let s = 0, c = 0;
-      for (let x = 0; x < Math.min(R, W); x++) if (!blocked[o + x]) { s += t[o + x]; c++; }
-      for (let x = 0; x < W; x++) {
-        const add = x + R, drop = x - R - 1;
-        if (add < W && !blocked[o + add]) { s += t[o + add]; c++; }
-        if (drop >= 0 && !blocked[o + drop]) { s -= t[o + drop]; c--; }
-        rowSum[o + x] = s;
-        rowCount[o + x] = c;
-      }
-    }
-    for (let x = 0; x < W; x++) {
-      let s = 0, c = 0;
-      for (let y = 0; y < Math.min(R, H); y++) { s += rowSum[y * W + x]; c += rowCount[y * W + x]; }
-      for (let y = 0; y < H; y++) {
-        const add = y + R, drop = y - R - 1;
-        if (add < H) { s += rowSum[add * W + x]; c += rowCount[add * W + x]; }
-        if (drop >= 0) { s -= rowSum[drop * W + x]; c -= rowCount[drop * W + x]; }
-        mean[y * W + x] = c > 0 ? s / c : AMBIENT;
-      }
-    }
-    return mean;
-  }
-
   // Convection: buoyancy, then the flow carrying the heat, then blurring and
   // cooling. (gx, gy) is the pull of gravity per block, in g.
   stepHeat(gx, gy) {
-    const { W, H, t, vx, vy, p, blocked, scratch } = this;
+    const { W, H, t, vx, vy, p, blocked, region, scratch, tPressed } = this;
 
-    // 1. Air warmer than the air around it on average is pushed against
-    // gravity, and cooler air sinks: so air that has risen off something hot
-    // and cooled comes back down, and the loop closes.
-    const mean = this.localMean();
+    // 0. Air that took in or gave up heat since last frame (from particles,
+    // the tools) swells or shrinks.
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] !== tPressed[i] && !blocked[i]) p[i] += thermal(t[i]) - thermal(tPressed[i]);
+    }
+
+    // 1. Air warmer than the room is pushed against gravity, gently, and
+    // colder air sinks. Where air rises, air flows in below to take its
+    // place and the air above is pushed aside, so the loop closes.
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
         if (blocked[i]) continue;
         if (!blocked[i + 1]) {
-          let e = (t[i] + t[i + 1] - mean[i] - mean[i + 1]) * 0.5;
-          if (e > BUOYANT_MAX) e = BUOYANT_MAX; else if (e < -BUOYANT_MAX) e = -BUOYANT_MAX;
-          vx[i] -= BUOYANCY * e * (gx[i] + gx[i + 1]) * 0.5;
+          let e = ((t[i] + t[i + 1]) * 0.5 - AMBIENT) * BUOYANCY;
+          if (e > BUOYANT_MAX) e = BUOYANT_MAX;
+          vx[i] -= e * (gx[i] + gx[i + 1]) * 0.5;
         }
         if (!blocked[i + W]) {
-          let e = (t[i] + t[i + W] - mean[i] - mean[i + W]) * 0.5;
-          if (e > BUOYANT_MAX) e = BUOYANT_MAX; else if (e < -BUOYANT_MAX) e = -BUOYANT_MAX;
-          vy[i] -= BUOYANCY * e * (gy[i] + gy[i + W]) * 0.5;
+          let e = ((t[i] + t[i + W]) * 0.5 - AMBIENT) * BUOYANCY;
+          if (e > BUOYANT_MAX) e = BUOYANT_MAX;
+          vy[i] -= e * (gy[i] + gy[i + W]) * 0.5;
         }
       }
     }
 
     // 2. The flow carries the heat: each block takes the temperature of the
     // air that arrives in it, traced back along the flow. Sealed blocks
-    // neither give nor take any.
+    // neither give nor take any, and the trace doesn't reach into another
+    // pocket.
     scratch.set(t);
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
@@ -435,15 +558,16 @@ export class Air {
         const x0 = sx | 0, y0 = sy | 0;
         const x1 = x0 < W - 1 ? x0 + 1 : x0, y1 = y0 < H - 1 ? y0 + 1 : y0;
         const fx = sx - x0, fy = sy - y0;
-        const own = scratch[i];
+        const own = scratch[i], r = region[i];
         const a = y0 * W + x0, b = y0 * W + x1, c = y1 * W + x0, d = y1 * W + x1;
-        const ta = blocked[a] ? own : scratch[a], tb = blocked[b] ? own : scratch[b];
-        const tc = blocked[c] ? own : scratch[c], td = blocked[d] ? own : scratch[d];
+        const ta = region[a] === r ? scratch[a] : own, tb = region[b] === r ? scratch[b] : own;
+        const tc = region[c] === r ? scratch[c] : own, td = region[d] === r ? scratch[d] : own;
         t[i] = (ta * (1 - fx) + tb * fx) * (1 - fy) + (tc * (1 - fx) + td * fx) * fy;
       }
     }
 
-    // 3. A little blurring, and 4. the room soaks up the heat.
+    // 3. A little blurring, and 4. the world beyond soaks up the room's
+    // heat (and the air shrinks as it goes). A sealed pocket keeps its own.
     scratch.set(t);
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
@@ -455,17 +579,16 @@ export class Air {
         if (!blocked[i + W]) { sum += scratch[i + W]; n++; }
         let v = scratch[i];
         if (n) v += (sum / n - v) * HEAT_SMOOTH;
-        t[i] = v + (AMBIENT - v) * airLoss(v);
+        if (region[i] === OUTSIDE) {
+          const c = v + (AMBIENT - v) * airLoss(v);
+          p[i] += thermal(c) - thermal(v);
+          v = c;
+        }
+        t[i] = v;
       }
     }
 
-    // 5. The pressure follows the temperature, however it changed this
-    // frame (particles, tools, the flow, cooling).
-    const { tPressed } = this;
-    for (let i = 0; i < t.length; i++) {
-      if (t[i] === tPressed[i]) continue;
-      if (!blocked[i]) p[i] += thermal(t[i]) - thermal(tPressed[i]);
-      tPressed[i] = t[i];
-    }
+    tPressed.set(t); // the temperature the pressure has caught up with
+    this.wrapRing();
   }
 }

@@ -12,6 +12,7 @@ import { loadDemoScene } from './game/scene.js';
 import { UI, toolColor } from './game/ui.js';
 import { buildTree, focusTree } from './game/tree.js';
 import { PhysicsPanel } from './game/physics-panel.js';
+import { loadToolOptions, saveToolOptions } from './game/tool-options.js';
 
 const WIDTH = 400;
 const HEIGHT = 240;
@@ -29,11 +30,18 @@ const game = {
   brushShape: 'circle',
   paused: false,
   replace: false, // painting overwrites what's in the way
+  toolOptions: loadToolOptions(), // the Wall checklist and the Time speed
+  setToolOptions(change) {
+    Object.assign(this.toolOptions, change);
+    saveToolOptions(this.toolOptions);
+    ui.renderToolOptions();
+  },
   get hard() { return progress.hard; },
   select(sel) {
     this.selection = sel;
     ui.renderPalette();
     ui.renderInspect();
+    ui.renderToolOptions();
     followSelection(sel);
   },
   setBrush(r) {
@@ -49,6 +57,7 @@ const renderer = new Renderer(canvas, world, camera);
 const input = new Input(canvas, () => world, game, camera);
 let hover = null;
 input.onHover = (pos) => { hover = pos; };
+input.onPortal = (r) => { if (r === 'full') ui.flash('32 portal pairs is the most: remove one first'); };
 
 loadDemoScene(world);
 ui.setBrush(game.brush);
@@ -362,8 +371,9 @@ function brushOutline() {
   if (input.erasing || shape?.erase) color = toolColor('erase');
   else if (sel.kind === 'tool') color = toolColor(sel.id);
   else color = DEFS[sel.id].colors[0];
-  const outline = { x: hover.x, y: hover.y, r: game.brush, square: game.brushShape === 'square', color };
-  if (shape) outline.from = { kind: shape.kind, x: shape.x0, y: shape.y0 };
+  const portal = sel.kind === 'tool' && sel.id === 'portal'; // drawn as a one-cell line
+  const outline = { x: hover.x, y: hover.y, r: portal ? 0 : game.brush, square: game.brushShape === 'square', color };
+  if (shape) outline.from = { kind: shape.kind === 'portal' ? 'line' : shape.kind, x: shape.x0, y: shape.y0 };
   return outline;
 }
 

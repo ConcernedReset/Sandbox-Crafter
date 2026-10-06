@@ -179,3 +179,82 @@ test('a thin film of water settles instead of skittering back and forth', () => 
   // Each moving particle changes two cells, so this is under ~5 particles a frame.
   assert.ok(moved / 120 < 10, `${(moved / 120).toFixed(1)} cells changed per frame`);
 });
+
+test('a denser liquid poured into water spreads out flat along the bottom', () => {
+  const W = 100, H = 60;
+  const w = makeWorld(W, H, 7);
+  fillRect(w, 0, H - 1, W - 1, H - 1, ID.WALL);
+  fillRect(w, 0, 0, 0, H - 2, ID.WALL);
+  fillRect(w, W - 1, 0, W - 1, H - 2, ID.WALL);
+  fillRect(w, 1, 30, W - 2, H - 2, ID.WATER);
+  run(w, 100);
+  fillRect(w, 45, 5, 54, 14, ID.SALT_WATER); // 100 cells poured in the middle
+  run(w, 400);
+  assert.equal(countOf(w, ID.SALT_WATER), 100);
+  let tallest = 0, wide = 0;
+  for (let x = 1; x < W - 1; x++) {
+    let n = 0;
+    for (let y = 0; y < H; y++) if (w.type[y * W + x] === ID.SALT_WATER) n++;
+    tallest = Math.max(tallest, n);
+    if (n > 0) wide++;
+  }
+  assert.ok(tallest <= 3, `a mound ${tallest} cells tall`);
+  assert.ok(wide >= 40, `spread over ${wide} columns`);
+  // And it's at the bottom, under the water.
+  for (let x = 1; x < W - 1; x++) {
+    const i = (H - 2) * W + x;
+    assert.ok(w.type[i] === ID.SALT_WATER || w.type[i - W] !== ID.SALT_WATER, 'no water under the salt water');
+  }
+});
+
+test("a stream poured into a pool doesn't carry the pool up with it", () => {
+  // Water thrown up: water more than 15 rows above the pool's surface, read
+  // far from the pour. (Close to it the pool rises in a mound for a while.)
+  const W = 160, H = 100;
+  const thrown = (w) => {
+    const top = (x) => { for (let y = 1; y < H; y++) if (w.type[y * W + x] !== 0) return y; return H; };
+    const surface = Math.min(top(10), top(150));
+    let n = 0;
+    for (let y = 1; y < surface - 15; y++) for (let x = 1; x < W - 1; x++) if (w.type[y * W + x] === ID.WATER) n++;
+    return n;
+  };
+  for (const pour of [ID.SALT_WATER, ID.SAND]) {
+    const w = makeWorld(W, H, 7);
+    fillRect(w, 0, H - 1, W - 1, H - 1, ID.WALL);
+    fillRect(w, 0, 0, 0, H - 2, ID.WALL);
+    fillRect(w, W - 1, 0, W - 1, H - 2, ID.WALL);
+    fillRect(w, 1, 60, W - 2, H - 2, ID.WATER);
+    run(w, 50);
+    let worst = 0;
+    run(w, 200, (f) => {
+      if (f < 120) w.paint(80, 10, 3, pour);
+      worst = Math.max(worst, thrown(w));
+    });
+    assert.ok(worst < 10, `${worst} water cells thrown up the stream at once`);
+  }
+});
+
+test('a heap of liquid levels out quickly', () => {
+  const W = 160, H = 100;
+  for (const liquid of [ID.WATER, ID.SALT_WATER]) {
+    const w = makeWorld(W, H, 7);
+    fillRect(w, 0, H - 1, W - 1, H - 1, ID.WALL);
+    fillRect(w, 0, 0, 0, H - 2, ID.WALL);
+    fillRect(w, W - 1, 0, W - 1, H - 2, ID.WALL);
+    fillRect(w, 70, 40, 89, 59, liquid); // 400 cells dropped in the middle
+    let flat = -1;
+    for (let f = 1; f <= 600 && flat < 0; f++) {
+      w.step();
+      if (f % 10) continue;
+      let lo = H, hi = 0;
+      for (let x = 1; x < W - 1; x++) {
+        let n = 0;
+        for (let y = 0; y < H; y++) if (w.type[y * W + x] === liquid) n++;
+        lo = Math.min(lo, n);
+        hi = Math.max(hi, n);
+      }
+      if (hi - lo <= 1) flat = f;
+    }
+    assert.ok(flat > 0, 'every column within a cell of the others inside 600 frames');
+  }
+});

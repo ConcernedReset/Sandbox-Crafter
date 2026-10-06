@@ -18,7 +18,7 @@ const WIND_STRENGTH = 0.6;
 // neutrons...) are sprayed instead, this densely (see World.paintArea).
 const PARTICLE_DENSITY = 0.6;
 
-export const TOOLS = ['erase', 'wall', 'spark', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum'];
+export const TOOLS = ['erase', 'wall', 'spark', 'heat', 'cool', 'wind', 'mix', 'pressure', 'vacuum', 'portal', 'time'];
 // The tools hard mode takes away: heat, cold and pressure have to come from
 // the elements themselves.
 export const HARD_BLOCKED = new Set(['heat', 'cool', 'wind', 'pressure', 'vacuum']);
@@ -39,6 +39,7 @@ export class Input {
     this.lastY = 0;
     this.shape = null; // { kind: 'line' | 'box', x0, y0, erase } while Shift/Ctrl-dragging
     this.onHover = null;
+    this.onPortal = null; // told what drawing a portal end did (World.addPortal's result)
     this.clientX = 0; // where the pointer last was, in page pixels
     this.clientY = 0;
     this.touches = new Map(); // fingers on the screen, for pinching
@@ -106,6 +107,18 @@ export class Input {
     }
     this.toCell(e);
     this.over = true;
+    const sel = this.state.selection;
+    if (sel.kind === 'tool' && sel.id === 'portal') {
+      // Drag a line for a portal end; right-click removes a pair.
+      if (e.button === 2) {
+        const world = this.getWorld();
+        world.removePortalAt(this.y * world.w + this.x);
+      } else {
+        this.shape = { kind: 'portal', x0: this.x, y0: this.y, erase: false };
+      }
+      this.hover();
+      return;
+    }
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
       this.shape = { kind: e.shiftKey ? 'line' : 'box', x0: this.x, y0: this.y, erase: e.button === 2 };
       this.hover();
@@ -222,6 +235,11 @@ export class Input {
   // Draw the finished line (with the brush) or fill the finished box.
   commitShape(shape) {
     const world = this.getWorld();
+    if (shape.kind === 'portal') {
+      const r = world.addPortal(shape.x0, shape.y0, this.x, this.y);
+      if (this.onPortal) this.onPortal(r);
+      return;
+    }
     world.brushShape = this.state.brushShape;
     world.replace = this.state.replace;
     const { x0, y0 } = shape, x1 = this.x, y1 = this.y;
@@ -235,8 +253,13 @@ export class Input {
   }
 
   act(world, area, dx, dy, erasing) {
-    if (erasing) { world.eraseArea(area); return; }
     const sel = this.state.selection;
+    if (erasing) {
+      // Right-dragging with the Time brush sets the area back to normal speed.
+      if (sel.kind === 'tool' && sel.id === 'time') world.paintSpeed(area, 0);
+      else world.eraseArea(area);
+      return;
+    }
     if (sel.kind === 'element') {
       world.paintArea(area, sel.id, DEFS[sel.id].projectile ? PARTICLE_DENSITY : 1);
       return;
@@ -244,7 +267,13 @@ export class Input {
     if (this.state.hard && HARD_BLOCKED.has(sel.id)) return;
     switch (sel.id) {
       case 'erase': world.eraseArea(area); break;
-      case 'wall': world.paintArea(area, ID.WALL, 1); break;
+      case 'wall':
+        world.wallMask = this.state.toolOptions.wallMask;
+        world.paintArea(area, ID.WALL, 1);
+        world.wallMask = 0;
+        break;
+      case 'time': world.paintSpeed(area, this.state.toolOptions.timeSpeed); break;
+      case 'portal': break; // drawn as a line when the drag ends (commitShape)
       case 'spark': world.sparkArea(area); break;
       case 'heat': world.heatArea(area, HEAT_RATE); break;
       case 'cool': world.heatArea(area, -HEAT_RATE); break;

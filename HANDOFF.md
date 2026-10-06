@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,420 tests, all passing, in a few seconds
+npm test    # node --test: about 1,475 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -90,6 +90,55 @@ else; `test/build.test.js` checks the bundle runs.
   every 10 frames or when the count changes. A pipe opens only at its ends
   (cells with one network neighbour); an opening is two blocks (beside it,
   and the next one out), because a pipe can seal its own block.
+- **Wall is a perfect container** (`test/walls.test.js`). `conductHeat`
+  pins it at room temperature. `Air.label` splits the open air blocks into
+  regions (relabelled only when the blocked map changes): `OUTSIDE` is
+  everything joined to the border ring, and each sealed pocket gets its own
+  number. Blurs, the flow's self-advection and the heat's advection never
+  read across regions, and only `OUTSIDE`
+  loses pressure (`PRESSURE_LOSS`), heat (`airLoss`), is sponged at void
+  edges, or (convection off) cools the particles beside it. A cell in a
+  block a wall runs through has no air of its own: `World.airOf` finds the
+  nearest open block in a straight line that doesn't cross a wall or strong
+  solid, so the cells just inside a one-cell wall use the box's air and the
+  ones just outside the room's. Pressure added in such a block is still lost
+  (blast balance depends on it). Every projectile bounces off Wall
+  (`hitCell`, plus a check for slipping between diagonal wall cells),
+  `blast` skips anything behind a wall (`wallBetween`), and the Glow
+  halo's blur stops at blocks with wall in them (`glowBlur`).
+- **The wall layer** (`walls.js`): `World.wall` is 0 or `WALL_HERE` plus a
+  `PASS` bit per checklist box; `setWall` keeps `meshCount` (for the
+  renderer). Something passing through a wall sits in the cell with the
+  layer underneath: `canEnter` lets in elements whose `PASS_BIT` the wall
+  has, `swap` calls `keepWall` so a wall left empty is WALL again and a
+  WALL moved out of place vanishes, and `clearCell` on a passer restores
+  the wall (on the WALL itself it removes it, so tests can still open a box
+  with `clearCell`). `spawn(i, WALL)` uses `world.wallMask` (the Wall tool
+  sets it while painting). The air, heat, particle and blast code check the
+  layer, not the type.
+- **Time zones** (`time.js`): `World.speed` per cell. `clock` stamps the
+  update *pass* (`World.pass`, one higher per pass), not the frame, so the
+  extra passes for fast cells (`fastPasses`, over `zoneBox` only) can
+  update a particle again; everything timed by frames still uses `tick`.
+  Slow cells skip frames (`SLOW_EVERY`); heat between cells uses
+  `zoneRate` (as many steps as the slower speed); flying particles move and
+  age at their cell's speed.
+- **Portals** (`portals.js`): `portalAt` packs (slot + 1) << 17 | end << 16
+  | position. Moves stop on a portal cell (`travel`, liquid spreading); the
+  particle goes through on its next update (`crossPortal`, at the top of
+  `update`), to the matching cell of the other end and one cell out on the
+  side it's heading (its velocity across the end, or its fall). Ends are
+  read so the turn between them is at most 90°. Flying particles go through
+  as they enter (`portalProjectile`); `stepPortalAir` links the air on
+  each side of one end to the matching side of the other.
+- **Looping edges**: `World.setEdges` ('solid' | 'void' | 'loop'; loops pair
+  up). Every step to a neighbouring cell that checks the map's edge goes
+  through `World.cellAt`, which wraps across a loop; the straight-down fast
+  paths are skipped while anything loops. The air keeps a copy of the
+  opposite side in the border ring on looped sides (`Air.wrapRing`), keeps
+  the two copies of each seam face equal (`syncSeams`), and `label` joins
+  pockets across the seam (`loopRing`, `mirror`), so a world looped all
+  round has no outside and leaks nothing.
 - **Doors and valves** share the door code; `doorKind` says what an open
   doorway turns back into. An open valve vents itself (`ventValve`), since
   air can't pass a block with any Wall in it.
@@ -162,13 +211,19 @@ else; `test/build.test.js` checks the bundle runs.
   panel turns it on at start (`DEFAULTS` in physics-panel.js). Off, it touches nothing: `conductHeat`
   keeps the old leak to room temperature. On, `warmAir` trades heat with the
   air of each empty neighbour, and `Air.stepHeat` does buoyancy, carrying,
-  blurring and cooling. Buoyancy compares each block with the average of the
-  air around it (`localMean`, a box blur), not with room temperature: that is
-  what makes cooled air sink and the loop close. The heat's share of the
-  pressure is `thermal(t)` (`EXPAND` a degree near room temperature,
-  levelling off at `THERMAL_MAX`), applied as the change since last frame
-  (`tPressed`), so it can't drift: never add to `p` directly when the
-  air's temperature changes. `heatArea` (the Heat and Cool tools) also
+  blurring and cooling. Buoyancy is The Powder Toy's Boussinesq mode:
+  `BUOYANCY` (1/10000) per degree above room temperature, at most
+  `BUOYANT_MAX` (0.01) a frame, colder air sinking. With convection on,
+  `Air.step` also drags the flow through the map's edge (`EDGE_DRAG`), or
+  a plume pours off the top and the whole world becomes a chimney. Stronger
+  buoyancy, or buoyancy against a local average, made the flow chaotic (see
+  the rolls test in convection.test.js). The heat's share of the pressure
+  is `thermal(t)` (`EXPAND` a degree near room temperature, levelling off
+  at `THERMAL_MAX`). Only heat gained or lost moves it: changes since last
+  frame from particles and tools (`tPressed`, step 0) and the room's
+  cooling (step 4). Heat carried or blurred from block to block moves no
+  pressure; counting that set off pressure waves all along a plume. Never
+  add to `p` directly when the air's temperature changes. `heatArea` (the Heat and Cool tools) also
   changes the air. Particles trade heat with the air at `TOUCH` (world.js:
   conductivity × `AIR_TOUCH`), at most `AIR_FLUX` a frame; hot air
   radiates (`airLoss`, growing with the cube of absolute temperature), and

@@ -421,8 +421,7 @@ export const ELEMENT_LIST = [
   {
     key: 'WALL', name: 'Wall', sym: 'Wl', cat: null, state: SOLID, always: true,
     colors: ['#565d6b', '#4f5664', '#5d6472'], conduct: 0, acidProof: true, indestructible: true,
-    nAbsorb: 1,
-    desc: 'Indestructible and airtight. Use it to build containers.',
+    desc: 'Indestructible, airtight and a perfect insulator: it stays at room temperature, and bounces back anything that flies into it. Use it to build containers.',
   },
 ];
 

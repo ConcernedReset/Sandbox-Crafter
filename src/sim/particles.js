@@ -18,8 +18,10 @@ import { DEFS, ID, NUM, HIT, PAIR, PMODE, SPECIAL, State } from './elements.js';
 import { MIN_TEMP, FISSION_HOT, AMBIENT, KICK_CHANCE, KICK_EMIT, KICK_DECAY } from './constants.js';
 import { CONDUCTOR, GASLIKE, LIGHT_SENSOR, MIRROR_BACKING, LIGHT_SPEED } from './lookups.js';
 import { LENS } from './gravity.js';
+import { PASS, stops } from './walls.js';
+import { SPEEDS, SLOW_EVERY } from './time.js';
 
-const PASS = 0, DEAD = 1, BOUNCE = 2;
+const THROUGH = 0, DEAD = 1, BOUNCE = 2;
 const LUMP = 13; // of the 24 cells around a split (see inLump)
 const { SOLID } = State;
 const CAPACITY = 12000;
@@ -28,6 +30,9 @@ const { NEUTRON, PHOTON, ELECTRON, PROTON, NEUTRINO } = ID;
 // A proton hotter than this sets fuel and explosives alight as it passes.
 const PROTON_IGNITES = 500;
 const REFLECTS = Uint8Array.from(DEFS, (d) => (d.reflect > 0 ? 1 : 0));
+// Wall bounces back every particle, whatever it is, and takes no harm.
+const WALLS = Uint8Array.from(DEFS, (d) => (d.id === ID.WALL ? 1 : 0));
+const WALL_ID = ID.WALL;
 // What neutrons bounce off: anything solid, powdery or liquid, except
 // radioactive elements and moderators (graphite, heavy water), which they
 // pass through as they always did, so a reactor pile still needs its
@@ -150,8 +155,13 @@ export const Particles = {
   moveProjectile(k) {
     const t = this.ptype[k];
     const d = DEFS[t];
-    if (--this.plife[k] <= 0) { this.expireProjectile(k, t); return; }
     const { w, h, type } = this;
+    // In a time zone a particle moves (and ages) at that area's speed.
+    let zone = 0;
+    if (this.zoneCount !== 0) zone = this.speed[(this.py[k] | 0) * w + (this.px[k] | 0)];
+    const age = zone === 0 ? 1 : SPEEDS[zone] >= 1 ? SPEEDS[zone] : (this.tick % SLOW_EVERY[zone] === 0 ? 1 : 0);
+    this.plife[k] -= age;
+    if (this.plife[k] <= 0) { this.expireProjectile(k, t); return; }
 
     if (d.charge !== 0 && this.fieldActive) {
       const f = this.field[this.air.at(this.px[k] | 0, this.py[k] | 0)];
@@ -187,15 +197,32 @@ export const Particles = {
       vx *= f;
       vy *= f;
     }
+    if (zone !== 0) { vx *= SPEEDS[zone]; vy *= SPEEDS[zone]; }
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(vx), Math.abs(vy))));
     const sx = vx / steps, sy = vy / steps;
     let cx = x | 0, cy = y | 0;
     for (let s = 0; s < steps; s++) {
-      const nx = x + sx, ny = y + sy;
+      let nx = x + sx, ny = y + sy;
+      // Across a looped edge, on round to the other side.
+      if (nx < 0 || nx >= w) { if (!this.loopX) { this.killProjectile(k); return; } nx += nx < 0 ? w : -w; }
+      if (ny < 0 || ny >= h) { if (!this.loopY) { this.killProjectile(k); return; } ny += ny < 0 ? h : -h; }
       const ix = Math.floor(nx), iy = Math.floor(ny);
-      if (ix < 0 || iy < 0 || ix >= w || iy >= h) { this.killProjectile(k); return; }
       if (ix !== cx || iy !== cy) {
+        // No slipping between two wall cells that only touch at a corner.
+        if (ix !== cx && iy !== cy && stops(this.wall[cy * w + ix], PASS.particles) && stops(this.wall[iy * w + cx], PASS.particles)) {
+          this.bounce(k, ix, iy, cx, cy, WALLS);
+          break;
+        }
         const j = iy * w + ix;
+        // Into a portal: out of the other end, turned. The rest of this
+        // frame's travel is dropped (at most one frame's step).
+        if (this.portalCells !== 0 && this.portalAt[j] !== 0 && this.portalProjectile(k, j)) {
+          x = this.px[k];
+          y = this.py[k];
+          cx = x | 0;
+          cy = y | 0;
+          break;
+        }
         const u = type[j];
         if (u !== 0) {
           const res = this.hitCell(k, t, d, j, u, ix, iy, cx, cy);
@@ -220,6 +247,11 @@ export const Particles = {
   },
 
   hitCell(k, t, d, j, u, ix, iy, lx, ly) {
+    const wl = this.wall[j];
+    if (wl !== 0) {
+      if ((wl & PASS.particles) === 0) { this.bounce(k, ix, iy, lx, ly, WALLS); return BOUNCE; }
+      if (u === WALL_ID) return THROUGH; // through the wall, as through empty space
+    }
     const e = DEFS[u];
     const r = HIT[t * NUM + u];
     if (r !== null && (r.recover === 0 || this.life[j] === 0)) {
@@ -243,13 +275,13 @@ export const Particles = {
       this.kick(j, ix, iy, e);
       return DEAD;
     }
-    if (e.detector) { this.detect(j, ix, iy); return PASS; }
+    if (e.detector) { this.detect(j, ix, iy); return THROUGH; }
     // A photocell turns light into current instead of heat.
     if (LIGHT_SENSOR[u] && (d.pmode === PMODE.photon || d.pmode === PMODE.uv)) { this.lightUp(j); return DEAD; }
 
     switch (d.pmode) {
       case PMODE.photon:
-        if (GASLIKE[u] && !e.opaque) return PASS;
+        if (GASLIKE[u] && !e.opaque) return THROUGH;
         // Light bouncing off something takes on its colour; a true mirror
         // (and a half-silvered one) reflects it unchanged.
         if (e.reflect > 0 && (this.rand() < e.reflect || this.backed(lx, ly))) {
@@ -261,7 +293,7 @@ export const Particles = {
         // unless a mirror, a laser or a ruby coloured it: those colours win.
         if (e.transparent) {
           if (!e.colorless && FILTERED[this.ptint[k]]) this.ptint[k] = u;
-          return PASS;
+          return THROUGH;
         }
         return this.impact(j, lx, ly, d);
       case PMODE.electron:
@@ -269,7 +301,7 @@ export const Particles = {
           if (this.life[j] === 0) this.sparkAt(j);
           return this.impact(j, lx, ly, d);
         }
-        if (e.transparent || GASLIKE[u]) return PASS;
+        if (e.transparent || GASLIKE[u]) return THROUGH;
         return this.impact(j, lx, ly, d);
       case PMODE.proton: {
         // As in The Powder Toy, a proton flies straight through matter (Wall
@@ -282,14 +314,14 @@ export const Particles = {
         if (T > PROTON_IGNITES && (e.flammable > 0 || e.explode > 0) && this.ignite(j, ix, iy)) {
           this.air.addPressure(this.air.at(ix, iy), 1);
         }
-        return PASS;
+        return THROUGH;
       }
       case PMODE.neutron: {
         // Neutrons go through gases, radioactive elements and moderators
         // (graphite and heavy water slow them), but bounce off anything else
         // solid, powdery or liquid, battering it (see batter). Lead and boron
         // soak them up.
-        if (GASLIKE[u]) return PASS;
+        if (GASLIKE[u]) return THROUGH;
         if (e.moderator) {
           const v2 = this.pvx[k] * this.pvx[k] + this.pvy[k] * this.pvy[k];
           if (v2 > 1.05) {
@@ -299,13 +331,13 @@ export const Particles = {
           }
         }
         if (e.nAbsorb > 0 && this.rand() < e.nAbsorb) return this.impact(j, lx, ly, d);
-        if (!NEUTRON_STOPS[u]) return PASS; // radioactive elements and moderators
+        if (!NEUTRON_STOPS[u]) return THROUGH; // radioactive elements and moderators
         this.batter(k, j, e, lx, ly, d);
         this.bounce(k, ix, iy, lx, ly, NEUTRON_STOPS);
         return BOUNCE;
       }
       case PMODE.positron:
-        if (GASLIKE[u]) return PASS;
+        if (GASLIKE[u]) return THROUGH;
         // Annihilation: two photons fly off in opposite directions.
         this.annihilate(k, ix, iy);
         return this.impact(j, lx, ly, d);
@@ -313,7 +345,7 @@ export const Particles = {
       case PMODE.ion: {
         // Heavy and slow: stopped by the first thing that isn't a gas (even
         // paper), where it picks up electrons and settles as an atom.
-        if (GASLIKE[u]) return PASS;
+        if (GASLIKE[u]) return THROUGH;
         const li = ly * this.w + lx;
         const ex = d.expire;
         if (ex && this.type[li] === 0 && this.rand() < 0.5) {
@@ -325,23 +357,23 @@ export const Particles = {
       case PMODE.gamma: {
         // Dense matter soaks up gamma rays; light matter barely slows them. A
         // cell of lead stops about half, as a centimetre of real lead does.
-        if (GASLIKE[u]) return PASS;
+        if (GASLIKE[u]) return THROUGH;
         const stop = e.indestructible ? 1 : Math.min(0.9, e.density * 0.05);
-        if (this.rand() >= stop) return PASS;
+        if (this.rand() >= stop) return THROUGH;
         return this.impact(j, lx, ly, d);
       }
       case PMODE.xray:
         // Straight through flesh, wood and water; stopped by bone and metal.
-        if (GASLIKE[u] || (!e.xrayOpaque && !e.indestructible && e.density < 3)) return PASS;
+        if (GASLIKE[u] || (!e.xrayOpaque && !e.indestructible && e.density < 3)) return THROUGH;
         return this.impact(j, lx, ly, d);
       case PMODE.uv:
         // Like light, except ordinary glass blocks it (quartz doesn't).
-        if (GASLIKE[u] && !e.opaque) return PASS;
+        if (GASLIKE[u] && !e.opaque) return THROUGH;
         if (e.reflect > 0 && (this.rand() < e.reflect || this.backed(lx, ly))) {
           this.bounce(k, ix, iy, lx, ly);
           return BOUNCE;
         }
-        if (e.transparent && !e.uvBlock) return PASS;
+        if (e.transparent && !e.uvBlock) return THROUGH;
         return this.impact(j, lx, ly, d);
       case PMODE.microwave:
         // Metal reflects them and arcs; anything wet soaks them up and heats.
@@ -353,11 +385,11 @@ export const Particles = {
         if (e.indestructible) return DEAD;
         if (e.wet) {
           this.impact(j, lx, ly, d);
-          return this.rand() < 0.3 ? DEAD : PASS;
+          return this.rand() < 0.3 ? DEAD : THROUGH;
         }
-        return PASS;
+        return THROUGH;
       default:
-        return PASS; // neutrinos, muons and other ghosts
+        return THROUGH; // neutrinos, muons and other ghosts
     }
   },
 
@@ -422,7 +454,7 @@ export const Particles = {
         this.record(r.pTo, r.pRule);
       }
     }
-    return r.keep ? PASS : DEAD;
+    return r.keep ? THROUGH : DEAD;
   },
 
   // A particle disturbs a stable radioactive atom (element def `e`, in cell

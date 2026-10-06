@@ -1,14 +1,41 @@
 // The Physics panel under the game: which way gravity pulls (a dial you
-// turn), how hard (a text box), Newtonian gravity, convection, and which
-// edges of the world are a void (a box whose sides you click). Settings
+// turn), how hard (a text box), Newtonian gravity, convection, and what each
+// edge of the world is: solid, a void or a loop (a box whose sides you click
+// round the three). Settings
 // are kept in localStorage, guarded like saved progress, and applied to the
 // world at start.
 
 import { MAX_STRENGTH } from '../sim/gravity.js';
 
 const KEY = 'sandbox-crafter:physics';
-const NO_EDGES = Object.freeze({ top: false, bottom: false, left: false, right: false });
-export const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: true, edges: NO_EDGES });
+const SOLID_EDGES = Object.freeze({ top: 'solid', bottom: 'solid', left: 'solid', right: 'solid' });
+export const DEFAULTS = Object.freeze({ angle: 0, strength: 1, newtonian: false, convection: true, edges: SOLID_EDGES });
+const OPPOSITE = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
+const CYCLE = { solid: 'void', void: 'loop', loop: 'solid' };
+
+// One edge's saved state: 'solid', 'void' or 'loop' (older saves stored
+// true for a void).
+const edgeState = (v) => (v === true || v === 'void' ? 'void' : v === 'loop' ? 'loop' : 'solid');
+
+// Loops come in pairs: if either side of a pair loops, both do.
+function pairLoops(e) {
+  for (const [a, b] of [['top', 'bottom'], ['left', 'right']]) {
+    if (e[a] === 'loop' || e[b] === 'loop') { e[a] = 'loop'; e[b] = 'loop'; }
+  }
+  return e;
+}
+
+// The edges after clicking `side`: solid, then void, then loop, then solid
+// again. A loop takes the opposite side with it, and leaving a loop puts
+// both sides back to solid.
+export function nextEdges(edges, side) {
+  const e = { ...edges };
+  const now = CYCLE[e[side]] ?? 'void';
+  e[side] = now;
+  if (now === 'loop') e[OPPOSITE[side]] = 'loop';
+  else if (edges[side] === 'loop') e[OPPOSITE[side]] = 'solid';
+  return e;
+}
 const NAMES = ['Down', 'Down-left', 'Left', 'Up-left', 'Up', 'Up-right', 'Right', 'Down-right'];
 // Keys that turn the dial, in degrees clockwise.
 const TURN = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15, PageUp: 45, PageDown: -45 };
@@ -47,9 +74,10 @@ export function loadSettings(storage = globalThis.localStorage) {
       strength: parseStrength(data.strength) ?? DEFAULTS.strength,
       newtonian: !!data.newtonian,
       convection: data.convection === undefined ? DEFAULTS.convection : !!data.convection,
-      edges: {
-        top: !!data.edges?.top, bottom: !!data.edges?.bottom, left: !!data.edges?.left, right: !!data.edges?.right,
-      },
+      edges: pairLoops({
+        top: edgeState(data.edges?.top), bottom: edgeState(data.edges?.bottom),
+        left: edgeState(data.edges?.left), right: edgeState(data.edges?.right),
+      }),
     };
   } catch {
     return { ...DEFAULTS }; // unreadable or unavailable storage
@@ -86,8 +114,13 @@ export class PhysicsPanel {
     const s = this.settings;
     this.world.setGravity({ angle: s.angle, strength: s.strength, newtonian: s.newtonian });
     this.world.setConvection(s.convection);
-    this.world.setVoidEdges(s.edges);
-    for (const b of this.edges) b.setAttribute('aria-pressed', String(s.edges[b.dataset.edge]));
+    this.world.setEdges(s.edges);
+    for (const b of this.edges) {
+      const st = s.edges[b.dataset.edge];
+      b.dataset.state = st;
+      b.setAttribute('aria-pressed', String(st !== 'solid'));
+      b.setAttribute('aria-label', `${b.dataset.name}: ${st}`);
+    }
     this.arrow.setAttribute('transform', `rotate(${s.angle})`);
     this.dial.setAttribute('aria-valuenow', String(s.angle));
     this.dial.setAttribute('aria-valuetext', angleText(s.angle));
@@ -136,8 +169,7 @@ export class PhysicsPanel {
     this.convect.addEventListener('change', () => this.update({ convection: this.convect.checked }));
     for (const b of this.edges) {
       b.addEventListener('click', () => {
-        const side = b.dataset.edge;
-        this.update({ edges: { ...this.settings.edges, [side]: !this.settings.edges[side] } });
+        this.update({ edges: nextEdges(this.settings.edges, b.dataset.edge) });
       });
     }
     reset.addEventListener('click', () => { this.settings = { ...DEFAULTS }; this.apply(); });

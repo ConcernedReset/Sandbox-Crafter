@@ -18,7 +18,7 @@
 // When a rule creates an element for the first time, it is pushed onto
 // `discoveries` for the game layer to pick up.
 
-import { Air, CELL, AIR_SHARE, BOIL_LOWEST, PHASE_HIGHEST } from './air.js';
+import { Air, CELL, OUTSIDE, AIR_SHARE, BOIL_LOWEST, PHASE_HIGHEST } from './air.js';
 import { DEFS, ID, NUM, State, AMBIENT, REACT } from './elements.js';
 import {
   MIN_TEMP, GRAVITY, REST, PRESSURE_WAKE, PRESSURE_FULL, MAX_ACTIVITY,
@@ -32,6 +32,9 @@ import { Machines, initMachines } from './machines.js';
 import { AirMachines } from './machines-air.js';
 import { MotionMachines } from './machines-motion.js';
 import { Gravity, DX8, DY8 } from './gravity.js';
+import { WALL_HERE, PASS, PASS_BIT, stops } from './walls.js';
+import { TimeZones, SPEEDS, SLOW_EVERY } from './time.js';
+import { Portals, initPortals } from './portals.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -47,6 +50,9 @@ const AIR_TOUCH = 0.009;
 // fire gives, it only holds back the likes of a star, whose heat would
 // otherwise flood the whole world through the air.
 const AIR_FLUX = 100;
+// A wall that lets heat through conducts like metal.
+const WALL_COND = 0.9;
+const WALL_TOUCH = WALL_COND * AIR_TOUCH;
 const TOUCH = Float32Array.from(COND, (k, t) => (t === 0 ? 0 : Math.max(AIR_COOL[t], k * AIR_TOUCH)));
 // What the Mix tool leaves where it is (see mixArea).
 const FIXED = Uint8Array.from(DEFS, (d) => (d.indestructible ? 1 : 0));
@@ -54,10 +60,27 @@ const FIXED = Uint8Array.from(DEFS, (d) => (d.indestructible ? 1 : 0));
 // An air block is sealed once this many of its 16 cells are airtight solid:
 // any unbroken line of strong solid across it.
 const SEAL_COUNT = 4;
+// How far from a sealed block's cell to look for its air (see airOf).
+const AIR_REACH = 2 * CELL;
 
 // Edges of the world that are a void: anything that moves out through one
 // vanishes (see setVoidEdges).
 export const VOID_TOP = 1, VOID_BOTTOM = 2, VOID_LEFT = 4, VOID_RIGHT = 8;
+
+// A pair's heat exchange share k at the slower of two time-zone speeds:
+// as many steps of k as the speed says (a fraction of one for a slow
+// area), so a 4× cell conducts as four steps would and never overshoots.
+function zoneRate(k, a, b) {
+  const s = Math.min(SPEEDS[a], SPEEDS[b]);
+  return (1 - (1 - 2 * k) ** s) / 2;
+}
+
+// How far along a liquid lying on top looks for a drop to flow towards
+// (see dropAhead).
+const FLOW_REACH = 48;
+// How far across a stream of its own kind a sinking particle looks for room
+// to push a liquid aside into (see sinkInto).
+const ASIDE_REACH = 8;
 
 // With no gravity, gases spread evenly: as likely to step either way.
 const ZERO_G_RISE = 0.3;
@@ -80,8 +103,13 @@ export class World {
     this.vy = new Float32Array(n);
     this.shade = new Uint8Array(n); // random per particle, picks a colour variant
     this.loose = new Uint8Array(n); // 1 for a solid particle torn off by pressure
-    this.clock = new Uint32Array(n); // tick on which the cell was last updated
-    this.tick = 1;
+    this.clock = new Uint32Array(n); // the pass in which the cell was last updated
+    this.tick = 1; // frames
+    this.pass = 1; // update passes: one a frame, more with fast time zones (time.js)
+    this.speed = new Uint8Array(n); // time zones (time.js): 0 normal, 1-4 for ¼× ½× 2× 4×
+    this.zoneCount = 0;
+    this.zoneBox = null;
+    this.WALL_ID = WALL;
     this.air = new Air(Math.ceil(width / CELL), Math.ceil(height / CELL));
     this.gravity = new Gravity(this.air);
     this.seed = (seed >>> 0) || 1;
@@ -91,10 +119,16 @@ export class World {
     this.blockedMoving = false;
     this.brushShape = 'circle';
     this.replace = false; // painting overwrites what's in the way
-    this.voidEdges = 0; // VOID_TOP | VOID_BOTTOM | ... (see setVoidEdges)
+    this.voidEdges = 0; // VOID_TOP | VOID_BOTTOM | ... (see setEdges)
+    this.wall = new Uint16Array(n); // the wall layer (walls.js)
+    this.wallMask = 0; // what the next Wall placed lets through (the Wall tool sets it)
+    this.meshCount = 0; // wall cells that let anything through (for the renderer)
+    this.loopX = false; // the left and right edges are joined (see setEdges)
+    this.loopY = false; // the top and bottom edges are joined
     this.vanished = false; // the last travel took the particle off a void edge
     initParticles(this);
     initMachines(this);
+    initPortals(this);
   }
 
   rand() {
@@ -112,7 +146,10 @@ export class World {
 
   // ---- cell operations ----------------------------------------------------
 
+  // Empty cell i. Clearing a wall removes it; clearing something passing
+  // through a wall leaves the wall standing (see walls.js).
   clearCell(i) {
+    const wasWall = this.type[i] === WALL;
     this.type[i] = 0;
     this.temp[i] = AMBIENT;
     this.life[i] = 0;
@@ -120,6 +157,17 @@ export class World {
     this.vx[i] = 0;
     this.vy[i] = 0;
     this.loose[i] = 0;
+    if (this.wall[i] !== 0) {
+      if (wasWall) this.setWall(i, 0);
+      else this.type[i] = WALL;
+    }
+  }
+
+  // Set cell i's wall layer, keeping meshCount up to date.
+  setWall(i, v) {
+    if ((this.wall[i] & 255) !== 0) this.meshCount--;
+    if ((v & 255) !== 0) this.meshCount++;
+    this.wall[i] = v;
   }
 
   clearAll() {
@@ -130,6 +178,10 @@ export class World {
     this.vx.fill(0);
     this.vy.fill(0);
     this.loose.fill(0);
+    this.wall.fill(0);
+    this.meshCount = 0;
+    this.clearZones();
+    this.clearPortals();
     this.air.clear();
     this.pn = 0;
     this.doorTimer.fill(0);
@@ -146,6 +198,7 @@ export class World {
     const d = DEFS[t];
     if (d.projectile) { this.emitAt(t, i % this.w, (i / this.w) | 0); return; }
     this.type[i] = t;
+    if (t === WALL) this.setWall(i, WALL_HERE | this.wallMask);
     this.temp[i] = d.temp;
     this.ctype[i] = 0;
     this.vx[i] = 0;
@@ -153,7 +206,7 @@ export class World {
     this.loose[i] = 0;
     this.shade[i] = (this.rand() * 256) | 0;
     this.initLife(i, t);
-    this.clock[i] = this.tick;
+    this.clock[i] = this.pass;
   }
 
   // Turn an existing particle into something else as the result of a rule.
@@ -172,7 +225,7 @@ export class World {
     this.loose[i] = 0;
     if (!keepTemp) this.temp[i] = DEFS[to].temp;
     this.initLife(i, to);
-    this.clock[i] = this.tick;
+    this.clock[i] = this.pass;
     if (rule >= 0) this.record(to, rule);
   }
 
@@ -194,15 +247,28 @@ export class World {
     a = vy[i]; vy[i] = vy[j]; vy[j] = a;
     a = shade[i]; shade[i] = shade[j]; shade[j] = a;
     a = loose[i]; loose[i] = loose[j]; loose[j] = a;
-    this.clock[i] = this.tick;
-    this.clock[j] = this.tick;
+    this.clock[i] = this.pass;
+    this.clock[j] = this.pass;
+    // Walls stay where they are: something passing through one leaves it
+    // standing behind.
+    if ((this.wall[i] | this.wall[j]) !== 0) { this.keepWall(i); this.keepWall(j); }
+  }
+
+  // After a swap: a wall cell left empty is a wall again, and a wall moved
+  // out of its place is gone (see the wall layer, walls.js).
+  keepWall(c) {
+    if (this.wall[c] !== 0) {
+      if (this.type[c] === 0) { this.type[c] = WALL; this.temp[c] = AMBIENT; this.vx[c] = 0; this.vy[c] = 0; }
+    } else if (this.type[c] === WALL) {
+      this.clearCell(c);
+    }
   }
 
   sparkAt(j) {
     this.ctype[j] = this.type[j];
     this.type[j] = SPARK;
     this.life[j] = 4;
-    this.clock[j] = this.tick;
+    this.clock[j] = this.pass;
   }
 
   // Set cell i alight. Returns true if the cell changed. Fire needs air:
@@ -253,10 +319,12 @@ export class World {
         if (d2 > r * r) continue;
         const j = ny * w + nx;
         const e = DEFS[type[j]];
+        const s = e.state;
+        const moves = s === POWDER || s === LIQUID || s === GAS || this.loose[j];
+        if ((e.explode === 0 && !moves) || this.wallBetween(x, y, nx, ny)) continue; // walls shield
         // Other explosives caught in the blast go off too.
         if (e.explode > 0 && this.temp[j] < e.ignite) this.temp[j] = e.ignite + 1;
-        const s = e.state;
-        if (s !== POWDER && s !== LIQUID && s !== GAS && !this.loose[j]) continue;
+        if (!moves) continue;
         // Push outward; things below the blast (along the gravity arrow)
         // bounce off the ground and get thrown up, which digs a crater.
         const dist = Math.sqrt(d2);
@@ -274,8 +342,7 @@ export class World {
     const r = (this.rand() * 4) | 0;
     let nx = x, ny = y;
     if (r === 0) nx++; else if (r === 1) nx--; else if (r === 2) ny++; else ny--;
-    if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) return -1;
-    return ny * this.w + nx;
+    return this.cellAt(nx, ny);
   }
 
   // Settings from the Physics panel: { angle, strength, newtonian }.
@@ -283,14 +350,41 @@ export class World {
     this.gravity.set(opts);
   }
 
-  // Which edges of the world are a void: { top, bottom, left, right }.
-  // Whatever moves out through one is gone; things that stay put (a stone
-  // floor along it) stay. Pressure waves and heat go out through it too,
-  // instead of bouncing back off the edge.
-  setVoidEdges({ top = false, bottom = false, left = false, right = false } = {}) {
-    this.voidEdges = (top ? VOID_TOP : 0) | (bottom ? VOID_BOTTOM : 0)
-      | (left ? VOID_LEFT : 0) | (right ? VOID_RIGHT : 0);
+  // What each edge of the world is: 'solid' (the default), 'void' or
+  // 'loop'. Whatever moves out through a void is gone (things that stay
+  // put, a stone floor along it, stay), and pressure waves and heat go out
+  // through it too, instead of bouncing back off the edge. A loop joins the
+  // opposite edge: what leaves one comes in at the other. Loops come in
+  // pairs, so a loop on either side of a pair loops both.
+  setEdges({ top = 'solid', bottom = 'solid', left = 'solid', right = 'solid' } = {}) {
+    this.loopX = left === 'loop' || right === 'loop';
+    this.loopY = top === 'loop' || bottom === 'loop';
+    const v = (side, bit) => (side === 'void' ? bit : 0);
+    this.voidEdges = (this.loopY ? 0 : v(top, VOID_TOP) | v(bottom, VOID_BOTTOM))
+      | (this.loopX ? 0 : v(left, VOID_LEFT) | v(right, VOID_RIGHT));
     this.air.voidSides = this.voidEdges; // and the air lets waves and heat out there
+    this.air.setLoops(this.loopX, this.loopY);
+  }
+
+  // The older form: which edges are a void, as booleans.
+  setVoidEdges({ top = false, bottom = false, left = false, right = false } = {}) {
+    const s = (on) => (on ? 'void' : 'solid');
+    this.setEdges({ top: s(top), bottom: s(bottom), left: s(left), right: s(right) });
+  }
+
+  // The index of cell (x, y), across a looped edge if it's just off one;
+  // -1 off a solid or void edge.
+  cellAt(x, y) {
+    const { w, h } = this;
+    if (x < 0 || x >= w) {
+      if (!this.loopX) return -1;
+      x = x < 0 ? x + w : x - w;
+    }
+    if (y < 0 || y >= h) {
+      if (!this.loopY) return -1;
+      y = y < 0 ? y + h : y - h;
+    }
+    return y * w + x;
   }
 
   // Is (x, y), just outside the world, through a void edge?
@@ -303,8 +397,10 @@ export class World {
   // ---- main loop ----------------------------------------------------------
 
   step() {
-    const { w, h, type, clock, air, loose } = this;
+    const { w, h, type, clock, air, loose, wall, speed } = this;
     const tick = ++this.tick;
+    const pass = ++this.pass;
+    const zones = this.zoneCount !== 0;
     this.stepGravity();
     air.phaseFactors(); // the pressure as it stands now moves boiling and melting points
     // Particles read last frame's complete blocked map while this frame's is built.
@@ -324,19 +420,29 @@ export class World {
         const i = row + x;
         const t = type[i];
         if (t === 0) continue;
-        if (t === WALL) { next[air.at(x, y)] = 1; continue; }
+        const wl = wall[i];
+        if (wl !== 0) {
+          // A wall blocks its air block, unless it lets air through.
+          if ((wl & PASS.air) === 0) next[air.at(x, y)] = 1;
+          if (t === WALL) continue;
+        }
         // Metal carrying a spark is still metal as far as the air is concerned.
         if ((AIRTIGHT[t] || (t === SPARK && AIRTIGHT[this.ctype[i]])) && !loose[i]) air.solid[air.at(x, y)]++;
-        if (clock[i] === tick) continue;
-        clock[i] = tick;
+        if (clock[i] === pass) continue;
+        clock[i] = pass;
+        // A slow area's particles sit out the frames in between.
+        if (zones && speed[i] !== 0 && tick % SLOW_EVERY[speed[i]] !== 0) continue;
         this.update(i, x, y, t);
       }
     }
+    if (this.zoneBox !== null) this.fastPasses(fromBottom);
     for (let a = 0; a < next.length; a++) if (air.solid[a] >= SEAL_COUNT) next[a] = 1;
     air.next = air.blocked;
     air.blocked = next;
+    air.label();
     this.stepDoors();
     this.stepPipes();
+    if (this.portalCells !== 0) this.stepPortalAir();
     this.computeField();
     this.stepProjectiles();
     this.conductHeat();
@@ -363,6 +469,8 @@ export class World {
   }
 
   update(i, x, y, t) {
+    // Something sitting on a portal goes through it (portals.js).
+    if (this.portalCells !== 0 && this.portalAt[i] !== 0 && this.crossPortal(i, x, y, t)) return;
     const d = DEFS[t];
 
     if (d.holdTemp) {
@@ -592,6 +700,8 @@ export class World {
   canEnter(d, j, dy) {
     const u = this.type[j];
     if (u === 0) return true;
+    // A wall lets in what its checklist lets through (see walls.js).
+    if (u === WALL) return (this.wall[j] & PASS_BIT[d.id]) !== 0;
     const e = DEFS[u];
     if (!e.displaceable) {
       // Neutronium sinks through powders; liquids drain through gravel.
@@ -605,7 +715,9 @@ export class World {
       return d.state !== POWDER || e.state !== LIQUID || this.rand() < 0.5;
     }
     if (dy < 0) return d.density < e.density;
-    if (e.state === LIQUID) return false;
+    // Sideways, a liquid only pushes past a lighter one: a denser liquid
+    // spreads out along the bottom under it instead of piling up.
+    if (e.state === LIQUID) return d.state === LIQUID && d.density > e.density;
     if (d.state === GAS || d.state === ENERGY) return this.rand() < 0.3;
     return true;
   }
@@ -624,15 +736,17 @@ export class World {
       const nx = x + Math.floor((vx * s) / n + rx);
       const ny = y + Math.floor((vy * s) / n + ry);
       if (nx === cx && ny === cy) continue;
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) {
+      const j = this.cellAt(nx, ny);
+      if (j < 0) {
         if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { this.clearCell(cur); this.vanished = true; return cur; }
         this.blockedMoving = true;
         break;
       }
-      const j = ny * this.w + nx;
       if (!this.canEnter(d, j, ny - cy)) { this.blockedMoving = true; break; }
-      this.swap(cur, j);
+      if (ny > cy && this.type[j] !== 0) this.sinkInto(cur, cx, cy, j, 1, 0);
+      else this.swap(cur, j);
       cur = j; cx = nx; cy = ny;
+      if (this.portalCells !== 0 && this.portalAt[j] !== 0) break; // through it next update
     }
     return cur;
   }
@@ -651,18 +765,45 @@ export class World {
       const nx = x + Math.floor((vx * s) / n + rx);
       const ny = y + Math.floor((vy * s) / n + ry);
       if (nx === cx && ny === cy) continue;
-      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) {
+      const j = this.cellAt(nx, ny);
+      if (j < 0) {
         if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { this.clearCell(cur); this.vanished = true; return cur; }
         this.blockedMoving = true;
         break;
       }
-      const j = ny * this.w + nx;
       const along = (nx - cx) * ux + (ny - cy) * uy;
       if (!this.canEnter(d, j, along > 0.3 ? 1 : along < -0.3 ? -1 : 0)) { this.blockedMoving = true; break; }
-      this.swap(cur, j);
+      if (along > 0.3 && this.type[j] !== 0) this.sinkInto(cur, cx, cy, j, Math.round(uy), Math.round(-ux));
+      else this.swap(cur, j);
       cur = j; cx = nx; cy = ny;
+      if (this.portalCells !== 0 && this.portalAt[j] !== 0) break; // through it next update
     }
     return cur;
+  }
+
+  // Particle cur (at cx, cy) sinks into cell j below it. A liquid it sinks
+  // into is pushed aside, into the nearest open space beside the particle
+  // (across a stream of the particle's own kind, or more of the same
+  // liquid, if it's in one), (px, py) being sideways; only where there's no
+  // room beside it, under the surface, do the two just change places.
+  // Otherwise a stream poured into a pool would carry the pool up with it,
+  // each grain swapping the water up into the place it left.
+  sinkInto(cur, cx, cy, j, px, py) {
+    const pushed = this.type[j];
+    if (DEFS[pushed].state === LIQUID) {
+      const me = this.type[cur];
+      const r = this.rand() < 0.5 ? 1 : -1;
+      for (let n = 0, side = r; n < 2; n++, side = -side) {
+        for (let k = 1; k <= ASIDE_REACH; k++) {
+          const c = this.cellAt(cx + px * side * k, cy + py * side * k);
+          if (c < 0) break;
+          const t = this.type[c];
+          if (t === 0) { this.swap(j, c); this.swap(cur, j); return; }
+          if (t !== me && t !== pushed) break;
+        }
+      }
+    }
+    this.swap(cur, j);
   }
 
   // Wind pushes the particle along, drag slows it down, gravity pulls it:
@@ -703,7 +844,7 @@ export class World {
 
   movePowder(i, x, y, d) {
     const g = this.gravity;
-    if (g.straight) { this.movePowderDown(i, x, y, d); return; }
+    if (g.straight && !this.loopX && !this.loopY) { this.movePowderDown(i, x, y, d); return; }
     const a = this.air.at(x, y);
     this.pushByAir(i, a, d, g.gx[a], g.gy[a]);
     if (d.fallRate < 1 && this.rand() > d.fallRate) return;
@@ -726,15 +867,15 @@ export class World {
       return;
     }
     // Blocked straight away: slide off diagonally, like a grain on a slope.
-    if (this.inBounds(x + DX8[k], y + DY8[k])) {
+    if (this.cellAt(x + DX8[k], y + DY8[k]) >= 0) {
       let s = this.rand() < 0.5 ? 1 : 7;
       for (let n = 0; n < 2; n++, s = 8 - s) {
         const r = (k + s) & 7;
-        const nx = x + DX8[r], ny = y + DY8[r];
-        if (!this.inBounds(nx, ny)) continue;
-        const jj = ny * this.w + nx;
+        const jj = this.cellAt(x + DX8[r], y + DY8[r]);
+        if (jj < 0) continue;
         if (this.canEnter(d, jj, 1)) {
-          this.swap(i, jj);
+          if (this.type[jj] !== 0) this.sinkInto(i, x, y, jj, Math.round(uy), Math.round(-ux));
+          else this.swap(i, jj);
           this.vx[jj] = 0.5 * ux;
           this.vy[jj] = 0.5 * uy;
           return;
@@ -746,7 +887,7 @@ export class World {
 
   moveLiquid(i, x, y, d) {
     const g = this.gravity;
-    if (g.straight) { this.moveLiquidDown(i, x, y, d); return; }
+    if (g.straight && !this.loopX && !this.loopY) { this.moveLiquidDown(i, x, y, d); return; }
     const a = this.air.at(x, y);
     this.pushByAir(i, a, d, g.gx[a], g.gy[a]);
     const ux = g.ux[a], uy = g.uy[a];
@@ -776,14 +917,14 @@ export class World {
     const fx = DX8[k], fy = DY8[k];
 
     // Diagonal down.
-    if (this.inBounds(x + fx, y + fy)) {
+    if (this.cellAt(x + fx, y + fy) >= 0) {
       for (let n = 0, dir = flow; n < 2; n++, dir = -dir) {
         const r = (k + (dir > 0 ? 7 : 1)) & 7;
-        const nx = x + DX8[r], ny = y + DY8[r];
-        if (!this.inBounds(nx, ny)) continue;
-        const jj = ny * w + nx;
+        const jj = this.cellAt(x + DX8[r], y + DY8[r]);
+        if (jj < 0) continue;
         if (this.canEnter(d, jj, 1)) {
-          this.swap(i, jj);
+          if (this.type[jj] !== 0) this.sinkInto(i, x, y, jj, Math.round(px), Math.round(py));
+          else this.swap(i, jj);
           this.vx[jj] = dir * 0.5 * px + 0.5 * ux;
           this.vy[jj] = dir * 0.5 * py + 0.5 * uy;
           return;
@@ -793,37 +934,40 @@ export class World {
 
     // Flow sideways, remembering the direction so the liquid keeps going.
     // A liquid only rushes sideways when something is pressing down on it or
-    // there is a drop to fall into; otherwise a thin film would skitter back
-    // and forth forever. Liquid stacked on liquid creeps one cell at a time
-    // so puddles still flatten out; a film on bare ground barely moves.
+    // there is a drop to fall into (close by, or further along: dropAhead);
+    // otherwise a thin film would skitter back and forth forever. Liquid
+    // stacked on liquid creeps one cell at a time so puddles still flatten
+    // out; a film on bare ground barely moves.
     this.stopAlong(i, ux, uy, 1);
     if (d.viscosity > 0 && this.rand() < d.viscosity) return;
-    const ax = x - fx, ay = y - fy;
-    const above = this.inBounds(ax, ay) ? DEFS[this.type[ay * w + ax]].state : 0;
+    const aj = this.cellAt(x - fx, y - fy);
+    const above = aj >= 0 ? DEFS[this.type[aj]].state : 0;
     const pushed = above === LIQUID || above === POWDER;
-    const bx = x + fx, by = y + fy;
-    const creep = this.inBounds(bx, by) && DEFS[this.type[by * w + bx]].state === LIQUID ? 0.1 : 0.01;
+    const bj = this.cellAt(x + fx, y + fy);
+    const creep = bj >= 0 && DEFS[this.type[bj]].state === LIQUID ? 0.1 : 0.01;
     for (let n = 0, dir = flow; n < 2; n++, dir = -dir) {
       const r = (k + (dir > 0 ? 6 : 2)) & 7;
       const sx = DX8[r], sy = DY8[r];
       let target = -1;
       let drop = false;
-      for (let s = 1; s <= d.spread; s++) {
+      let s = 1;
+      for (; s <= d.spread; s++) {
         const nx = x + sx * s, ny = y + sy * s;
-        if (!this.inBounds(nx, ny)) {
+        const jj = this.cellAt(nx, ny);
+        if (jj < 0) {
           // A void side is a cliff edge: the liquid pours off it.
           if (this.voidEdges !== 0 && this.offEdge(nx, ny)) { if (s === 1) { this.clearCell(i); return; } drop = true; }
           break;
         }
-        const jj = ny * w + nx;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
-        const dx = nx + fx, dy = ny + fy;
-        if (this.inBounds(dx, dy) && this.canEnter(d, dy * w + dx, 1)) { drop = true; break; }
+        if (this.portalCells !== 0 && this.portalAt[jj] !== 0) { drop = true; break; } // into a portal
+        const dj = this.cellAt(nx + fx, ny + fy);
+        if (dj >= 0 && this.canEnter(d, dj, 1)) { drop = true; break; }
       }
       if (target < 0) continue;
-      if (!drop && !pushed) {
-        if (this.rand() < creep) target = (y + sy) * w + x + sx; else continue;
+      if (!drop && !pushed && !(s > d.spread && this.dropAhead(d, x, y, sx, sy, fx, fy, s))) {
+        if (this.rand() < creep) target = this.cellAt(x + sx, y + sy); else continue;
       }
       this.swap(i, target);
       this.vx[target] = dir * 0.5 * px;
@@ -834,11 +978,28 @@ export class World {
     this.vy[i] = -flow * 0.1 * py;
   }
 
+  // Is there a drop for a liquid at (x, y) to fall into further along the
+  // way it's flowing, (sx, sy), from `from` cells on, as far as FLOW_REACH,
+  // with nothing in the way? (fx, fy) is down. Then a liquid lying on top
+  // flows on towards it, so a mound of liquid levels out step by step
+  // instead of wandering about on each flat terrace.
+  dropAhead(d, x, y, sx, sy, fx, fy, from) {
+    for (let s = from; s <= FLOW_REACH; s++) {
+      const nx = x + sx * s, ny = y + sy * s;
+      const c = this.cellAt(nx, ny);
+      if (c < 0) return this.voidEdges !== 0 && this.offEdge(nx, ny); // a void side is a drop too
+      if (!this.canEnter(d, c, 0)) return false;
+      const b = this.cellAt(nx + fx, ny + fy);
+      if (b >= 0 && this.canEnter(d, b, 1)) return true;
+    }
+    return false;
+  }
+
   // Gases (and drifting energy) rise against the gravity arrow and sink
   // along it, with a random jitter across it.
   moveGas(i, x, y, d) {
     const g = this.gravity;
-    if (g.straight) { this.moveGasUp(i, x, y, d); return; }
+    if (g.straight && !this.loopX && !this.loopY) { this.moveGasUp(i, x, y, d); return; }
     const a = this.air.at(x, y);
     // Newtonian gravity pulls gases too, but only through their velocity.
     if (g.newtonian) this.pushByAir(i, a, d, g.fx[a], g.fy[a]);
@@ -866,7 +1027,8 @@ export class World {
     if (j !== i) return;
     const side = this.rand() < 0.5 ? -1 : 1;
     const nx = x + side * cx, ny = y + side * cy;
-    if (this.inBounds(nx, ny)) { if (this.canEnter(d, ny * this.w + nx, 0)) this.swap(i, ny * this.w + nx); }
+    const jj = this.cellAt(nx, ny);
+    if (jj >= 0) { if (this.canEnter(d, jj, 0)) this.swap(i, jj); }
     else if (this.voidEdges !== 0 && this.offEdge(nx, ny)) this.clearCell(i);
   }
 
@@ -896,7 +1058,8 @@ export class World {
         if (nx < 0 || nx >= this.w) continue;
         const jj = i + this.w + dir;
         if (this.canEnter(d, jj, 1)) {
-          this.swap(i, jj);
+          if (this.type[jj] !== 0) this.sinkInto(i, x, y, jj, 1, 0);
+          else this.swap(i, jj);
           this.vx[jj] = 0;
           this.vy[jj] = 0.5;
           return;
@@ -927,7 +1090,8 @@ export class World {
         if (nx < 0 || nx >= w) continue;
         const jj = i + w + dir;
         if (this.canEnter(d, jj, 1)) {
-          this.swap(i, jj);
+          if (this.type[jj] !== 0) this.sinkInto(i, x, y, jj, 1, 0);
+          else this.swap(i, jj);
           this.vx[jj] = dir * 0.5;
           this.vy[jj] = 0.5;
           return;
@@ -944,7 +1108,8 @@ export class World {
     for (let k = 0, dir = flow; k < 2; k++, dir = -dir) {
       let target = -1;
       let drop = false;
-      for (let s = 1; s <= d.spread; s++) {
+      let s = 1;
+      for (; s <= d.spread; s++) {
         const nx = x + dir * s;
         if (nx < 0 || nx >= w) {
           if (this.voidEdges !== 0 && this.offEdge(nx, y)) { if (s === 1) { this.clearCell(i); return; } drop = true; }
@@ -953,10 +1118,11 @@ export class World {
         const jj = i + dir * s;
         if (!this.canEnter(d, jj, 0)) break;
         target = jj;
+        if (this.portalCells !== 0 && this.portalAt[jj] !== 0) { drop = true; break; } // into a portal
         if (y + 1 < h && this.canEnter(d, jj + w, 1)) { drop = true; break; }
       }
       if (target < 0) continue;
-      if (!drop && !pushed) {
+      if (!drop && !pushed && !(s > d.spread && this.dropAhead(d, x, y, dir, 0, 0, 1, s))) {
         if (this.rand() < creep) target = i + dir; else continue;
       }
       this.swap(i, target);
@@ -986,7 +1152,8 @@ export class World {
   // ---- heat -----------------------------------------------------------------
 
   conductHeat() {
-    const { w, h, type, temp } = this;
+    const { w, h, type, temp, wall, speed } = this;
+    const zones = this.zoneCount !== 0;
     const heat = this.air.heat;
     const sides = this.voidEdges;
     let count = 0;
@@ -997,15 +1164,22 @@ export class World {
         const t = type[i];
         if (t === 0) continue;
         count++;
-        const ka = COND[t];
+        // Wall is a perfect insulator, unless it lets heat through: then it
+        // conducts like metal.
+        let ka = COND[t];
+        if (t === WALL) {
+          if ((wall[i] & PASS.heat) === 0) { temp[i] = AMBIENT; continue; }
+          ka = WALL_COND;
+        }
         let T = temp[i];
         let open = 0;
         if (x < w - 1) {
           const u = type[i + 1];
           if (u === 0) open++;
           else if (ka > 0) {
-            const kb = COND[u];
-            const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+            const kb = u === WALL ? ((wall[i + 1] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[u];
+            let k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+            if (zones && (speed[i] | speed[i + 1]) !== 0) k = zoneRate(k, speed[i], speed[i + 1]);
             if (k > 0) { const f = (T - temp[i + 1]) * k; T -= f; temp[i + 1] += f; }
           }
         }
@@ -1013,8 +1187,9 @@ export class World {
           const u = type[i + w];
           if (u === 0) open++;
           else if (ka > 0) {
-            const kb = COND[u];
-            const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+            const kb = u === WALL ? ((wall[i + w] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[u];
+            let k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+            if (zones && (speed[i] | speed[i + w]) !== 0) k = zoneRate(k, speed[i], speed[i + w]);
             if (k > 0) { const f = (T - temp[i + w]) * k; T -= f; temp[i + w] += f; }
           }
         }
@@ -1027,10 +1202,14 @@ export class World {
           if (out) T += (AMBIENT - T) * AIR_COOL[t] * out;
         }
         if (open) {
-          if (!heat) T += (AMBIENT - T) * AIR_COOL[t] * open;
-          else {
+          if (!heat) {
+            // Without convection the room's air soaks up heat; the air
+            // shut in a sealed box takes none (with no box, every side is the room).
+            const room = this.air.regions === OUTSIDE ? open : this.roomSides(x, y);
+            if (room) T += (AMBIENT - T) * AIR_COOL[t] * room;
+          } else {
             // Convection: heat goes into the air of each empty cell beside it.
-            const r = TOUCH[t];
+            const r = t === WALL ? WALL_TOUCH : TOUCH[t];
             if (x < w - 1 && type[i + 1] === 0) T = this.warmAir(x + 1, y, T, r);
             if (y < h - 1 && type[i + w] === 0) T = this.warmAir(x, y + 1, T, r);
             if (x > 0 && type[i - 1] === 0) T = this.warmAir(x - 1, y, T, r);
@@ -1040,7 +1219,75 @@ export class World {
         temp[i] = T;
       }
     }
+    // Across a looped edge, touching particles trade heat as neighbours do.
+    if (this.loopX) for (let y = 0; y < h; y++) this.conductPair(y * w + w - 1, y * w);
+    if (this.loopY) for (let x = 0; x < w; x++) this.conductPair((h - 1) * w + x, x);
     this.count = count;
+  }
+
+  // Two touching cells trade heat (when both hold something), as in conductHeat.
+  conductPair(i, j) {
+    const { type, temp } = this;
+    const a = type[i], b = type[j];
+    if (a === 0 || b === 0) return;
+    const wall = this.wall;
+    const ka = a === WALL ? ((wall[i] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[a];
+    const kb = b === WALL ? ((wall[j] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[b];
+    const k = (ka < kb ? ka : kb) * CONDUCT_RATE;
+    if (k <= 0) return;
+    const f = (temp[i] - temp[j]) * k;
+    temp[i] -= f;
+    temp[j] += f;
+  }
+
+  // How many of the empty cells beside (x, y) hold the room's air.
+  roomSides(x, y) {
+    const { w, h, type } = this;
+    const region = this.air.region;
+    let n = 0;
+    if (x < w - 1 && type[y * w + x + 1] === 0 && region[this.airOf(x + 1, y)] === OUTSIDE) n++;
+    if (y < h - 1 && type[(y + 1) * w + x] === 0 && region[this.airOf(x, y + 1)] === OUTSIDE) n++;
+    if (x > 0 && type[y * w + x - 1] === 0 && region[this.airOf(x - 1, y)] === OUTSIDE) n++;
+    if (y > 0 && type[(y - 1) * w + x] === 0 && region[this.airOf(x, y - 1)] === OUTSIDE) n++;
+    return n;
+  }
+
+  // The air block whose air is at cell (x, y). Usually the block the cell
+  // is in; but a block a wall runs through (or a strong solid seals) has no
+  // air of its own, so then it's the nearest open block that can be reached
+  // in a straight line from the cell without passing a wall or a strong
+  // solid, up to AIR_REACH cells away. A cell right inside a box's one-cell
+  // wall has the box's air, and one right outside it the room's. -1 if
+  // there's none (a tiny pocket, shut in).
+  airOf(x, y) {
+    const { w, h, type, loose, air } = this;
+    const a = air.at(x, y);
+    if (!air.blocked[a]) return a;
+    let best = -1, near = AIR_REACH + 1;
+    for (let k = 0; k < 4; k++) {
+      const dx = k === 0 ? 1 : k === 1 ? -1 : 0, dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+      for (let s = 1; s < near; s++) {
+        const nx = x + dx * s, ny = y + dy * s;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) break;
+        const j = ny * w + nx, u = type[j];
+        if (stops(this.wall[j], PASS.air) || (AIRTIGHT[u] && !loose[j])) break;
+        const b = air.at(nx, ny);
+        if (!air.blocked[b]) { best = b; near = s; break; }
+      }
+    }
+    return best;
+  }
+
+  // Is there a wall on the straight line between two cells (not counting
+  // the cells themselves)?
+  wallBetween(x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const n = Math.max(Math.abs(dx), Math.abs(dy));
+    for (let s = 1; s < n; s++) {
+      const x = Math.round(x0 + (dx * s) / n), y = Math.round(y0 + (dy * s) / n);
+      if (stops(this.wall[y * this.w + x], PASS.air)) return true;
+    }
+    return false;
   }
 
   // Convection: a particle trades heat with the air in the empty cell (x,
@@ -1049,8 +1296,8 @@ export class World {
   // the particle's new temperature.
   warmAir(x, y, T, rate) {
     const air = this.air;
-    const a = air.at(x, y);
-    if (air.blocked[a]) return T + (AMBIENT - T) * rate; // no air of its own
+    const a = this.airOf(x, y);
+    if (a < 0) return T; // shut in with no air to warm
     const was = air.t[a];
     let f = (was - T) * rate;
     if (f > AIR_FLUX) f = AIR_FLUX; else if (f < -AIR_FLUX) f = -AIR_FLUX;
@@ -1116,7 +1363,10 @@ export class World {
       // an element over itself leaves it be).
       if (u !== 0 && (!this.replace || u === t)) return;
       if (density >= 1 || this.rand() < density) {
-        if (u !== 0) this.clearCell(i);
+        if (u !== 0) {
+          if (this.wall[i] !== 0) this.setWall(i, 0); // painting over a wall removes it
+          this.clearCell(i);
+        }
         this.spawn(i, t);
       }
     });
@@ -1127,6 +1377,8 @@ export class World {
     const mask = this.eraseMask ??= new Uint8Array(this.w * this.h);
     const cells = [];
     area((i) => {
+      if (this.wall[i] !== 0) this.setWall(i, 0);
+      if (this.portalAt[i] !== 0) this.removePortalAt(i); // the whole pair
       if (this.type[i]) this.clearCell(i);
       this.doorTimer[i] = 0; // an erased doorway doesn't shut again
       mask[i] = 1;
@@ -1146,7 +1398,7 @@ export class World {
     const share = amount / (CELL * CELL);
     area((i, x, y) => {
       const t = this.type[i];
-      if (t === WALL) return;
+      if (t === WALL && (this.wall[i] & PASS.heat) === 0) return;
       if (air.heat) {
         const a = air.at(x, y);
         if (!air.blocked[a]) {
@@ -1239,4 +1491,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals);

@@ -139,15 +139,15 @@
         <label class="physics-toggle"><input type="checkbox" id="convection"> Convection</label>
         <div class="physics-edges" role="group" aria-labelledby="edges-label">
           <span class="physics-label" id="edges-label">Edges</span>
-          <div class="edges" title="Click a side to make that edge of the world a void: anything that leaves through it vanishes">
-            <button type="button" class="edge edge-top" data-edge="top" aria-pressed="false" aria-label="Roof is a void"></button>
-            <button type="button" class="edge edge-left" data-edge="left" aria-pressed="false" aria-label="Left wall is a void"></button>
+          <div class="edges" title="Click a side: solid, then a void (whatever leaves through it vanishes), then a loop (it comes back in at the opposite side)">
+            <button type="button" class="edge edge-top" data-edge="top" data-name="Roof" aria-pressed="false" aria-label="Roof: solid"></button>
+            <button type="button" class="edge edge-left" data-edge="left" data-name="Left wall" aria-pressed="false" aria-label="Left wall: solid"></button>
             <span class="edges-box" aria-hidden="true"></span>
-            <button type="button" class="edge edge-right" data-edge="right" aria-pressed="false" aria-label="Right wall is a void"></button>
-            <button type="button" class="edge edge-bottom" data-edge="bottom" aria-pressed="false" aria-label="Floor is a void"></button>
+            <button type="button" class="edge edge-right" data-edge="right" data-name="Right wall" aria-pressed="false" aria-label="Right wall: solid"></button>
+            <button type="button" class="edge edge-bottom" data-edge="bottom" data-name="Floor" aria-pressed="false" aria-label="Floor: solid"></button>
           </div>
         </div>
-        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, Newtonian off, convection on, no void edges">Reset</button>
+        <button type="button" class="physics-reset" id="physics-reset" title="Gravity down at strength 1, Newtonian off, convection on, solid edges">Reset</button>
       </section>
       <section class="tree" aria-labelledby="tree-title">
         <canvas id="tree" aria-label="Recipe tree. Drag to move it, Ctrl-scroll or pinch to zoom, click an element to see how it's made."></canvas>
@@ -176,6 +176,7 @@
     <aside class="panel" aria-label="Elements">
       <div class="panel-body" id="panel-elements">
         <div class="tools" id="tools"></div>
+        <div class="tool-options" id="tool-options" hidden></div>
         <div class="brush">
           <label for="brush">Brush</label>
           <input type="range" id="brush" min="0" max="72" value="4">

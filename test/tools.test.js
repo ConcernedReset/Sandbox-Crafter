@@ -5,6 +5,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
 import { makeWorld, fillRect, wallBox, countOf, run } from './helpers.js';
+import { Input, TOOLS, HARD_BLOCKED } from '../src/game/input.js';
+import { loadToolOptions, saveToolOptions, TOOL_OPTION_DEFAULTS } from '../src/game/tool-options.js';
+import { cellNotes } from '../src/game/cell-notes.js';
+import { PASS } from '../src/sim/walls.js';
 
 test('a radius-0 brush paints one cell; square and round brushes cover their shapes', () => {
   const w = makeWorld(60, 40);
@@ -128,4 +132,55 @@ test('the Spark tool still puts sparks into empty space', () => {
   const w = makeWorld(40, 40);
   w.sparkArea(w.brushArea(20, 20, 2));
   assert.ok(countOf(w, ID.SPARK) > 5);
+});
+
+const stubCanvas = { addEventListener() {}, setPointerCapture() {} };
+const inputFor = (w, sel, extra = {}) => new Input(stubCanvas, () => w,
+  { selection: sel, brush: 0, brushShape: 'circle', replace: false, toolOptions: { ...TOOL_OPTION_DEFAULTS, ...extra } }, null);
+
+test('the Portal and Time tools are in the grid, and hard mode keeps them', () => {
+  assert.ok(TOOLS.includes('portal') && TOOLS.includes('time'));
+  assert.ok(!HARD_BLOCKED.has('portal') && !HARD_BLOCKED.has('time'));
+});
+
+test('the Time tool paints the chosen speed; right-dragging sets it back', () => {
+  const w = makeWorld(20, 20);
+  const input = inputFor(w, { kind: 'tool', id: 'time' }, { timeSpeed: 4 });
+  const area = (fn) => w.forRect(2, 2, 5, 5, fn);
+  input.act(w, area, 0, 0, false);
+  assert.equal(w.speed[3 * 20 + 3], 4);
+  input.act(w, area, 0, 0, true);
+  assert.equal(w.zoneCount, 0, 'right-drag resets, rather than erasing');
+});
+
+test('the Wall tool paints walls with the ticked boxes', () => {
+  const w = makeWorld(20, 20);
+  const input = inputFor(w, { kind: 'tool', id: 'wall' }, { wallMask: PASS.gas | PASS.heat });
+  input.act(w, (fn) => fn(5 * 20 + 5, 5, 5), 0, 0, false);
+  assert.equal(w.wall[5 * 20 + 5] & 255, PASS.gas | PASS.heat);
+  assert.equal(w.wallMask, 0, 'the world is left painting plain walls');
+});
+
+test('tool options survive a save and load; bad storage gives the defaults', () => {
+  const store = new Map();
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  saveToolOptions({ wallMask: PASS.liquid, timeSpeed: 3 }, storage);
+  assert.deepEqual(loadToolOptions(storage), { wallMask: PASS.liquid, timeSpeed: 3 });
+  store.set('sandbox-crafter:tool-options', '{bad');
+  assert.deepEqual(loadToolOptions(storage), TOOL_OPTION_DEFAULTS);
+  assert.deepEqual(loadToolOptions(undefined), TOOL_OPTION_DEFAULTS);
+});
+
+test('the inspect line notes walls that let things through, time zones and portals', () => {
+  const w = makeWorld(20, 20);
+  w.wallMask = PASS.liquid | PASS.gas;
+  w.spawn(5, ID.WALL);
+  w.wallMask = 0;
+  assert.deepEqual(cellNotes(w, 5), ['lets liquids, gases through']);
+  w.paintSpeed((fn) => fn(6, 6, 0), 1);
+  assert.deepEqual(cellNotes(w, 6), ['¼× speed']);
+  w.addPortal(0, 10, 10, 10);
+  assert.deepEqual(cellNotes(w, 10 * 20 + 3), ['Portal 1, blue end (draw the other end)']);
+  w.addPortal(0, 15, 10, 15);
+  assert.deepEqual(cellNotes(w, 15 * 20 + 3), ['Portal 1, orange end']);
 });
