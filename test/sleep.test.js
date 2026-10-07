@@ -5,6 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
 import { makeWorld, fillRect, run } from './helpers.js';
+import { loadDemoScene } from '../src/game/scene.js';
+import { World } from '../src/sim/world.js';
 
 test('the air rests when it is still, and wakes when stirred', () => {
   const w = makeWorld(80, 40);
@@ -87,4 +89,62 @@ test('nothing sleeps with Newtonian gravity on', () => {
   w.setGravity({ newtonian: true });
   run(w, 100);
   assert.ok(w.chunkAwake.every((v) => v === 1));
+});
+
+test('slow changes still happen in a settled scene: water still turns dirt to mud', () => {
+  const mud = (sleeping) => {
+    const w = makeWorld(64, 40, 3);
+    w.sleeping = sleeping;
+    fillRect(w, 0, 39, 63, 39, ID.WALL);
+    fillRect(w, 0, 30, 63, 38, ID.DIRT);
+    fillRect(w, 0, 0, 0, 29, ID.WALL);
+    fillRect(w, 63, 0, 63, 29, ID.WALL);
+    fillRect(w, 1, 26, 62, 29, ID.WATER);
+    run(w, 600);
+    let n = 0;
+    for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.MUD) n++;
+    return n;
+  };
+  const asleep = mud(true), awake = mud(false);
+  assert.ok(asleep > awake * 0.7, `${asleep} mud cells with sleeping, ${awake} without`);
+});
+
+test('radioactive elements and plants keep their areas awake', () => {
+  const w = makeWorld(64, 40);
+  fillRect(w, 0, 39, 63, 39, ID.WALL);
+  fillRect(w, 5, 35, 8, 38, ID.URANIUM);
+  fillRect(w, 40, 36, 60, 38, ID.DIRT);
+  w.spawn(35 * 64 + 50, ID.SEED);
+  run(w, 200);
+  assert.equal(w.asleepAt(6, 36), false, 'uranium');
+  assert.equal(w.asleepAt(50, 36), false, 'a seed in soil');
+});
+
+test('the starting scene settles until nearly everything sleeps, and steps much faster', () => {
+  const time = (sleeping) => {
+    const w = new World(400, 240, 3);
+    loadDemoScene(w);
+    w.setConvection(true);
+    w.sleeping = sleeping;
+    for (let f = 0; f < 300; f++) w.step();
+    const t0 = performance.now();
+    for (let f = 0; f < 200; f++) w.step();
+    return { ms: (performance.now() - t0) / 200, w };
+  };
+  const on = time(true), off = time(false);
+  const w = on.w;
+  let full = 0, asleep = 0;
+  for (let c = 0; c < w.cw * w.ch; c++) {
+    const x0 = (c % w.cw) * 16, y0 = ((c / w.cw) | 0) * 16;
+    let any = false;
+    for (let y = y0; y < Math.min(w.h, y0 + 16) && !any; y++) {
+      for (let x = x0; x < Math.min(w.w, x0 + 16); x++) if (w.type[y * w.w + x]) { any = true; break; }
+    }
+    if (!any) continue;
+    full++;
+    if (!w.chunkAwake[c]) asleep++;
+  }
+  assert.ok(asleep >= full * 0.9, `${asleep} of ${full} chunks asleep`);
+  assert.equal(w.air.still, true, 'and the air rests');
+  assert.ok(on.ms * 3 < off.ms, `${on.ms.toFixed(2)} ms a step asleep, ${off.ms.toFixed(2)} awake`);
 });
