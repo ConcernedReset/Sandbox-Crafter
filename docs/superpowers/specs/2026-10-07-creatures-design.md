@@ -90,7 +90,7 @@ kept awake. For each entity:
    swimmer with no pixel touching water, loses one pixel every 30 steps.
 4. **Death** when at least half its pixels are damaged, or when `age`
    reaches `lifespan`. There is no other death.
-5. **Healing.** A creature that took no damage for 300 steps gets one
+5. **Healing.** A creature that took no damage for 150 steps gets one
    damaged pixel back (only into an empty cell).
 6. **Think and move** (sections 2 and 3).
 
@@ -284,7 +284,7 @@ real `World`):
 - Erasing one pixel damages it; erasing half the body kills it; death
   leaves Bone and Meat; burning to death leaves Ash.
 - Heat above 60 °C damages only the hot pixels; a damaged creature heals a
-  pixel after 300 quiet steps.
+  pixel after 150 quiet steps.
 - Bird + Fire turns the whole bird into a Phoenix.
 - A fish swims and stays in water; a bird changes frames as it flies.
 - A conveyor carries a body whole; a time zone slows a creature.
