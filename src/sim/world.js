@@ -51,6 +51,8 @@ const AIR_TOUCH = 0.009;
 // fire gives, it only holds back the likes of a star, whose heat would
 // otherwise flood the whole world through the air.
 const AIR_FLUX = 100;
+// The most flying particles at once at the Low quality level (setQuality).
+const LOW_PARTICLES = 4000;
 // A wall that lets heat through conducts like metal.
 const WALL_COND = 0.9;
 const WALL_TOUCH = WALL_COND * AIR_TOUCH;
@@ -131,6 +133,7 @@ export class World {
     initMachines(this);
     initPortals(this);
     initSleep(this);
+    this.setQuality('high');
   }
 
   rand() {
@@ -452,8 +455,9 @@ export class World {
     if (this.portalCells !== 0) this.stepPortalAir();
     this.computeField();
     this.stepProjectiles();
-    this.conductHeat();
-    air.step(this.gravity);
+    // At lower quality heat and air take turns, every other step each.
+    if (this.heatSteps === 1 || (tick & 1) === 0) this.conductHeat();
+    if (this.airEvery === 1 || (tick & 1) === 1) air.step(this.gravity);
     this.stepSleep();
   }
 
@@ -1162,6 +1166,7 @@ export class World {
   conductHeat() {
     const { w, h, type, temp, wall, speed, chunkAwake, cw } = this;
     const sleepy = this.sleeping && !this.gravity.newtonian;
+    const hs = this.heatSteps; // steps' worth of heat to work out at once (setQuality)
     const zones = this.zoneCount !== 0;
     const heat = this.air.heat;
     const sides = this.voidEdges;
@@ -1192,6 +1197,7 @@ export class World {
             const kb = u === WALL ? ((wall[i + 1] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[u];
             let k = (ka < kb ? ka : kb) * CONDUCT_RATE;
             if (zones && (speed[i] | speed[i + 1]) !== 0) k = zoneRate(k, speed[i], speed[i + 1]);
+            if (hs === 2) k = k < 0.25 ? 2 * k : 0.5; // two steps' worth, as fast as can be without overshooting
             if (k > 0) { const f = (T - temp[i + 1]) * k; T -= f; temp[i + 1] += f; }
           }
         }
@@ -1202,6 +1208,7 @@ export class World {
             const kb = u === WALL ? ((wall[i + w] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[u];
             let k = (ka < kb ? ka : kb) * CONDUCT_RATE;
             if (zones && (speed[i] | speed[i + w]) !== 0) k = zoneRate(k, speed[i], speed[i + w]);
+            if (hs === 2) k = k < 0.25 ? 2 * k : 0.5;
             if (k > 0) { const f = (T - temp[i + w]) * k; T -= f; temp[i + w] += f; }
           }
         }
@@ -1218,10 +1225,10 @@ export class World {
             // Without convection the room's air soaks up heat; the air
             // shut in a sealed box takes none (with no box, every side is the room).
             const room = this.air.regions === OUTSIDE ? open : this.roomSides(x, y);
-            if (room) T += (AMBIENT - T) * AIR_COOL[t] * room;
+            if (room) T += (AMBIENT - T) * AIR_COOL[t] * room * hs;
           } else {
             // Convection: heat goes into the air of each empty cell beside it.
-            const r = t === WALL ? WALL_TOUCH : TOUCH[t];
+            const r = (t === WALL ? WALL_TOUCH : TOUCH[t]) * hs;
             if (x < w - 1 && type[i + 1] === 0) T = this.warmAir(x + 1, y, T, r);
             if (y < h - 1 && type[i + w] === 0) T = this.warmAir(x, y + 1, T, r);
             if (x > 0 && type[i - 1] === 0) T = this.warmAir(x - 1, y, T, r);
@@ -1321,6 +1328,17 @@ export class World {
   }
 
   // Convection on or off. Off, the air forgets any heat it held.
+  // How hard the simulation works (the Performance setting): 'high' as it
+  // is; 'medium' works out heat every other step, at the rate two steps
+  // would, and steps the air every other step; 'low' does the same and
+  // launches at most LOW_PARTICLES flying particles at once.
+  setQuality(level) {
+    this.quality = level;
+    this.heatSteps = level === 'high' ? 1 : 2;
+    this.airEvery = level === 'high' ? 1 : 2;
+    this.pCap = level === 'low' ? LOW_PARTICLES : this.px.length;
+  }
+
   setConvection(on) {
     this.air.heat = !!on;
     if (!on) this.air.coolAll();
