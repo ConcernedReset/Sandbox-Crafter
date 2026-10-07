@@ -127,9 +127,13 @@ test('the starting scene settles until nearly everything sleeps, and steps much 
     w.setConvection(true);
     w.sleeping = sleeping;
     for (let f = 0; f < 300; f++) w.step();
+    // Count the particle updates, and time the steps.
+    let updates = 0;
+    const update = w.update.bind(w);
+    w.update = (...a) => { updates++; return update(...a); };
     const t0 = performance.now();
     for (let f = 0; f < 200; f++) w.step();
-    return { ms: (performance.now() - t0) / 200, w };
+    return { ms: (performance.now() - t0) / 200, updates, w };
   };
   const on = time(true), off = time(false);
   const w = on.w;
@@ -146,5 +150,7 @@ test('the starting scene settles until nearly everything sleeps, and steps much 
   }
   assert.ok(asleep >= full * 0.9, `${asleep} of ${full} chunks asleep`);
   assert.equal(w.air.still, true, 'and the air rests');
-  assert.ok(on.ms * 3 < off.ms, `${on.ms.toFixed(2)} ms a step asleep, ${off.ms.toFixed(2)} awake`);
+  assert.ok(on.updates * 10 < off.updates, `${on.updates} particle updates asleep, ${off.updates} awake`);
+  // Timings are noisy while other tests run alongside; about 3× when alone.
+  assert.ok(on.ms * 1.5 < off.ms, `${on.ms.toFixed(2)} ms a step asleep, ${off.ms.toFixed(2)} awake`);
 });

@@ -27,6 +27,7 @@ export function initSleep(world) {
   world.chunkAwake = new Uint8Array(cw * ch).fill(1);
   world.chunkQuiet = new Uint8Array(cw * ch); // steps in a row with no change
   world.chunkWake = new Uint8Array(cw * ch); // woken this step
+  world.chunkChanged = new Uint8Array(cw * ch); // changed this step
   world.snapType = world.type.slice();
   world.snapTemp = world.temp.slice();
   world.sleeping = true; // tests can turn sleeping off to compare
@@ -51,22 +52,27 @@ export const Sleep = {
       if (!chunkAwake.every((v) => v === 1)) this.wakeAll();
       return;
     }
+    // Which chunks changed? A chunk stops being checked at its first
+    // difference; then the whole snapshot is copied in one go.
+    const changed = this.chunkChanged;
+    changed.fill(0);
+    for (let y = 0; y < h; y++) {
+      const rowC = (y >> SHIFT) * cw, row = y * w;
+      for (let cx = 0; cx < cw; cx++) {
+        const c = rowC + cx;
+        if (changed[c] !== 0) continue;
+        for (let i = row + (cx << SHIFT), e = row + Math.min(w, (cx + 1) << SHIFT); i < e; i++) {
+          if (type[i] !== snapType[i] || temp[i] !== snapTemp[i]) { changed[c] = 1; break; }
+        }
+      }
+    }
+    snapType.set(type);
+    snapTemp.set(temp);
+    // Wake those, and the chunks round them.
     chunkWake.fill(0);
     for (let cy = 0; cy < ch; cy++) {
-      const y0 = cy << SHIFT, y1 = Math.min(h, y0 + CHUNK);
       for (let cx = 0; cx < cw; cx++) {
-        const x0 = cx << SHIFT, x1 = Math.min(w, x0 + CHUNK);
-        let changed = false;
-        for (let y = y0; y < y1; y++) {
-          for (let i = y * w + x0, e = y * w + x1; i < e; i++) {
-            if (type[i] !== snapType[i] || temp[i] !== snapTemp[i]) {
-              changed = true;
-              snapType[i] = type[i];
-              snapTemp[i] = temp[i];
-            }
-          }
-        }
-        if (!changed) continue;
+        if (changed[cy * cw + cx] === 0) continue;
         for (let dy = -1; dy <= 1; dy++) {
           const ny = cy + dy;
           if (ny < 0 || ny >= ch) continue;
