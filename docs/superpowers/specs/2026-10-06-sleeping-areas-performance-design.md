@@ -111,8 +111,7 @@ settings. Default Auto.
 
 **Auto** (the default) picks the level itself and starts at High:
 
-- It keeps a running average of the time a drawn frame spends on
-  simulation steps plus drawing.
+- It times each drawn frame: the simulation steps plus drawing.
 - If that is over the frame's budget (1000 / 60 ms) for AUTO_DOWN (60)
   frames in a row, it drops a level (High → Medium → Low).
 - If it is under half the budget for AUTO_UP (180) frames in a row, it goes
