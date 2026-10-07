@@ -417,7 +417,10 @@ function frame(now) {
     acc -= STEP_MS;
     steps++;
   }
-  if (steps === maxSteps) acc = 0; // too slow to keep up; drop the backlog instead of spiralling
+  // Still behind after the most steps a frame may take: drop the backlog
+  // instead of spiralling. (Only then: a leftover under one step is kept, or
+  // at one step a frame every other frame would lose its step.)
+  if (acc >= STEP_MS) acc = 0;
   collectDiscoveries();
 
   input.relocate(); // the view may have moved under a still pointer

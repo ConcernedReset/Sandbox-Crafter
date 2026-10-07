@@ -1164,7 +1164,7 @@ export class World {
   // ---- heat -----------------------------------------------------------------
 
   conductHeat() {
-    const { w, h, type, temp, wall, speed, chunkAwake, cw } = this;
+    const { w, h, type, temp, wall, speed, chunkFull, cw } = this;
     const sleepy = this.sleeping && !this.gravity.newtonian;
     const hs = this.heatSteps; // steps' worth of heat to work out at once (setQuality)
     const zones = this.zoneCount !== 0;
@@ -1178,9 +1178,9 @@ export class World {
         const t = type[i];
         if (t === 0) continue;
         count++;
-        // A sleeping area's heat isn't worked out, except along its right and
-        // bottom edges, which trade heat with the chunks beside and below.
-        if (sleepy && chunkAwake[(y >> 4) * cw + (x >> 4)] === 0 && (x & 15) !== 15 && (y & 15) !== 15) continue;
+        // A fully asleep area's heat isn't worked out, except along its right
+        // and bottom edges, which trade heat with the chunks beside and below.
+        if (sleepy && chunkFull[(y >> 4) * cw + (x >> 4)] === 1 && (x & 15) !== 15 && (y & 15) !== 15) continue;
         // Wall is a perfect insulator, unless it lets heat through: then it
         // conducts like metal.
         let ka = COND[t];

@@ -826,6 +826,15 @@ kbd {
 }
 .tree-card .reveal:hover { text-decoration: underline; }
 
+/* The side panel is a fixed height on wide screens, so its scrolling body can
+   be laid out on its own: changing the brush (or anything else in it) then
+   doesn't make the browser lay out the whole palette again, which cost
+   several milliseconds a change. */
+@media (min-width: 981px) {
+  .panel { height: calc(100dvh - 24px); }
+  .panel > .panel-body { flex: 1 1 0; contain: strict; }
+}
+
 /* ---- small screens ------------------------------------------------------ */
 
 @media (max-width: 980px) {

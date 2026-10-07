@@ -99,10 +99,15 @@ test('a Star scorches the air around it without cooking the whole world', () => 
   fillRect(w, 0, 140, 239, 159, ID.SAND);
   fillRect(w, 116, 56, 124, 64, ID.STAR);
   const sand = countOf(w, ID.SAND);
-  run(w, 600);
+  // The hot air circulates round the world in rolls, so the air far off
+  // swings warmer and cooler: compare averages over the second half.
   const a = w.air;
-  const near = a.t[a.at(120, 70)], far = a.t[a.at(20, 20)];
-  assert.ok(near > 300, `air just under the Star ${near.toFixed(0)} °C`);
-  assert.ok(far < 300, `air far off ${far.toFixed(0)} °C`);
+  let near = 0, far = 0, n = 0;
+  run(w, 600, (f) => { if (f >= 300) { near += a.t[a.at(120, 70)]; far += a.t[a.at(20, 20)]; n++; } });
+  near /= n;
+  far /= n;
+  assert.ok(near > 900, `air just under the Star ${near.toFixed(0)} °C`);
+  assert.ok(far < near / 2, `air far off ${far.toFixed(0)} °C, under the Star ${near.toFixed(0)} °C`);
+  assert.ok(w.temp[150 * 240 + 20] < 50, `the ground far off is at ${w.temp[150 * 240 + 20].toFixed(0)} °C`);
   assert.ok(countOf(w, ID.SAND) > sand * 0.95, `${countOf(w, ID.SAND)} of ${sand} sand unmelted`);
 });

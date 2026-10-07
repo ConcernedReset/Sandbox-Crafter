@@ -131,17 +131,22 @@ else; `test/build.test.js` checks the bundle runs.
   read so the turn between them is at most 90°. Flying particles go through
   as they enter (`portalProjectile`); `stepPortalAir` links the air on
   each side of one end to the matching side of the other.
-- **Sleeping areas** (`sleep.js`): 16 × 16 chunks. The step skips `update`
-  for sleeping chunks and `conductHeat` skips their cells except the right
-  column and bottom row (which carry heat across). `stepSleep`, after each
-  step, compares every chunk with a snapshot (element and temperature,
-  stopping at the first difference, then copying the snapshot whole): any
-  change wakes the chunk and its 8 neighbours. A chunk falls asleep after
-  `SLEEP_AFTER` quiet steps if `restless` finds nothing that can change
-  on its own and the air over and around it (`airStirs`, one block of
-  margin, since a solid feels its neighbours' pressure) is still. **Anything
-  new that changes on its own must be added to `RESTLESS` or `restless`**,
-  or it will stall while its area sleeps. The setters that change the rules
+- **Sleeping areas** (`sleep.js`): 16 × 16 chunks, awake, half asleep
+  (`chunkAwake` 0: no `update`) or fully asleep (`chunkFull` 1: no
+  `conductHeat` either, except its right column and bottom row, which carry
+  heat across). `stepSleep` compares every chunk with a snapshot after each
+  step: an element change (`chunkMoved`) wakes the chunk and its 8
+  neighbours; a temperature change (`chunkWarmed`) or stirring air
+  (`airStirs`, one block of margin, since a solid feels its neighbours'
+  pressure) brings a fully asleep chunk to half asleep. Awake → half after
+  `SLEEP_AFTER` steps with nothing moving when `responsive` finds nothing
+  that would answer the current heat and air; half → awake when it does
+  (both checked every `CHECK_EVERY` steps, staggered); half → full after
+  `SLEEP_AFTER` steps without temperature changes, with still air, when
+  `restless` (the same at room temperature) finds nothing. **Anything new
+  that changes on its own, or answers heat or air, must be added to
+  `RESTLESS`, `responsive` and `restless`**, or it will stall while its
+  area sleeps. The setters that change the rules
   (gravity, convection, edges, portals, time zones) call `wakeAll`;
   nothing sleeps under Newtonian gravity. `world.sleeping = false` turns it
   off (tests compare with it). The air skips its whole step while

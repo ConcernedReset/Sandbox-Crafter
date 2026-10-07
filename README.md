@@ -165,7 +165,8 @@ back to system ones; progress is saved per file location.)
   back after about three seconds of quick frames; the menu shows where it
   is ("Auto (Medium)"). Gas and Glow are your own choice at every level.
 - **Show sleeping areas** (in the `⋯` menu) outlines the parts of the world
-  that are asleep (see below).
+  that are asleep (see below): blue where fully asleep, green where half
+  asleep.
 
 There are eight ways to combine things (the tree calls contact Mix, or Spark
 when it needs a spark, and particle hits Bombard or Collide):
@@ -234,20 +235,28 @@ through, what a fire is burning, what a clone copies).
 
 Each frame (60 per second):
 
-0. **Sleeping areas.** The world is divided into 16 × 16 chunks. A chunk
-   where nothing has changed for 8 steps, and where nothing can change on
-   its own, falls asleep and isn't simulated: no gas, fire, plants,
-   creatures, machines or anything radioactive in it, nothing moving,
-   nothing off room temperature (within 0.1 °C counts as room temperature),
-   nothing past its melting, boiling or ignition point, no pair of
-   neighbours that can react, no portal or time zone, and still air over
-   and around it. After every step each chunk is compared with how it was:
-   any change (a tool, a blast, heat or a grain from next door) wakes it and
-   the chunks round it, as does air that stirs. The air itself rests while
+0. **Sleeping areas.** The world is divided into 16 × 16 chunks, each
+   awake, half asleep or fully asleep. A chunk where nothing has moved for
+   8 steps goes **half asleep** when nothing in it would answer the heat
+   and air it has: its particles are frozen, while heat still flows through
+   it and the air over it moves. That's most of the world while something
+   is going on elsewhere: empty sky, settled ground warming slowly, sand in
+   a breeze too light to shift it. It wakes when something in it would
+   answer: no gas, fire, plants, creatures, machines or anything
+   radioactive; nothing past its melting, boiling or ignition point; no
+   pair of neighbours that can react; no powder or liquid in a wind strong
+   enough to push it (about 0.4 for sand); no solid under pressure that
+   could tear it; no portal or time zone. A half-asleep chunk whose
+   temperatures haven't changed for 8 steps, with still air round it and
+   everything at room temperature (within 0.1 °C counts), goes **fully
+   asleep**: its heat isn't worked out either. After every step each chunk
+   is compared with how it was: anything moving or changing element (a
+   tool, a blast, a grain from next door) wakes it and the chunks round it;
+   heat or air reaching a fully asleep chunk brings it to half asleep. The air itself rests while
    it's still everywhere (pressure and wind under 0.01, air within 0.1 °C of
    room temperature). None of this changes how anything behaves; a settled
-   scene just costs almost nothing (the starting scene steps over three
-   times faster once it settles).
+   scene just costs almost nothing (the starting scene steps three times
+   faster once it settles, and with a fire burning in it about 1.6 times).
 
 1. **Particles update** bottom-to-top, alternating left/right to avoid drift.
    ("Bottom" is wherever gravity points: the scan starts from that end.)

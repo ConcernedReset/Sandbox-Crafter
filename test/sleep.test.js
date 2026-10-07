@@ -76,12 +76,42 @@ test('heat reaches a sleeping area from next door, as fast as when awake', () =>
   assert.ok(asleep > 50 && Math.abs(asleep - awake) < awake * 0.02, `${asleep.toFixed(1)} with sleeping, ${awake.toFixed(1)} without`);
 });
 
-test('a puff of air wakes the area under it', () => {
+test('a puff of air wakes the sand under it; the empty air round it only half sleeps', () => {
   const w = tray();
   run(w, 100);
-  w.pressurize(10, 40, 4, 20);
+  assert.equal(w.fullyAsleepAt(10, 40), true, 'still empty air sleeps fully');
+  w.pressurize(10, 44, 4, 20);
   run(w, 2);
-  assert.equal(w.asleepAt(10, 44), false);
+  assert.equal(w.asleepAt(10, 50), false, 'the sand wakes');
+  assert.equal(w.asleepAt(10, 20), true, 'the empty air above stays frozen');
+  assert.equal(w.fullyAsleepAt(10, 20), false, 'but only half asleep while the air moves');
+});
+
+test('a warming floor half sleeps: heat flows through it while its particles rest', () => {
+  const w = makeWorld(64, 32);
+  fillRect(w, 0, 20, 63, 31, ID.METAL);
+  run(w, 50);
+  assert.equal(w.fullyAsleepAt(40, 25), true);
+  run(w, 100, () => { for (let y = 20; y < 32; y++) w.temp[y * 64] = 600; });
+  assert.ok(w.temp[25 * 64 + 20] > 30, 'the heat got in');
+  assert.equal(w.asleepAt(20, 25), true, 'with the stone frozen');
+  assert.equal(w.fullyAsleepAt(20, 25), false, 'half asleep');
+});
+
+test('a half-asleep block wakes when the heat reaching it melts it', () => {
+  const melted = (sleeping) => {
+    const w = makeWorld(64, 32, 5);
+    w.sleeping = sleeping;
+    fillRect(w, 0, 31, 63, 31, ID.WALL);
+    fillRect(w, 0, 20, 30, 30, ID.METAL);
+    fillRect(w, 31, 20, 45, 30, ID.ICE);
+    run(w, 300, () => { for (let y = 20; y < 31; y++) w.temp[y * 64] = 900; });
+    let water = 0;
+    for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.WATER) water++;
+    return water;
+  };
+  const asleep = melted(true), awake = melted(false);
+  assert.ok(asleep > 0 && asleep > awake * 0.7, `${asleep} water with sleeping, ${awake} without`);
 });
 
 test('nothing sleeps with Newtonian gravity on', () => {
@@ -115,7 +145,7 @@ test('radioactive elements and plants keep their areas awake', () => {
   fillRect(w, 5, 35, 8, 38, ID.URANIUM);
   fillRect(w, 40, 36, 60, 38, ID.DIRT);
   w.spawn(35 * 64 + 50, ID.SEED);
-  run(w, 200);
+  run(w, 100); // the tree is still growing (it's finished, and may sleep, by about 160)
   assert.equal(w.asleepAt(6, 36), false, 'uranium');
   assert.equal(w.asleepAt(50, 36), false, 'a seed in soil');
 });
