@@ -201,6 +201,8 @@ kbd {
 }
 .menu > button:hover, .menu-toggle:hover { background: var(--panel-2); }
 .menu-toggle input { accent-color: var(--brass); margin: 0; }
+.menu-select { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; font-size: 13px; }
+.menu-select select { font: inherit; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
 .menu .danger { color: var(--danger); }
 .menu-confirm { padding: 6px 10px 8px; font-size: 13px; }
 .menu-confirm p { margin: 0 0 8px; }
@@ -917,6 +919,15 @@ kbd {
           <button type="button" id="menu-scene">Load the starting scene</button>
           <label class="menu-toggle"><input type="checkbox" id="menu-freeplay"> Free play: unlock every element</label>
           <label class="menu-toggle" title="No heat, cool, wind, pressure or vacuum tools. The recipe tree shows what to make next, not what you've found."><input type="checkbox" id="menu-hard"> Hard mode: fewer tools, a vaguer tree</label>
+          <label class="menu-select" title="Auto lowers the quality when the game can't keep up, and raises it again when it can. Medium works out heat and air every other step; Low also runs in slow motion rather than stuttering, with fewer flying particles.">Performance
+            <select id="menu-perf">
+              <option value="auto">Auto</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+          <label class="menu-toggle" title="Outline the parts of the world that are asleep: nothing is changing there, so they aren't simulated until something reaches them."><input type="checkbox" id="menu-sleep"> Show sleeping areas</label>
           <button type="button" id="menu-reset" class="danger">Reset discoveries…</button>
           <div class="menu-confirm" id="menu-confirm" hidden>
             <p>Forget every element you've discovered?</p>
@@ -1183,6 +1194,11 @@ const ADVECT = 0.3; // the share of each face's flow traced back along the flow
 const ADVECT_MAX = 3; // how many blocks back, at most
 const EDGE_DRAG = 0.9; // the share of the flow through the map's edge kept a frame
 const MAX_PRESSURE = 256;
+// Air this close to rest (pressure and wind within AIR_STILL, air within
+// HEAT_STILL degrees of room temperature) is at rest: it's set to exactly
+// still and not stepped until something stirs it (see settle).
+const AIR_STILL = 0.01;
+const HEAT_STILL = 0.1;
 // The Powder Toy's blur kernel, exp(-2 r²) normalised: the block itself,
 // its four sides and its four corners.
 const K_SUM = 1 + 4 * Math.exp(-2) + 4 * Math.exp(-4);
@@ -1287,6 +1303,7 @@ class Air {
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
     this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature the pressure has caught up with
     this.heat = false;
+    this.still = false; // the last step found the grid at rest (settle)
     this.voidSides = 0; // which edges are a void (see SPONGE)
     this.loopX = false; // which pairs of edges are joined (see setLoops)
     this.loopY = false;
@@ -1454,10 +1471,36 @@ class Air {
     }
   }
 
+  // Is the whole grid at rest? Then make it exactly still and say so, so
+  // the step can be skipped. Cheap: one pass over the grid.
+  settle() {
+    const { p, vx, vy, t } = this;
+    const n = p.length;
+    for (let i = 0; i < n; i++) {
+      if (p[i] > AIR_STILL || p[i] < -AIR_STILL) return (this.still = false);
+      if (vx[i] > AIR_STILL || vx[i] < -AIR_STILL || vy[i] > AIR_STILL || vy[i] < -AIR_STILL) return (this.still = false);
+    }
+    if (this.heat) {
+      for (let i = 0; i < n; i++) {
+        const d = t[i] - AMBIENT;
+        if (d > HEAT_STILL || d < -HEAT_STILL) return (this.still = false);
+      }
+    }
+    if (!this.still) {
+      p.fill(0);
+      vx.fill(0);
+      vy.fill(0);
+      t.fill(AMBIENT);
+      this.tPressed.fill(AMBIENT);
+    }
+    return (this.still = true);
+  }
+
   // `gravity` (gravity.js) is only read with convection on.
   step(gravity) {
     if (!this.labelled) this.label();
     this.labelled = false;
+    if (this.settle()) return; // nothing to move
     const { W, H, p, vx, vy, blocked, region } = this;
     const loops = this.loopX || this.loopY;
     if (loops) this.wrapRing();
@@ -1693,7 +1736,7 @@ class Air {
   }
 }
 
-return { CELL, OUTSIDE, AIR_SHARE, EXPAND, BOIL_LOWEST, PHASE_HIGHEST, thermal, Air };
+return { CELL, OUTSIDE, AIR_SHARE, EXPAND, AIR_STILL, HEAT_STILL, BOIL_LOWEST, PHASE_HIGHEST, thermal, Air };
 })();
 
 __modules["src/sim/elements-expansion.js"] = (() => {
@@ -8099,6 +8142,7 @@ const TimeZones = {
       speed[i] = code;
     });
     this.findFastBox();
+    this.wakeAll(); // what's in the area now runs at another speed
   },
 
   // The box round every fast cell, so the extra passes only visit that.
@@ -9743,6 +9787,7 @@ const Portals = {
     }
     e.cells.forEach((i, pos) => { portalAt[i] = ((slot + 1) << 17) | (end << 16) | pos; });
     this.portalCells += e.cells.length;
+    this.wakeAll(); // anything near either end may go through now
     return { slot, end };
   },
 
@@ -9757,6 +9802,7 @@ const Portals = {
       this.portalCells -= e.cells.length;
     }
     this.portals[slot] = null;
+    this.wakeAll();
     return true;
   },
 
@@ -9880,6 +9926,171 @@ const Portals = {
 return { MAX_PORTALS, PORTAL_SHARE, portalHues, initPortals, Portals };
 })();
 
+__modules["src/sim/sleep.js"] = (() => {
+// Sleeping areas. The world is divided into CHUNK × CHUNK chunks; a chunk
+// where nothing has changed for SLEEP_AFTER steps, and where nothing can
+// change on its own (see restless), falls asleep: its particles aren't
+// updated and its heat isn't worked out (world.js). After every step each
+// chunk is compared with how it was after the step before: any change, from
+// whatever cause (a tool, a blast, heat or a particle from next door), wakes
+// it and the chunks round it. So does air that isn't still over it.
+// Mixed into World.prototype; initSleep sets up the storage.
+
+const { DEFS, NUM, REACT, State, AMBIENT } = __modules["src/sim/elements.js"];
+const { AIR_STILL, HEAT_STILL } = __modules["src/sim/air.js"];
+
+const CHUNK = 16;
+const SLEEP_AFTER = 8;
+const SHIFT = 4; // log2(CHUNK)
+const { GAS, ENERGY, LIQUID } = State;
+
+// Elements that can change on their own, wherever they are.
+const RESTLESS = Uint8Array.from(DEFS, (d) => (d.id !== 0 && (
+  d.state === GAS || (d.state === ENERGY && !d.fixed) || d.behavior !== null || d.active
+  || d.holdTemp || d.machine !== null) ? 1 : 0));
+
+function initSleep(world) {
+  const cw = Math.ceil(world.w / CHUNK), ch = Math.ceil(world.h / CHUNK);
+  world.cw = cw;
+  world.ch = ch;
+  world.chunkAwake = new Uint8Array(cw * ch).fill(1);
+  world.chunkQuiet = new Uint8Array(cw * ch); // steps in a row with no change
+  world.chunkWake = new Uint8Array(cw * ch); // woken this step
+  world.chunkChanged = new Uint8Array(cw * ch); // changed this step
+  world.snapType = world.type.slice();
+  world.snapTemp = world.temp.slice();
+  world.sleeping = true; // tests can turn sleeping off to compare
+}
+
+const Sleep = {
+  // Is (x, y) in a sleeping chunk?
+  asleepAt(x, y) {
+    return this.chunkAwake[(y >> SHIFT) * this.cw + (x >> SHIFT)] === 0;
+  },
+
+  wakeAll() {
+    this.chunkAwake.fill(1);
+    this.chunkQuiet.fill(0);
+  },
+
+  // After a step: wake what changed (and the chunks round it), and put to
+  // sleep what has been quiet long enough with nothing restless in it.
+  stepSleep() {
+    const { cw, ch, w, h, type, temp, snapType, snapTemp, chunkAwake, chunkQuiet, chunkWake } = this;
+    if (!this.sleeping || this.gravity.newtonian) {
+      if (!chunkAwake.every((v) => v === 1)) this.wakeAll();
+      return;
+    }
+    // Which chunks changed? A chunk stops being checked at its first
+    // difference; then the whole snapshot is copied in one go.
+    const changed = this.chunkChanged;
+    changed.fill(0);
+    for (let y = 0; y < h; y++) {
+      const rowC = (y >> SHIFT) * cw, row = y * w;
+      for (let cx = 0; cx < cw; cx++) {
+        const c = rowC + cx;
+        if (changed[c] !== 0) continue;
+        for (let i = row + (cx << SHIFT), e = row + Math.min(w, (cx + 1) << SHIFT); i < e; i++) {
+          if (type[i] !== snapType[i] || temp[i] !== snapTemp[i]) { changed[c] = 1; break; }
+        }
+      }
+    }
+    snapType.set(type);
+    snapTemp.set(temp);
+    // Wake those, and the chunks round them.
+    chunkWake.fill(0);
+    for (let cy = 0; cy < ch; cy++) {
+      for (let cx = 0; cx < cw; cx++) {
+        if (changed[cy * cw + cx] === 0) continue;
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = cy + dy;
+          if (ny < 0 || ny >= ch) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = cx + dx;
+            if (nx >= 0 && nx < cw) chunkWake[ny * cw + nx] = 1;
+          }
+        }
+      }
+    }
+    const air = this.air;
+    for (let c = 0; c < cw * ch; c++) {
+      if (chunkWake[c] || (!chunkAwake[c] && !air.still && this.airStirs(c))) {
+        chunkAwake[c] = 1;
+        chunkQuiet[c] = 0;
+      } else if (chunkAwake[c]) {
+        if (chunkQuiet[c] < SLEEP_AFTER) chunkQuiet[c]++;
+        // Not while the air over it is stirring: pressure tears, wind blows.
+        else if (!this.restless(c) && (air.still || !this.airStirs(c))) chunkAwake[c] = 0;
+      }
+    }
+  },
+
+  // Is the air over chunk c, or just beside it, stirring (pressure, wind,
+  // or warm or cold air)? Beside it too: a solid feels the pressure in the
+  // blocks next to its own (World.pressureOn), so a thick shell whose own
+  // blocks are sealed still tears from the air against it.
+  airStirs(c) {
+    const air = this.air;
+    const { p, vx, vy, t } = air;
+    const cx = c % this.cw, cy = (c / this.cw) | 0;
+    const bx0 = (cx << SHIFT) >> 2, by0 = (cy << SHIFT) >> 2; // air blocks are 4 × 4 cells
+    const bx1 = Math.min(air.cols, bx0 + CHUNK / 4 + 1), by1 = Math.min(air.rows, by0 + CHUNK / 4 + 1);
+    for (let by = Math.max(-1, by0 - 1); by < by1; by++) {
+      for (let bx = Math.max(-1, bx0 - 1); bx < bx1; bx++) {
+        const a = (by + 1) * air.W + bx + 1;
+        if (Math.abs(p[a]) > AIR_STILL || Math.abs(vx[a]) > AIR_STILL || Math.abs(vy[a]) > AIR_STILL) return true;
+        if (air.heat && Math.abs(t[a] - AMBIENT) > HEAT_STILL) return true;
+      }
+    }
+    return false;
+  },
+
+  // Can anything in chunk c change on its own? Temperatures within
+  // HEAT_STILL of room temperature are set to exactly room temperature
+  // (and the snapshot with them, so that isn't a change).
+  restless(c) {
+    const { w, h, type, temp, life, loose, vx, vy, snapTemp } = this;
+    const cx = c % this.cw, cy = (c / this.cw) | 0;
+    const x0 = cx << SHIFT, y0 = cy << SHIFT;
+    const x1 = Math.min(w, x0 + CHUNK), y1 = Math.min(h, y0 + CHUNK);
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const i = y * w + x;
+        const t = type[i];
+        if (t === 0) continue;
+        if (RESTLESS[t] || life[i] > 0 || loose[i]) return true;
+        const d = DEFS[t];
+        // A settled liquid keeps a small sideways velocity (the way it was
+        // last flowing); that isn't movement.
+        if (d.state !== LIQUID && (Math.abs(vx[i]) >= 0.01 || Math.abs(vy[i]) >= 0.01)) return true;
+        const T = temp[i];
+        if (T !== AMBIENT) {
+          if (Math.abs(T - AMBIENT) > HEAT_STILL) return true;
+          temp[i] = AMBIENT;
+          snapTemp[i] = AMBIENT;
+        }
+        if (d.high !== null && AMBIENT >= d.high.temp) return true;
+        if (d.low !== null && !d.low.restore && AMBIENT <= d.low.temp) return true;
+        if (d.burn !== null && AMBIENT >= d.ignite) return true;
+        if (this.portalCells !== 0 && this.portalAt[i] !== 0) return true;
+        if (this.zoneCount !== 0 && this.speed[i] !== 0) return true;
+        if (d.reactive) {
+          for (let k = 0; k < 4; k++) {
+            const j = this.cellAt(x + (k === 0 ? 1 : k === 1 ? -1 : 0), y + (k === 2 ? 1 : k === 3 ? -1 : 0));
+            if (j < 0 || type[j] === 0) continue;
+            const r = REACT[t * NUM + type[j]];
+            if (r !== null && (AMBIENT >= r.minTemp || temp[j] >= r.minTemp)) return true;
+          }
+        }
+      }
+    }
+    return false;
+  },
+};
+
+return { CHUNK, SLEEP_AFTER, initSleep, Sleep };
+})();
+
 __modules["src/sim/world.js"] = (() => {
 // The particle simulation. The world is a grid where every cell holds at
 // most one particle; per-cell data lives in parallel typed arrays so the
@@ -9914,6 +10125,7 @@ const { Gravity, DX8, DY8 } = __modules["src/sim/gravity.js"];
 const { WALL_HERE, PASS, PASS_BIT, stops } = __modules["src/sim/walls.js"];
 const { TimeZones, SPEEDS, SLOW_EVERY } = __modules["src/sim/time.js"];
 const { Portals, initPortals } = __modules["src/sim/portals.js"];
+const { Sleep, initSleep } = __modules["src/sim/sleep.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -9929,6 +10141,8 @@ const AIR_TOUCH = 0.009;
 // fire gives, it only holds back the likes of a star, whose heat would
 // otherwise flood the whole world through the air.
 const AIR_FLUX = 100;
+// The most flying particles at once at the Low quality level (setQuality).
+const LOW_PARTICLES = 4000;
 // A wall that lets heat through conducts like metal.
 const WALL_COND = 0.9;
 const WALL_TOUCH = WALL_COND * AIR_TOUCH;
@@ -10008,6 +10222,8 @@ class World {
     initParticles(this);
     initMachines(this);
     initPortals(this);
+    initSleep(this);
+    this.setQuality('high');
   }
 
   rand() {
@@ -10227,6 +10443,7 @@ class World {
   // Settings from the Physics panel: { angle, strength, newtonian }.
   setGravity(opts) {
     this.gravity.set(opts);
+    if (this.chunkAwake) this.wakeAll(); // the rules changed: everything may move
   }
 
   // What each edge of the world is: 'solid' (the default), 'void' or
@@ -10243,6 +10460,7 @@ class World {
       | (this.loopX ? 0 : v(left, VOID_LEFT) | v(right, VOID_RIGHT));
     this.air.voidSides = this.voidEdges; // and the air lets waves and heat out there
     this.air.setLoops(this.loopX, this.loopY);
+    if (this.chunkAwake) this.wakeAll(); // the rules changed: everything may move
   }
 
   // The older form: which edges are a void, as booleans.
@@ -10276,8 +10494,9 @@ class World {
   // ---- main loop ----------------------------------------------------------
 
   step() {
-    const { w, h, type, clock, air, loose, wall, speed } = this;
+    const { w, h, type, clock, air, loose, wall, speed, chunkAwake, cw } = this;
     const tick = ++this.tick;
+    const sleepy = this.sleeping && !this.gravity.newtonian;
     const pass = ++this.pass;
     const zones = this.zoneCount !== 0;
     this.stepGravity();
@@ -10307,6 +10526,8 @@ class World {
         }
         // Metal carrying a spark is still metal as far as the air is concerned.
         if ((AIRTIGHT[t] || (t === SPARK && AIRTIGHT[this.ctype[i]])) && !loose[i]) air.solid[air.at(x, y)]++;
+        // A sleeping area's particles aren't updated (sleep.js).
+        if (sleepy && chunkAwake[(y >> 4) * cw + (x >> 4)] === 0) continue;
         if (clock[i] === pass) continue;
         clock[i] = pass;
         // A slow area's particles sit out the frames in between.
@@ -10324,8 +10545,10 @@ class World {
     if (this.portalCells !== 0) this.stepPortalAir();
     this.computeField();
     this.stepProjectiles();
-    this.conductHeat();
-    air.step(this.gravity);
+    // At lower quality heat and air take turns, every other step each.
+    if (this.heatSteps === 1 || (tick & 1) === 0) this.conductHeat();
+    if (this.airEvery === 1 || (tick & 1) === 1) air.step(this.gravity);
+    this.stepSleep();
   }
 
   // Newtonian gravity: weigh each air block and solve the pull every other
@@ -11031,7 +11254,9 @@ class World {
   // ---- heat -----------------------------------------------------------------
 
   conductHeat() {
-    const { w, h, type, temp, wall, speed } = this;
+    const { w, h, type, temp, wall, speed, chunkAwake, cw } = this;
+    const sleepy = this.sleeping && !this.gravity.newtonian;
+    const hs = this.heatSteps; // steps' worth of heat to work out at once (setQuality)
     const zones = this.zoneCount !== 0;
     const heat = this.air.heat;
     const sides = this.voidEdges;
@@ -11043,6 +11268,9 @@ class World {
         const t = type[i];
         if (t === 0) continue;
         count++;
+        // A sleeping area's heat isn't worked out, except along its right and
+        // bottom edges, which trade heat with the chunks beside and below.
+        if (sleepy && chunkAwake[(y >> 4) * cw + (x >> 4)] === 0 && (x & 15) !== 15 && (y & 15) !== 15) continue;
         // Wall is a perfect insulator, unless it lets heat through: then it
         // conducts like metal.
         let ka = COND[t];
@@ -11059,6 +11287,7 @@ class World {
             const kb = u === WALL ? ((wall[i + 1] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[u];
             let k = (ka < kb ? ka : kb) * CONDUCT_RATE;
             if (zones && (speed[i] | speed[i + 1]) !== 0) k = zoneRate(k, speed[i], speed[i + 1]);
+            if (hs === 2) k = k < 0.25 ? 2 * k : 0.5; // two steps' worth, as fast as can be without overshooting
             if (k > 0) { const f = (T - temp[i + 1]) * k; T -= f; temp[i + 1] += f; }
           }
         }
@@ -11069,6 +11298,7 @@ class World {
             const kb = u === WALL ? ((wall[i + w] & PASS.heat) !== 0 ? WALL_COND : 0) : COND[u];
             let k = (ka < kb ? ka : kb) * CONDUCT_RATE;
             if (zones && (speed[i] | speed[i + w]) !== 0) k = zoneRate(k, speed[i], speed[i + w]);
+            if (hs === 2) k = k < 0.25 ? 2 * k : 0.5;
             if (k > 0) { const f = (T - temp[i + w]) * k; T -= f; temp[i + w] += f; }
           }
         }
@@ -11085,10 +11315,10 @@ class World {
             // Without convection the room's air soaks up heat; the air
             // shut in a sealed box takes none (with no box, every side is the room).
             const room = this.air.regions === OUTSIDE ? open : this.roomSides(x, y);
-            if (room) T += (AMBIENT - T) * AIR_COOL[t] * room;
+            if (room) T += (AMBIENT - T) * AIR_COOL[t] * room * hs;
           } else {
             // Convection: heat goes into the air of each empty cell beside it.
-            const r = t === WALL ? WALL_TOUCH : TOUCH[t];
+            const r = (t === WALL ? WALL_TOUCH : TOUCH[t]) * hs;
             if (x < w - 1 && type[i + 1] === 0) T = this.warmAir(x + 1, y, T, r);
             if (y < h - 1 && type[i + w] === 0) T = this.warmAir(x, y + 1, T, r);
             if (x > 0 && type[i - 1] === 0) T = this.warmAir(x - 1, y, T, r);
@@ -11188,9 +11418,21 @@ class World {
   }
 
   // Convection on or off. Off, the air forgets any heat it held.
+  // How hard the simulation works (the Performance setting): 'high' as it
+  // is; 'medium' works out heat every other step, at the rate two steps
+  // would, and steps the air every other step; 'low' does the same and
+  // launches at most LOW_PARTICLES flying particles at once.
+  setQuality(level) {
+    this.quality = level;
+    this.heatSteps = level === 'high' ? 1 : 2;
+    this.airEvery = level === 'high' ? 1 : 2;
+    this.pCap = level === 'low' ? LOW_PARTICLES : this.px.length;
+  }
+
   setConvection(on) {
     this.air.heat = !!on;
     if (!on) this.air.coolAll();
+    if (this.chunkAwake) this.wakeAll(); // the rules changed: everything may move
   }
 
   // ---- tools (used by the game and by tests) -------------------------------
@@ -11370,7 +11612,7 @@ class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep);
 
 return { VOID_TOP, World, MIN_TEMP };
 })();
@@ -11498,6 +11740,8 @@ const zoneTint = (code) => ZONE_TINT[code];
 
 // The colour of end `end` (0 or 1) of portal pair `slot`.
 const portalRGB = (slot, end) => hsl(portalHues(slot)[end], 0.62);
+// The outline round a sleeping area (Show sleeping areas).
+const SLEEP_RGB = [120, 200, 255];
 // The lighter cells of the mesh a wall that lets things through is drawn as.
 const WALL_LIGHT = [124, 132, 148];
 
@@ -11590,6 +11834,7 @@ class Renderer {
     this.view = 'normal';
     this.gas = true; // the Gas effect (see the top of this file)
     this.glow = true; // the Glow effect
+    this.showSleep = false; // outline sleeping areas (sleep.js)
     this.frame = 0;
     this.count = 0;
     this.setWorld(world);
@@ -12138,6 +12383,17 @@ class Renderer {
           });
         });
       });
+    }
+    // Show sleeping areas: a faint outline round each sleeping chunk.
+    if (this.showSleep) {
+      const { chunkAwake, cw, ch } = world;
+      for (let c = 0; c < cw * ch; c++) {
+        if (chunkAwake[c]) continue;
+        const x0 = (c % cw) * 16, y0 = ((c / cw) | 0) * 16;
+        const x1 = Math.min(w, x0 + 16) - 1, y1 = Math.min(h, y0 + 16) - 1;
+        for (let x = x0; x <= x1; x++) { blend(y0 * w + x, SLEEP_RGB, 0.35); blend(y1 * w + x, SLEEP_RGB, 0.35); }
+        for (let y = y0 + 1; y < y1; y++) { blend(y * w + x0, SLEEP_RGB, 0.35); blend(y * w + x1, SLEEP_RGB, 0.35); }
+      }
     }
   }
 
@@ -14233,6 +14489,58 @@ function saveToolOptions(options, storage = globalThis.localStorage) {
 return { TOOL_OPTION_DEFAULTS, loadToolOptions, saveToolOptions };
 })();
 
+__modules["src/game/performance.js"] = (() => {
+// The Performance setting: Auto, High, Medium or Low (World.setQuality),
+// saved in localStorage. Auto watches how long each drawn frame takes
+// (simulation steps and drawing) and drops a level when frames run over
+// their time for AUTO_DOWN frames in a row, or climbs back when they take
+// under half of it for AUTO_UP frames in a row.
+
+const KEY = 'sandbox-crafter:performance';
+const LEVELS = ['high', 'medium', 'low'];
+const CHOICES = ['auto', ...LEVELS];
+const AUTO_DOWN = 60;
+const AUTO_UP = 180;
+
+class AutoQuality {
+  constructor() {
+    this.level = 'high';
+    this.slow = 0; // frames in a row over their time
+    this.quick = 0; // frames in a row under half of it
+  }
+
+  // A drawn frame took `ms`; `budget` is the time it has. Returns the level.
+  feed(ms, budget = 1000 / 60) {
+    if (ms > budget) { this.slow++; this.quick = 0; }
+    else if (ms < budget / 2) { this.quick++; this.slow = 0; }
+    else { this.slow = 0; this.quick = 0; }
+    const k = LEVELS.indexOf(this.level);
+    if (this.slow >= AUTO_DOWN && k < LEVELS.length - 1) { this.level = LEVELS[k + 1]; this.slow = 0; }
+    else if (this.quick >= AUTO_UP && k > 0) { this.level = LEVELS[k - 1]; this.quick = 0; }
+    return this.level;
+  }
+}
+
+function loadPerformance(storage = globalThis.localStorage) {
+  try {
+    const v = JSON.parse(storage.getItem(KEY));
+    return CHOICES.includes(v) ? v : 'auto';
+  } catch {
+    return 'auto'; // unreadable or unavailable storage
+  }
+}
+
+function savePerformance(choice, storage = globalThis.localStorage) {
+  try {
+    storage.setItem(KEY, JSON.stringify(choice));
+  } catch {
+    // Nothing to do; the choice just won't be remembered.
+  }
+}
+
+return { LEVELS, CHOICES, AUTO_DOWN, AUTO_UP, AutoQuality, loadPerformance, savePerformance };
+})();
+
 __modules["src/main.js"] = (() => {
 // Entry point: wires the simulation, renderer, input and UI together and
 // runs the game loop at a fixed 60 simulation steps per second.
@@ -14249,6 +14557,7 @@ const { UI, toolColor } = __modules["src/game/ui.js"];
 const { buildTree, focusTree } = __modules["src/game/tree.js"];
 const { PhysicsPanel } = __modules["src/game/physics-panel.js"];
 const { loadToolOptions, saveToolOptions } = __modules["src/game/tool-options.js"];
+const { AutoQuality, loadPerformance, savePerformance } = __modules["src/game/performance.js"];
 
 const WIDTH = 400;
 const HEIGHT = 240;
@@ -14536,6 +14845,25 @@ $('menu-freeplay').addEventListener('change', (e) => {
   ui.refresh();
   refreshTree();
 });
+// The Performance setting (performance.js): Auto picks the level itself.
+let perfChoice = loadPerformance();
+const auto = new AutoQuality();
+const perfSelect = $('menu-perf');
+const levelName = (l) => l[0].toUpperCase() + l.slice(1);
+function applyPerf() {
+  const level = perfChoice === 'auto' ? auto.level : perfChoice;
+  if (world.quality !== level) world.setQuality(level);
+  perfSelect.value = perfChoice;
+  perfSelect.options[0].textContent = perfChoice === 'auto' ? `Auto (${levelName(auto.level)})` : 'Auto';
+}
+perfSelect.addEventListener('change', () => {
+  perfChoice = perfSelect.value;
+  savePerformance(perfChoice);
+  applyPerf();
+});
+applyPerf();
+$('menu-sleep').addEventListener('change', (e) => { renderer.showSleep = e.target.checked; });
+
 $('menu-hard').checked = progress.hard;
 $('menu-hard').addEventListener('change', (e) => {
   progress.hard = e.target.checked;
@@ -14623,18 +14951,27 @@ function frame(now) {
   acc += Math.min(100, now - last);
   last = now;
   let steps = 0;
-  while (acc >= STEP_MS && steps < 3) {
+  const t0 = performance.now();
+  // At Low, one step a frame at most: a game that can't keep up runs in
+  // slow motion instead of stuttering.
+  const maxSteps = world.quality === 'low' ? 1 : 3;
+  while (acc >= STEP_MS && steps < maxSteps) {
     input.apply();
     if (!game.paused) world.step();
     acc -= STEP_MS;
     steps++;
   }
-  if (steps === 3) acc = 0; // too slow to keep up; drop the backlog instead of spiralling
+  if (steps === maxSteps) acc = 0; // too slow to keep up; drop the backlog instead of spiralling
   collectDiscoveries();
 
   input.relocate(); // the view may have moved under a still pointer
   updateZoomControls();
   renderer.draw(brushOutline());
+  if (perfChoice === 'auto' && !game.paused && steps > 0) {
+    const was = auto.level;
+    auto.feed(performance.now() - t0);
+    if (auto.level !== was) applyPerf();
+  }
   if (camera.zoom > 1) renderer.drawMinimap(minimap);
   treeView.draw(now);
   ui.renderHud(world, hover);

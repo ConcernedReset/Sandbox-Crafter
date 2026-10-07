@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,475 tests, all passing, in a few seconds
+npm test    # node --test: about 1,490 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -131,6 +131,27 @@ else; `test/build.test.js` checks the bundle runs.
   read so the turn between them is at most 90°. Flying particles go through
   as they enter (`portalProjectile`); `stepPortalAir` links the air on
   each side of one end to the matching side of the other.
+- **Sleeping areas** (`sleep.js`): 16 × 16 chunks. The step skips `update`
+  for sleeping chunks and `conductHeat` skips their cells except the right
+  column and bottom row (which carry heat across). `stepSleep`, after each
+  step, compares every chunk with a snapshot (element and temperature,
+  stopping at the first difference, then copying the snapshot whole): any
+  change wakes the chunk and its 8 neighbours. A chunk falls asleep after
+  `SLEEP_AFTER` quiet steps if `restless` finds nothing that can change
+  on its own and the air over and around it (`airStirs`, one block of
+  margin, since a solid feels its neighbours' pressure) is still. **Anything
+  new that changes on its own must be added to `RESTLESS` or `restless`**,
+  or it will stall while its area sleeps. The setters that change the rules
+  (gravity, convection, edges, portals, time zones) call `wakeAll`;
+  nothing sleeps under Newtonian gravity. `world.sleeping = false` turns it
+  off (tests compare with it). The air skips its whole step while
+  `Air.settle` finds it still (`AIR_STILL`, `HEAT_STILL`).
+- **Quality levels** (`World.setQuality`, `src/game/performance.js`):
+  'medium' and 'low' run `conductHeat` and `air.step` on alternate steps;
+  heat then uses `k < 0.25 ? 2k : 0.5` per exchange (twice the rate, capped
+  where a pair would overshoot), and the open-air and convection rates are
+  doubled. 'low' caps `pCap` at 4,000 and main.js runs one step per frame.
+  `AutoQuality.feed(ms)` is fed each drawn frame's time.
 - **Looping edges**: `World.setEdges` ('solid' | 'void' | 'loop'; loops pair
   up). Every step to a neighbouring cell that checks the map's edge goes
   through `World.cellAt`, which wraps across a loop; the straight-down fast

@@ -155,6 +155,17 @@ back to system ones; progress is saved per file location.)
   boxes never go away, so once you've found everything the tree still shows
   its whole shape. Picking an element in the palette doesn't move the tree
   in hard mode. Resetting discoveries keeps hard mode on.
+- **Performance** (in the `⋯` menu): Auto, High, Medium or Low, remembered
+  in your browser. High is the full simulation. Medium works out heat and
+  the air every other step (heat at twice the rate, so it spreads about as
+  fast; wind and blasts spread at half speed). Low does the same, runs a
+  game that can't keep up in slow motion instead of stuttering, and has at
+  most 4,000 flying particles at once. Auto, the default, starts at High,
+  drops a level when frames take too long for about a second, and climbs
+  back after about three seconds of quick frames; the menu shows where it
+  is ("Auto (Medium)"). Gas and Glow are your own choice at every level.
+- **Show sleeping areas** (in the `⋯` menu) outlines the parts of the world
+  that are asleep (see below).
 
 There are eight ways to combine things (the tree calls contact Mix, or Spark
 when it needs a spark, and particle hits Bombard or Collide):
@@ -222,6 +233,21 @@ type, temperature, lifetime, velocity and a "ctype" (what a spark is running
 through, what a fire is burning, what a clone copies).
 
 Each frame (60 per second):
+
+0. **Sleeping areas.** The world is divided into 16 × 16 chunks. A chunk
+   where nothing has changed for 8 steps, and where nothing can change on
+   its own, falls asleep and isn't simulated: no gas, fire, plants,
+   creatures, machines or anything radioactive in it, nothing moving,
+   nothing off room temperature (within 0.1 °C counts as room temperature),
+   nothing past its melting, boiling or ignition point, no pair of
+   neighbours that can react, no portal or time zone, and still air over
+   and around it. After every step each chunk is compared with how it was:
+   any change (a tool, a blast, heat or a grain from next door) wakes it and
+   the chunks round it, as does air that stirs. The air itself rests while
+   it's still everywhere (pressure and wind under 0.01, air within 0.1 °C of
+   room temperature). None of this changes how anything behaves; a settled
+   scene just costs almost nothing (the starting scene steps over three
+   times faster once it settles).
 
 1. **Particles update** bottom-to-top, alternating left/right to avoid drift.
    ("Bottom" is wherever gravity points: the scan starts from that end.)
@@ -735,8 +761,16 @@ light slowing in a slow area, and heat crossing a fast bar without
 overshooting. The loop tests cover sand, water, heat, a gust of pressure and
 light crossing the join, and a world looped all round keeping its pressure.
 A render test checks the Heat view keeps changing colour, however hot things
-get. The recipe tests run all 1235 production rules in the real simulation.
-About 1,475 tests in all, and they run in a few seconds.
+get. The sleep tests check settled sand and water fall asleep and wake for
+tools, a hole beneath them, heat from next door and moving air; that heat
+crosses into a sleeping area as fast as into an awake one; that slow
+reactions (water turning dirt to mud), radioactivity and plants carry on;
+that nothing sleeps under Newtonian gravity; and that the settled starting
+scene needs a tenth of the particle updates. The performance tests check
+Medium's heat keeps pace with High's without overshooting, the air steps
+every other step, Low's particle cap, Auto's levels, and the saved choice.
+The recipe tests run all 1235 production rules in the real simulation.
+About 1,490 tests in all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.
