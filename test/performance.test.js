@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
 import { makeWorld, fillRect, run } from './helpers.js';
+import { AutoQuality, AUTO_DOWN, AUTO_UP, loadPerformance, savePerformance } from '../src/game/performance.js';
 
 test('Medium conducts heat at about the same speed for half the work, and never overshoots', () => {
   // The heat that has flowed into a bar from a hot end.
@@ -47,4 +48,35 @@ test('Low launches at most 4,000 flying particles', () => {
   w.setQuality('high');
   for (let k = 0; k < 1000; k++) w.spawnProjectile(ID.PHOTON, 50.5, 50.5, 0, 0);
   assert.equal(w.pn, 5000);
+});
+
+test('Auto drops a level after a second of slow frames and climbs back after three quick seconds', () => {
+  const a = new AutoQuality();
+  assert.equal(a.level, 'high');
+  for (let f = 0; f < AUTO_DOWN - 1; f++) a.feed(25);
+  assert.equal(a.level, 'high', 'not yet');
+  a.feed(25);
+  assert.equal(a.level, 'medium');
+  for (let f = 0; f < AUTO_DOWN; f++) a.feed(25);
+  assert.equal(a.level, 'low');
+  for (let f = 0; f < AUTO_DOWN; f++) a.feed(25);
+  assert.equal(a.level, 'low', 'no lower than Low');
+  for (let f = 0; f < AUTO_UP; f++) a.feed(4);
+  assert.equal(a.level, 'medium');
+  for (let f = 0; f < AUTO_UP - 1; f++) a.feed(4);
+  a.feed(12); // in between: neither slow nor quick, starts the count again
+  for (let f = 0; f < AUTO_UP - 1; f++) a.feed(4);
+  assert.equal(a.level, 'medium');
+  a.feed(4);
+  assert.equal(a.level, 'high');
+});
+
+test('the Performance choice is saved; bad storage gives Auto', () => {
+  const store = new Map();
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  savePerformance('low', storage);
+  assert.equal(loadPerformance(storage), 'low');
+  store.set('sandbox-crafter:performance', '"fastest"');
+  assert.equal(loadPerformance(storage), 'auto');
+  assert.equal(loadPerformance(undefined), 'auto');
 });
