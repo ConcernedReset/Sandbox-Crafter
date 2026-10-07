@@ -191,6 +191,8 @@ kbd {
 }
 .menu > button:hover, .menu-toggle:hover { background: var(--panel-2); }
 .menu-toggle input { accent-color: var(--brass); margin: 0; }
+.menu-select { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; font-size: 13px; }
+.menu-select select { font: inherit; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
 .menu .danger { color: var(--danger); }
 .menu-confirm { padding: 6px 10px 8px; font-size: 13px; }
 .menu-confirm p { margin: 0 0 8px; }

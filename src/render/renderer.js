@@ -120,6 +120,8 @@ export const zoneTint = (code) => ZONE_TINT[code];
 
 // The colour of end `end` (0 or 1) of portal pair `slot`.
 export const portalRGB = (slot, end) => hsl(portalHues(slot)[end], 0.62);
+// The outline round a sleeping area (Show sleeping areas).
+const SLEEP_RGB = [120, 200, 255];
 // The lighter cells of the mesh a wall that lets things through is drawn as.
 const WALL_LIGHT = [124, 132, 148];
 
@@ -212,6 +214,7 @@ export class Renderer {
     this.view = 'normal';
     this.gas = true; // the Gas effect (see the top of this file)
     this.glow = true; // the Glow effect
+    this.showSleep = false; // outline sleeping areas (sleep.js)
     this.frame = 0;
     this.count = 0;
     this.setWorld(world);
@@ -760,6 +763,17 @@ export class Renderer {
           });
         });
       });
+    }
+    // Show sleeping areas: a faint outline round each sleeping chunk.
+    if (this.showSleep) {
+      const { chunkAwake, cw, ch } = world;
+      for (let c = 0; c < cw * ch; c++) {
+        if (chunkAwake[c]) continue;
+        const x0 = (c % cw) * 16, y0 = ((c / cw) | 0) * 16;
+        const x1 = Math.min(w, x0 + 16) - 1, y1 = Math.min(h, y0 + 16) - 1;
+        for (let x = x0; x <= x1; x++) { blend(y0 * w + x, SLEEP_RGB, 0.35); blend(y1 * w + x, SLEEP_RGB, 0.35); }
+        for (let y = y0 + 1; y < y1; y++) { blend(y * w + x0, SLEEP_RGB, 0.35); blend(y * w + x1, SLEEP_RGB, 0.35); }
+      }
     }
   }
 

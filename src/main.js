@@ -13,6 +13,7 @@ import { UI, toolColor } from './game/ui.js';
 import { buildTree, focusTree } from './game/tree.js';
 import { PhysicsPanel } from './game/physics-panel.js';
 import { loadToolOptions, saveToolOptions } from './game/tool-options.js';
+import { AutoQuality, loadPerformance, savePerformance } from './game/performance.js';
 
 const WIDTH = 400;
 const HEIGHT = 240;
@@ -300,6 +301,25 @@ $('menu-freeplay').addEventListener('change', (e) => {
   ui.refresh();
   refreshTree();
 });
+// The Performance setting (performance.js): Auto picks the level itself.
+let perfChoice = loadPerformance();
+const auto = new AutoQuality();
+const perfSelect = $('menu-perf');
+const levelName = (l) => l[0].toUpperCase() + l.slice(1);
+function applyPerf() {
+  const level = perfChoice === 'auto' ? auto.level : perfChoice;
+  if (world.quality !== level) world.setQuality(level);
+  perfSelect.value = perfChoice;
+  perfSelect.options[0].textContent = perfChoice === 'auto' ? `Auto (${levelName(auto.level)})` : 'Auto';
+}
+perfSelect.addEventListener('change', () => {
+  perfChoice = perfSelect.value;
+  savePerformance(perfChoice);
+  applyPerf();
+});
+applyPerf();
+$('menu-sleep').addEventListener('change', (e) => { renderer.showSleep = e.target.checked; });
+
 $('menu-hard').checked = progress.hard;
 $('menu-hard').addEventListener('change', (e) => {
   progress.hard = e.target.checked;
@@ -387,18 +407,27 @@ function frame(now) {
   acc += Math.min(100, now - last);
   last = now;
   let steps = 0;
-  while (acc >= STEP_MS && steps < 3) {
+  const t0 = performance.now();
+  // At Low, one step a frame at most: a game that can't keep up runs in
+  // slow motion instead of stuttering.
+  const maxSteps = world.quality === 'low' ? 1 : 3;
+  while (acc >= STEP_MS && steps < maxSteps) {
     input.apply();
     if (!game.paused) world.step();
     acc -= STEP_MS;
     steps++;
   }
-  if (steps === 3) acc = 0; // too slow to keep up; drop the backlog instead of spiralling
+  if (steps === maxSteps) acc = 0; // too slow to keep up; drop the backlog instead of spiralling
   collectDiscoveries();
 
   input.relocate(); // the view may have moved under a still pointer
   updateZoomControls();
   renderer.draw(brushOutline());
+  if (perfChoice === 'auto' && !game.paused && steps > 0) {
+    const was = auto.level;
+    auto.feed(performance.now() - t0);
+    if (auto.level !== was) applyPerf();
+  }
   if (camera.zoom > 1) renderer.drawMinimap(minimap);
   treeView.draw(now);
   ui.renderHud(world, hover);
