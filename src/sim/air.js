@@ -83,6 +83,11 @@ const ADVECT = 0.3; // the share of each face's flow traced back along the flow
 const ADVECT_MAX = 3; // how many blocks back, at most
 const EDGE_DRAG = 0.9; // the share of the flow through the map's edge kept a frame
 const MAX_PRESSURE = 256;
+// Air this close to rest (pressure and wind within AIR_STILL, air within
+// HEAT_STILL degrees of room temperature) is at rest: it's set to exactly
+// still and not stepped until something stirs it (see settle).
+export const AIR_STILL = 0.01;
+export const HEAT_STILL = 0.1;
 // The Powder Toy's blur kernel, exp(-2 r²) normalised: the block itself,
 // its four sides and its four corners.
 const K_SUM = 1 + 4 * Math.exp(-2) + 4 * Math.exp(-4);
@@ -187,6 +192,7 @@ export class Air {
     this.t = new Float32Array(n).fill(AMBIENT); // air temperature, with convection on
     this.tPressed = new Float32Array(n).fill(AMBIENT); // the temperature the pressure has caught up with
     this.heat = false;
+    this.still = false; // the last step found the grid at rest (settle)
     this.voidSides = 0; // which edges are a void (see SPONGE)
     this.loopX = false; // which pairs of edges are joined (see setLoops)
     this.loopY = false;
@@ -354,10 +360,36 @@ export class Air {
     }
   }
 
+  // Is the whole grid at rest? Then make it exactly still and say so, so
+  // the step can be skipped. Cheap: one pass over the grid.
+  settle() {
+    const { p, vx, vy, t } = this;
+    const n = p.length;
+    for (let i = 0; i < n; i++) {
+      if (p[i] > AIR_STILL || p[i] < -AIR_STILL) return (this.still = false);
+      if (vx[i] > AIR_STILL || vx[i] < -AIR_STILL || vy[i] > AIR_STILL || vy[i] < -AIR_STILL) return (this.still = false);
+    }
+    if (this.heat) {
+      for (let i = 0; i < n; i++) {
+        const d = t[i] - AMBIENT;
+        if (d > HEAT_STILL || d < -HEAT_STILL) return (this.still = false);
+      }
+    }
+    if (!this.still) {
+      p.fill(0);
+      vx.fill(0);
+      vy.fill(0);
+      t.fill(AMBIENT);
+      this.tPressed.fill(AMBIENT);
+    }
+    return (this.still = true);
+  }
+
   // `gravity` (gravity.js) is only read with convection on.
   step(gravity) {
     if (!this.labelled) this.label();
     this.labelled = false;
+    if (this.settle()) return; // nothing to move
     const { W, H, p, vx, vy, blocked, region } = this;
     const loops = this.loopX || this.loopY;
     if (loops) this.wrapRing();
