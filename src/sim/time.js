@@ -22,6 +22,7 @@ export const TimeZones = {
       speed[i] = code;
     });
     this.findFastBox();
+    this.wakeAll(); // what's in the area now runs at another speed
   },
 
   // The box round every fast cell, so the extra passes only visit that.

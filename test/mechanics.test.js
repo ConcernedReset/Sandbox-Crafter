@@ -70,8 +70,9 @@ test('microwaves heat water but pass straight through plastic', () => {
     run(w, 60, (f) => {
       if (f % 2 === 0) for (let k = 0; k < 20; k++) w.spawnProjectile(ID.MICROWAVE, 5.5, 1.5 + k, 3, 0);
     });
+    // Water heated enough boils, so count the steam it became too.
     let T = 0, n = 0;
-    for (let i = 0; i < w.type.length; i++) if (w.type[i] === t) { T += w.temp[i]; n++; }
+    for (let i = 0; i < w.type.length; i++) if (w.type[i] === t || (t === ID.WATER && w.type[i] === ID.STEAM)) { T += w.temp[i]; n++; }
     return T / n;
   };
   const water = heat(ID.WATER), plastic = heat(ID.PLASTIC);

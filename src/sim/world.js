@@ -35,6 +35,7 @@ import { Gravity, DX8, DY8 } from './gravity.js';
 import { WALL_HERE, PASS, PASS_BIT, stops } from './walls.js';
 import { TimeZones, SPEEDS, SLOW_EVERY } from './time.js';
 import { Portals, initPortals } from './portals.js';
+import { Sleep, initSleep } from './sleep.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -129,6 +130,7 @@ export class World {
     initParticles(this);
     initMachines(this);
     initPortals(this);
+    initSleep(this);
   }
 
   rand() {
@@ -348,6 +350,7 @@ export class World {
   // Settings from the Physics panel: { angle, strength, newtonian }.
   setGravity(opts) {
     this.gravity.set(opts);
+    if (this.chunkAwake) this.wakeAll(); // the rules changed: everything may move
   }
 
   // What each edge of the world is: 'solid' (the default), 'void' or
@@ -364,6 +367,7 @@ export class World {
       | (this.loopX ? 0 : v(left, VOID_LEFT) | v(right, VOID_RIGHT));
     this.air.voidSides = this.voidEdges; // and the air lets waves and heat out there
     this.air.setLoops(this.loopX, this.loopY);
+    if (this.chunkAwake) this.wakeAll(); // the rules changed: everything may move
   }
 
   // The older form: which edges are a void, as booleans.
@@ -397,8 +401,9 @@ export class World {
   // ---- main loop ----------------------------------------------------------
 
   step() {
-    const { w, h, type, clock, air, loose, wall, speed } = this;
+    const { w, h, type, clock, air, loose, wall, speed, chunkAwake, cw } = this;
     const tick = ++this.tick;
+    const sleepy = this.sleeping && !this.gravity.newtonian;
     const pass = ++this.pass;
     const zones = this.zoneCount !== 0;
     this.stepGravity();
@@ -428,6 +433,8 @@ export class World {
         }
         // Metal carrying a spark is still metal as far as the air is concerned.
         if ((AIRTIGHT[t] || (t === SPARK && AIRTIGHT[this.ctype[i]])) && !loose[i]) air.solid[air.at(x, y)]++;
+        // A sleeping area's particles aren't updated (sleep.js).
+        if (sleepy && chunkAwake[(y >> 4) * cw + (x >> 4)] === 0) continue;
         if (clock[i] === pass) continue;
         clock[i] = pass;
         // A slow area's particles sit out the frames in between.
@@ -447,6 +454,7 @@ export class World {
     this.stepProjectiles();
     this.conductHeat();
     air.step(this.gravity);
+    this.stepSleep();
   }
 
   // Newtonian gravity: weigh each air block and solve the pull every other
@@ -1152,7 +1160,8 @@ export class World {
   // ---- heat -----------------------------------------------------------------
 
   conductHeat() {
-    const { w, h, type, temp, wall, speed } = this;
+    const { w, h, type, temp, wall, speed, chunkAwake, cw } = this;
+    const sleepy = this.sleeping && !this.gravity.newtonian;
     const zones = this.zoneCount !== 0;
     const heat = this.air.heat;
     const sides = this.voidEdges;
@@ -1164,6 +1173,9 @@ export class World {
         const t = type[i];
         if (t === 0) continue;
         count++;
+        // A sleeping area's heat isn't worked out, except along its right and
+        // bottom edges, which trade heat with the chunks beside and below.
+        if (sleepy && chunkAwake[(y >> 4) * cw + (x >> 4)] === 0 && (x & 15) !== 15 && (y & 15) !== 15) continue;
         // Wall is a perfect insulator, unless it lets heat through: then it
         // conducts like metal.
         let ka = COND[t];
@@ -1312,6 +1324,7 @@ export class World {
   setConvection(on) {
     this.air.heat = !!on;
     if (!on) this.air.coolAll();
+    if (this.chunkAwake) this.wakeAll(); // the rules changed: everything may move
   }
 
   // ---- tools (used by the game and by tests) -------------------------------
@@ -1491,4 +1504,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep);

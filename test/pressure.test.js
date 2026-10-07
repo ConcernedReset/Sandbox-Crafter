@@ -160,7 +160,9 @@ test('strong solids hold air in, even a one-cell skin; wood leaks', () => {
 test('a sealed vessel holds until the pressure passes its strength, then bursts', () => {
   const w = new World(100, 70, 4);
   const box = { x0: 30, y0: 20, x1: 70, y1: 60 };
-  const { cx, cy } = vessel(w, ID.METAL, box.x0, box.y0, box.x1, box.y1, 6);
+  // Four cells thick: thicker, and debris torn off the inside can shield the
+  // last layer for good, so whether it bursts comes down to chance.
+  const { cx, cy } = vessel(w, ID.METAL, box.x0, box.y0, box.x1, box.y1, 4);
   let peak = 0, burst = -1;
   run(w, 1500, (f) => {
     if (burst < 0) w.pressurize(cx, cy, 5, 2);

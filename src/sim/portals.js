@@ -103,6 +103,7 @@ export const Portals = {
     }
     e.cells.forEach((i, pos) => { portalAt[i] = ((slot + 1) << 17) | (end << 16) | pos; });
     this.portalCells += e.cells.length;
+    this.wakeAll(); // anything near either end may go through now
     return { slot, end };
   },
 
@@ -117,6 +118,7 @@ export const Portals = {
       this.portalCells -= e.cells.length;
     }
     this.portals[slot] = null;
+    this.wakeAll();
     return true;
   },
 
