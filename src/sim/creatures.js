@@ -431,6 +431,8 @@ export const Creatures = {
         e.fallV = 0;
         break;
       }
+      // On a portal: it goes through on its next step (portalCreature).
+      if (this.portalCells !== 0 && this.portalAt[e.y * this.w + e.x] !== 0) break;
     }
     return true;
   },
@@ -456,6 +458,74 @@ export const Creatures = {
     const dn = this.downFor(e.x, e.y);
     if (dn === null || (dn.gx === e.gx && dn.gy === e.gy)) return;
     this.moveBody(e, e.x, e.y, e.frame, e.facing, dn.gx, dn.gy);
+  },
+
+  // Painting a shaped creature puts down seeds a body apart: each into
+  // empty space with no other creature's seed or body that close.
+  paintCreatures(area, t) {
+    const { w: sw, h: sh } = DEFS[t].shape;
+    area((i, x, y) => {
+      if (this.type[i] !== 0) return;
+      for (let dy = -sh; dy <= sh; dy++) {
+        for (let dx = -sw; dx <= sw; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < this.w && ny < this.h && SHAPED[this.type[ny * this.w + nx]]) return;
+        }
+      }
+      this.spawn(i, t);
+    });
+  },
+
+  // A conveyor under creature `id` moves it a cell (on its next step).
+  nudgeCreature(id, dx, dy) {
+    const e = this.creatureById[id];
+    if (e) {
+      e.pushX = dx;
+      e.pushY = dy;
+    }
+  },
+
+  // Standing or falling on a portal: the whole body goes through, if
+  // there's room for it past the other end.
+  portalCreature(e) {
+    const a = e.y * this.w + e.x;
+    const v = this.portalAt[a];
+    if (v === 0) return false;
+    const pr = this.portals[(v >> 17) - 1];
+    if (pr.b === null) return false;
+    const end = ((v >> 16) & 1) === 0 ? pr.a : pr.b;
+    // The way it's going: down while falling, else the way it faces.
+    const mx = e.fallV > 0 ? e.gx : e.gy * e.facing, my = e.fallV > 0 ? e.gy : -e.gx * e.facing;
+    const out = this.portalExit(a, mx * end.nx + my * end.ny < 0 ? -1 : 1);
+    if (out === null || out.j < 0) return false;
+    return this.moveBody(e, out.j % this.w, (out.j / this.w) | 0, e.frame, e.facing, e.gx, e.gy);
+  },
+
+  // A blast within r of (x, y): each pixel it reaches may be destroyed (the
+  // likelier the stronger and closer), and the creature is thrown away
+  // from it and upward. Walls shield.
+  blastCreatures(x, y, strength, r) {
+    const r2 = r * r;
+    for (const e of this.creatures) {
+      if (Math.abs(e.x - x) > r + 8 || Math.abs(e.y - y) > r + 8) continue;
+      let hit = false;
+      for (let p = 0; p < e.n; p++) {
+        if (e.pix[p] !== BODY) continue;
+        const c = e.cells[p], cx = c % this.w, cy = (c / this.w) | 0;
+        const d2 = (cx - x) ** 2 + (cy - y) ** 2;
+        if (d2 > r2 || this.wallBetween(x, y, cx, cy)) continue;
+        hit = true;
+        if (this.rand() < Math.min(0.9, strength / (8 * Math.max(1, Math.sqrt(d2))))) {
+          this.clearCell(c);
+          this.hurt(e, p, false);
+        }
+      }
+      if (!hit) continue;
+      const dx = e.x - x, dy = e.y - y, dist = Math.max(1, Math.hypot(dx, dy));
+      const f = (strength * 0.7) / dist;
+      e.vx += (dx / dist) * f * 0.5 - e.gx * f * 0.3;
+      e.vy += (dy / dist) * f * 0.5 - e.gy * f * 0.3;
+    }
   },
 
   // After the particle pass: every creature takes its step (more of them
@@ -485,6 +555,12 @@ export const Creatures = {
     }
     if (e.lost > 0 && this.tick - e.hurtAt >= HEAL_AFTER) this.healPixel(e);
     this.orient(e);
+    if (this.portalCells !== 0 && this.portalCreature(e)) return;
+    if (e.pushX !== 0 || e.pushY !== 0) {
+      this.moveBody(e, e.x + e.pushX, e.y + e.pushY, e.frame, e.facing, e.gx, e.gy);
+      e.pushX = 0;
+      e.pushY = 0;
+    }
     if (this.fling(e)) return;
     this.stepAnimal(e);
   },

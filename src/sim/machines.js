@@ -22,6 +22,7 @@ import { DEFS, ID, State } from './elements.js';
 import { CONDUCTOR, POWERED, DISPENSABLE, GASLIKE } from './lookups.js';
 import { MIN_TEMP } from './constants.js';
 import { CELL } from './air.js';
+import { SHAPED } from './creatures.js';
 
 const { SOLID, POWDER, GAS, ENERGY } = State;
 const { DOOR, PHOTON, VALVE, BATTERY, SPARK, FIRE, NEUTRON } = ID;
@@ -492,6 +493,7 @@ export const Machines = {
   shutDoor(c) {
     const u = this.type[c];
     if (u !== 0) {
+      if (SHAPED[u]) return false; // wait for a creature in the doorway to move
       const e = DEFS[u];
       if (e.state === SOLID && !this.loose[c] && e.behavior !== 'critter') return true;
       const m = this.freeSpaceNear(c);

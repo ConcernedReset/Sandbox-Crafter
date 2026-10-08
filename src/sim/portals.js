@@ -161,7 +161,8 @@ export const Portals = {
   crossPortal(i, x, y, t) {
     const d = DEFS[t];
     const moves = d.state === POWDER || d.state === LIQUID || d.state === GAS
-      || (d.state === ENERGY && !d.fixed) || (d.state === SOLID && (this.loose[i] || d.cat === 'creature'));
+      || (d.state === ENERGY && !d.fixed) || (d.state === SOLID && (this.loose[i] || (d.cat === 'creature' && d.shape === null)));
+    // (A shaped creature goes through whole: portalCreature, creatures.js.)
     if (!moves) return false;
     const v = this.portalAt[i];
     const p = this.portals[(v >> 17) - 1];

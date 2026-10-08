@@ -198,3 +198,68 @@ test('a fish out of water loses pixels until it dies', () => {
   assert.equal(countOf(w, ID.FISH), 0);
   assert.ok(countOf(w, ID.BONE) + countOf(w, ID.MEAT) > 0);
 });
+
+test('painting a shaped creature puts down seeds a body apart', () => {
+  const w = makeWorld(60, 40);
+  w.paint(30, 20, 10, ID.SNAIL);
+  const seeds = [];
+  for (let i = 0; i < w.type.length; i++) if (w.type[i] === ID.SNAIL) seeds.push([i % 60, (i / 60) | 0]);
+  assert.ok(seeds.length >= 4, `${seeds.length} seeds`);
+  for (const [ax, ay] of seeds) {
+    for (const [bx, by] of seeds) {
+      if (ax === bx && ay === by) continue;
+      assert.ok(Math.abs(ax - bx) > 3 || Math.abs(ay - by) > 2, 'spaced apart');
+    }
+  }
+  w.step();
+  assert.equal(w.creatures.length, seeds.length, 'every one hatched');
+});
+
+test('a conveyor carries a creature along whole', () => {
+  const ride = (powered) => {
+    const w = makeWorld(60, 20, 7);
+    fillRect(w, 10, 15, 49, 15, ID.CONVEYOR);
+    if (powered) w.spawn(15 * 60 + 9, ID.BATTERY);
+    w.spawn(14 * 60 + 25, ID.SNAIL);
+    run(w, 10);
+    const e = w.creatures[0];
+    const x0 = e.x;
+    run(w, 60);
+    assert.equal(e.lost, 0, 'in one piece');
+    return e.x - x0;
+  };
+  assert.ok(ride(true) > 10, 'carried along');
+  assert.ok(Math.abs(ride(false)) < 6, 'left be when the belt is off');
+});
+
+test('a creature falling onto a portal comes out of the other end', () => {
+  const w = makeWorld(60, 60);
+  w.addPortal(20, 50, 40, 50);
+  w.addPortal(20, 5, 40, 5);
+  w.spawn(40 * 60 + 30, ID.SNAIL);
+  let top = false;
+  run(w, 200, () => { const e = w.creatures[0]; if (e && e.y < 20) top = true; });
+  assert.ok(top, 'it came out under the ceiling');
+  assert.equal(w.creatures[0].lost, 0);
+});
+
+test('a blast hurts and throws a creature', () => {
+  const w = floored();
+  w.spawn(27 * 40 + 20, ID.SNAIL);
+  run(w, 10);
+  const e = only(w, ID.SNAIL);
+  w.blast(e.x + 1, e.y - 1, 12);
+  w.step();
+  assert.ok(w.creatureById[e.id] !== e || e.lost > 0, 'hurt (or killed)');
+});
+
+test('a creature in a quarter-speed zone ages a quarter as fast', () => {
+  const w = floored();
+  w.spawn(27 * 40 + 20, ID.SNAIL);
+  run(w, 10);
+  const e = only(w, ID.SNAIL);
+  w.paintSpeed((fn) => w.forRect(0, 0, 39, 29, fn), 1);
+  const a0 = e.age;
+  run(w, 80);
+  assert.ok(Math.abs(e.age - a0 - 20) <= 1, `aged ${e.age - a0}`);
+});

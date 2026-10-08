@@ -5,6 +5,7 @@
 import { DEFS, ID, State } from './elements.js';
 import { GASLIKE } from './lookups.js';
 import { dirIndex } from './machines.js';
+import { SHAPED } from './creatures.js';
 
 const { POWDER, LIQUID } = State;
 const { PISTON_ARM } = ID;
@@ -34,12 +35,15 @@ export const MotionMachines = {
     const tx = x - downX, ty = y - downY;
     if (!this.inBounds(tx, ty)) return;
     const j = ty * w + tx, u = type[j];
-    if (u === 0 || this.clock[j] === this.pass || !(CARRIED[u] || this.loose[j])) return;
+    if (u === 0) return;
     const across = downY !== 0; // the belt runs along x when gravity is up or down
     const f = this.powerFrom[i];
     let s = across ? Math.sign(x - (f % w)) : Math.sign(y - ((f / w) | 0));
     if (f < 0 || s === 0) s = 1;
     const nx = across ? tx + s : tx, ny = across ? ty : ty + s;
+    // A shaped creature rides as a whole (creatures.js).
+    if (SHAPED[u] && this.ctype[j] !== 0) { this.nudgeCreature(this.ctype[j], nx - tx, ny - ty); return; }
+    if (this.clock[j] === this.pass || !(CARRIED[u] || this.loose[j])) return;
     if (!this.inBounds(nx, ny)) return;
     const m = ny * w + nx;
     if (roomFor(type[m])) this.swap(j, m);
@@ -95,7 +99,7 @@ export const MotionMachines = {
       if (!this.inBounds(cx, cy)) return false;
       const u = type[cy * w + cx];
       if (roomFor(u)) break;
-      if (DEFS[u].indestructible || u === PISTON_ARM) return false;
+      if (DEFS[u].indestructible || u === PISTON_ARM || SHAPED[u]) return false; // a creature stalls it
     }
     if (n === PISTON_PUSH) return false;
     for (let t = n; t > 0; t--) {

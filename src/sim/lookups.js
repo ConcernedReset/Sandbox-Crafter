@@ -89,7 +89,7 @@ MASS[ID.WHITE_HOLE] = -500;
 export const DISPENSABLE = new Uint8Array(NUM);
 for (const d of DEFS) {
   DISPENSABLE[d.id] = CLONEABLE[d.id] && !CONDUCTOR[d.id] && !MACHINE[d.id]
-    && (d.state !== SOLID || d.behavior === 'critter') ? 1 : 0;
+    && (d.state !== SOLID || d.behavior === 'critter' || d.behavior === 'body') ? 1 : 0;
 }
 
 const setOf = (keys) => {

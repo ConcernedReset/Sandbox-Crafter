@@ -36,7 +36,7 @@ import { WALL_HERE, PASS, PASS_BIT, stops } from './walls.js';
 import { TimeZones, SPEEDS, SLOW_EVERY } from './time.js';
 import { Portals, initPortals } from './portals.js';
 import { Sleep, initSleep } from './sleep.js';
-import { Creatures, initCreatures } from './creatures.js';
+import { Creatures, initCreatures, SHAPED } from './creatures.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -345,6 +345,7 @@ export class World {
         this.vy[j] += pushAcross * py + pushAlong * downY;
       }
     }
+    if (this.creatures.length !== 0) this.blastCreatures(x, y, strength, r); // creatures.js
   }
 
   randomNeighbor(x, y) {
@@ -1393,6 +1394,7 @@ export class World {
       return;
     }
     if (t === SPARK) { this.sparkArea(area, density); return; }
+    if (SHAPED[t]) { this.paintCreatures(area, t); return; } // seeds a body apart (creatures.js)
     area((i) => {
       const u = this.type[i];
       // With Replace on, whatever is in the way is overwritten (but painting
