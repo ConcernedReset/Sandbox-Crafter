@@ -78,6 +78,7 @@ export const Behaviors = {
         }
         return false;
       case 'critter': return this.updateCritter(i, x, y, t, d);
+      case 'body': return this.updateBody(i, x, y, t);
       case 'stalk': return this.updateStalk(i, x, y, t, d);
       case 'meteor': return this.updateMeteor(i, x, y, d);
       case 'ferrofluid': return this.updateFerrofluid(i, x, y);

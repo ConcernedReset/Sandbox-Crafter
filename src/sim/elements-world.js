@@ -743,6 +743,7 @@ export const WORLD_ELEMENTS = [
     moves: 'swim', home: WATERS, speed: 0.08, breed: 0.2, eats: [{ food: 'PLANKTON' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'SALT_WATER' }, render: 'pulse', alpha: 0.75, glowAmount: 0.2,
+    shape: { frames: [['.b.', 'bbb', 't.t'], ['bbb', 'b.b', '.t.']], palette: { b: ['#d8a0f0', '#c890e8', '#e8b8fc'], t: ['#f0d0fc'] }, pulse: true },
     desc: 'A drifting bell of jelly that is 95% water, with no brain, heart or bones. Jellyfish have been around for 500 million years.',
     hint: 'Plankton and Slime.',
   }),
@@ -750,6 +751,7 @@ export const WORLD_ELEMENTS = [
     moves: 'swim', home: WATERS, speed: 0.4, breed: 0.1, eats: [{ food: 'ALGAE' }, { food: 'PLANKTON' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'BONE', alt: 'MEAT', altChance: 0.5 },
+    shape: { frames: [['bbbe', '.bb.'], ['.bbe', 'bbb.']], palette: { b: ['#e88a3a', '#6a9ae8', '#e8c83a', '#8ae86a'], e: ['#1a1a1a'] } },
     desc: 'Swims through water eating algae and plankton, and breeds when well fed. Out of water it soon dies.',
     hint: 'An Egg laid in Salt Water.',
   }),
@@ -757,6 +759,7 @@ export const WORLD_ELEMENTS = [
     moves: 'swim', home: WATERS, speed: 0.3, breed: 0.05, spark: 0.02, eats: [{ food: 'FISH' }],
   }, {
     life: [2500, 3500], lifeEnd: { to: 'MEAT' },
+    shape: { frames: [['bb..be', '..bb..'], ['..bb.e', 'bb..b.']], palette: { b: ['#3a4a3a', '#445444'], e: ['#c8c840'] } },
     desc: 'Not really an eel but a knifefish that stuns prey with jolts of up to 800 volts. Electric fish inspired Volta\'s first battery.',
     hint: 'A Fish that swallowed a Battery.',
   }),
@@ -765,6 +768,7 @@ export const WORLD_ELEMENTS = [
     eats: [{ food: 'SEED' }, { food: 'FRUIT' }, { food: 'ANT' }, { food: 'WORM' }, { food: 'LOCUST' }],
   }, {
     life: [1800, 2600], lifeEnd: { to: 'FEATHER' },
+    shape: { frames: [['w.w', '.b.'], ['...', 'wbw']], palette: { w: ['#5a4a3a', '#8a6a4a', '#3a3a3a'], b: ['#e8e0d0', '#8a6a4a'] } },
     desc: 'Flies about eating seeds, fruit and insects, and lays eggs when well fed. Birds are the dinosaurs that survived.',
     hint: 'Hatch an Egg up in a Cloud.',
   }),
@@ -781,22 +785,25 @@ export const WORLD_ELEMENTS = [
     eats: [{ food: 'ALGAE' }, { food: 'PLANT' }, { food: 'MOSS' }, { food: 'LICHEN' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'SEASHELL' },
+    shape: { frames: [['ss.', 'bbb']], palette: { s: ['#c8a070', '#b88a5a'], b: ['#e8c898'] } },
     desc: 'A slow grazer that carries its limestone house on its back, and leaves the shell behind when it dies.',
     hint: 'A Worm that builds a Limestone shell.',
   }),
   critter('SQUID', 'Squid', 'Sqd', ['#e8a8a0', '#dc9c94', '#f4b4ac'], {
-    moves: 'swim', home: WATERS, speed: 0.4, breed: 0.05, trail: ['INK', 0.02],
+    moves: 'swim', burst: true, home: WATERS, speed: 0.4, breed: 0.05, trail: ['INK', 0.02],
     eats: [{ food: 'FISH' }, { food: 'PLANKTON' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'MEAT' },
+    shape: { frames: [['.m.', 'mmm', 'mem', 't.t'], ['.m.', 'mmm', 'mem', '.tt']], palette: { m: ['#e8a8a0', '#dc9c94'], e: ['#2a2a2a'], t: ['#f4b4ac'] } },
     desc: 'Jet-propelled, with three hearts and blue blood, and it squirts a cloud of ink to escape.',
     hint: 'A Jellyfish that has learned to use Ink.',
   }),
   critter('FROG', 'Frog', 'Frg', ['#5aa83a', '#4e9c30', '#66b444'], {
-    moves: 'walk', speed: 0.3, breed: 0.1,
+    moves: 'walk', climb: 2, speed: 0.3, breed: 0.1,
     eats: [{ food: 'ANT' }, { food: 'LOCUST' }, { food: 'BEE' }, { food: 'FIREFLY' }, { food: 'BUTTERFLY' }, { food: 'TERMITE' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'MEAT' },
+    shape: { frames: [['.ge', 'ggg'], ['gge', 'g.g']], palette: { g: ['#5aa83a', '#4e9c30', '#66b444'], e: ['#e8e040'] } },
     desc: 'Starts life as a tadpole with gills and ends up a hopping insect-catcher that partly breathes through its skin.',
     hint: 'A Fish that crawls out onto the Mud.',
   }),
@@ -821,6 +828,7 @@ export const WORLD_ELEMENTS = [
     eats: [{ food: 'ANT' }, { food: 'BEE' }, { food: 'FIREFLY' }, { food: 'BUTTERFLY' }, { food: 'LOCUST' }, { food: 'TERMITE' }],
   }, {
     life: [2000, 3000],
+    shape: { frames: [['lbl', 'l.l'], ['lbl', '.ll']], palette: { b: ['#2a2a2a', '#3a3434'], l: ['#1e1e1e'] } },
     desc: 'Eight legs, no wings, and not an insect at all. It trails silk wherever it walks and eats any bug it catches.',
     hint: 'An Ant that learns to spin Glue.',
   }),
@@ -865,6 +873,7 @@ export const WORLD_ELEMENTS = [
     moves: 'fly', speed: 0.6, ignite: true, tough: true,
   }, {
     cat: 'special', life: [1500, 2500], lifeEnd: { to: 'ASH' }, glowAmount: 0.8, temp: 600, holdTemp: true,
+    shape: { frames: [['w...w', '.wbw.', '..t..'], ['.....', 'wwbww', '..t..']], palette: { w: ['#ff6a1a', '#ffb02a'], b: ['#ffe05a'], t: ['#ff3a1a'] } },
     desc: 'The mythical firebird that burns without being consumed, setting light to whatever it passes, and crumbling to ash at the end of its life.',
     hint: 'A Bird that flies into Fire, and likes it.',
   }),

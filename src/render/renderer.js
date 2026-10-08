@@ -15,6 +15,8 @@ import { CELL } from '../sim/air.js';
 import { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } from '../sim/world.js';
 import { PASS } from '../sim/walls.js';
 import { portalHues } from '../sim/portals.js';
+import { SHAPED } from '../sim/creatures.js';
+import { SHAPE_COLORS } from '../sim/shapes.js';
 
 const BG = [10, 12, 16];
 const SHADES = 8;
@@ -259,6 +261,7 @@ export class Renderer {
 
   buildPalettes() {
     this.palRGB = new Uint8Array(NUM * SHADES * 3);
+    this.shapeRGB = new Uint8Array(NUM * SHAPE_COLORS * 3); // shaped creatures' pixels (shapes.js)
     this.mode = new Uint8Array(NUM);
     this.alpha = new Float32Array(NUM);
     this.glowAmt = new Float32Array(NUM);
@@ -287,6 +290,7 @@ export class Renderer {
         const [r, g, b] = hex(d.colors[s % d.colors.length]);
         this.palRGB.set([r, g, b], (d.id * SHADES + s) * 3);
       }
+      if (d.shape) d.shape.colors.forEach((rgb, s) => this.shapeRGB.set(rgb, (d.id * SHAPE_COLORS + s) * 3));
       let m = MODE.PLAIN;
       if (d.state === State.GAS) m = MODE.GAS;
       if (d.glow) m = MODE.MOLTEN;
@@ -436,7 +440,7 @@ export class Renderer {
   }
 
   paint() {
-    const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
+    const { world, pixels, palRGB, shapeRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
     const { w, h, type, temp, life, ctype, shade, loose, doorTimer, doorKind, wall } = world;
     const air = world.air;
     const cols = air.cols;
@@ -492,8 +496,13 @@ export class Renderer {
         } else {
           count++;
           const s = shade[i] & 7;
-          const p = (t * SHADES + s) * 3;
-          r = palRGB[p]; g = palRGB[p + 1]; b = palRGB[p + 2];
+          if (SHAPED[t] === 1) { // a creature's pixel: its own palette (shapes.js)
+            const p = (t * SHAPE_COLORS + (shade[i] & 31)) * 3;
+            r = shapeRGB[p]; g = shapeRGB[p + 1]; b = shapeRGB[p + 2];
+          } else {
+            const p = (t * SHADES + s) * 3;
+            r = palRGB[p]; g = palRGB[p + 1]; b = palRGB[p + 2];
+          }
           let emit = 0;
           let wisp = -1; // see-through: drawn this opaque (and blurred, if SOFT)
           switch (mode[t]) {

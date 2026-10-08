@@ -36,6 +36,7 @@ import { WALL_HERE, PASS, PASS_BIT, stops } from './walls.js';
 import { TimeZones, SPEEDS, SLOW_EVERY } from './time.js';
 import { Portals, initPortals } from './portals.js';
 import { Sleep, initSleep } from './sleep.js';
+import { Creatures, initCreatures } from './creatures.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -133,6 +134,7 @@ export class World {
     initMachines(this);
     initPortals(this);
     initSleep(this);
+    initCreatures(this);
     this.setQuality('high');
   }
 
@@ -191,11 +193,13 @@ export class World {
     this.pn = 0;
     this.doorTimer.fill(0);
     this.doorList.length = 0;
+    initCreatures(this);
   }
 
   initLife(i, t) {
     const d = DEFS[t];
-    this.life[i] = d.lifeMax ? d.lifeMin + ((this.rand() * (d.lifeMax - d.lifeMin + 1)) | 0) : 0;
+    // A shaped creature's age is kept by its entity (creatures.js), not its cells.
+    this.life[i] = d.lifeMax && d.shape === null ? d.lifeMin + ((this.rand() * (d.lifeMax - d.lifeMin + 1)) | 0) : 0;
   }
 
   // Place a fresh particle (used by painting and by clones).
@@ -446,6 +450,7 @@ export class World {
       }
     }
     if (this.zoneBox !== null) this.fastPasses(fromBottom);
+    if (this.creatures.length !== 0) this.stepCreatures(); // shaped creatures (creatures.js)
     for (let a = 0; a < next.length; a++) if (air.solid[a] >= SEAL_COUNT) next[a] = 1;
     air.next = air.blocked;
     air.blocked = next;
@@ -1522,4 +1527,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures);
