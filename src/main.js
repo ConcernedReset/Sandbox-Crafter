@@ -8,7 +8,7 @@ import { TreeView } from './render/tree-view.js';
 import { Input, MAX_BRUSH, HARD_BLOCKED } from './game/input.js';
 import { Camera } from './game/camera.js';
 import { Progress } from './game/progress.js';
-import { loadDemoScene } from './game/scene.js';
+import { SCENES, loadScene, loadDemoScene } from './game/scenes.js';
 import { UI, toolColor } from './game/ui.js';
 import { buildTree, focusTree } from './game/tree.js';
 import { PhysicsPanel } from './game/physics-panel.js';
@@ -290,7 +290,19 @@ function setMenu(open) {
 }
 menuButton.addEventListener('click', (e) => { e.stopPropagation(); setMenu(menu.hidden); });
 document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) setMenu(false); });
-$('menu-scene').addEventListener('click', () => { loadDemoScene(world); setMenu(false); });
+// The World menu: pick a ready-made world to load (scenes.js).
+const sceneSelect = $('menu-scene');
+for (const [label, showcase] of [['Play', false], ['Showcases (no discoveries)', true]]) {
+  const group = document.createElement('optgroup');
+  group.label = label;
+  for (const s of SCENES) if (!!s.showcase === showcase) group.append(new Option(s.name, s.key));
+  sceneSelect.append(group);
+}
+sceneSelect.addEventListener('change', () => {
+  loadScene(world, sceneSelect.value);
+  sceneSelect.value = '';
+  setMenu(false);
+});
 $('menu-freeplay').checked = progress.freePlay;
 $('menu-freeplay').addEventListener('change', (e) => {
   progress.freePlay = e.target.checked;

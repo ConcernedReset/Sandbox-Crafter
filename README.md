@@ -164,6 +164,21 @@ back to system ones; progress is saved per file location.)
   drops a level when frames take too long for about a second, and climbs
   back after about three seconds of quick frames; the menu shows where it
   is ("Auto (Medium)"). Gas and Glow are your own choice at every level.
+- **World** (in the `⋯` menu) clears the world and loads a ready-made one.
+  Two are for playing: the **Starting area** (rolling dirt, a sand dune and a
+  stone-lined pond) and the **Wilderness**, hills to make a home in, with
+  saplings that grow into a forest, logs, boulders, a coal seam, a pond with
+  fish, and three humans. Five are showcases: **Creatures** (a pond full of
+  swimmers, a meadow full of insects, frogs and snails, birds, a caged
+  phoenix and two humans), **Every element** (each in its own little walled
+  cell, a stress test), the **Physics lab** (portals, time zones, sieving
+  walls, a pressure vessel, liquids by density, lava on water, a storm,
+  growing things, a magnet, a laser, a heater for convection and a tiny
+  reactor), **Machines** (every machine and control working in its own bay)
+  and the **Weapons range** (eight firing points, each set off by painting
+  Spark on its switch). Nothing you make in a showcase counts as a
+  discovery, until you press Clear or load a play world. Your discoveries
+  and physics settings stay as they are.
 - **Show sleeping areas** (in the `⋯` menu) outlines the parts of the world
   that are asleep (see below): blue where fully asleep, green where half
   asleep.
@@ -515,9 +530,16 @@ Each frame (60 per second):
    drown. Humans near each other share a camp and split the work. It holds
    its body at 37 °C, so warm ground near its fire doesn't hurt it. Hover
    over a creature to see its health, and what a human is doing.
-9. **Growing things**: wheat, sugarcane, cactus and kelp grow straight up to a
+9. **Trees**: a **Sapling** (Seed + Fertilizer) dropped on dirt, mud, grass
+   or sand takes root and grows: its trunk climbs to a height of its own (15
+   to 45, two cells wide when it's tall), a few branches sprout leaves, and
+   then it puts out its crown of **Leaves**: a round oak, a pointed pine or
+   a wide flat acacia, green, dark, autumn-coloured or in blossom, thick or
+   sparse. It grows up against the gravity arrow. Leaves burn easily. (A
+   plain Seed still grows a small tree.)
+10. **Growing things**: wheat, sugarcane, cactus and kelp grow straight up to a
    random height; moss, lichen, coral and mould creep into what they feed on.
-10. **Light and colour**: gases like neon, argon, xenon and sodium vapour
+11. **Light and colour**: gases like neon, argon, xenon and sodium vapour
     glow in their own colours when a current runs through them, and the glow
     spreads down the tube. Fluorescent minerals glow under ultraviolet.
     The alkali metals, strontium, barium, sulfur and friends burn in the
@@ -710,7 +732,9 @@ src/render/renderer.js         draws the world, soft gas, glow, particles, heat 
 src/render/tree-view.js        draws the recipe tree; dragging, zooming and clicking it
 src/game/tree.js               lays out the recipe tree (which elements, which links, where)
 src/game/physics-panel.js      the Physics panel: gravity dial, strength, the two switches
-src/game/                      input, zoom camera, UI, saved progress, starting scene
+src/game/scenes.js             the ready-made worlds in the World menu
+src/sim/trees.js               saplings growing into trees
+src/game/                      input, zoom camera, UI, saved progress
 scripts/recipe-table.js        prints the recipe table at the end of this file
 scripts/build.js               bundles the game into one HTML file (dist/)
 test/                          node:test suites
@@ -830,8 +854,16 @@ the inspect line shows health and jobs. The human tests check the body, that
 a human runs from lava, swims to shore, drowns slowly under a lid, gathers
 wood into a pile and lights it, shares a camp, builds a hut with its
 doorways open and shelters in it from snow.
-The recipe tests run all 1238 production rules in the real simulation.
-About 1,520 tests in all, and they run in a few seconds.
+The tree tests check a sapling grows a trunk and a crown, waits for soil,
+grows differently every time, and grows against a sideways gravity arrow.
+The world tests load every ready-made world and run it, and check the
+starting area has no Wall and keeps its pond off the dirt, the wilderness
+gives its humans wood and stone and keeps its pond, the creature world has
+every creature, the gallery every element and the machine world every
+machine (with its lamps lit), and that showcases discover nothing until the
+world is cleared.
+The recipe tests run all 1243 production rules in the real simulation.
+About 1,550 tests in all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.

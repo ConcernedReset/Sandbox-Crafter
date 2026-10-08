@@ -120,6 +120,7 @@ export class World {
     this.gravity = new Gravity(this.air);
     this.seed = (seed >>> 0) || 1;
     this.seen = new Uint8Array(NUM);
+    this.recording = true; // discoveries count (not in a showcase world, scenes.js)
     this.discoveries = [];
     this.count = 0;
     this.blockedMoving = false;
@@ -196,6 +197,7 @@ export class World {
     this.doorTimer.fill(0);
     this.doorList.length = 0;
     initCreatures(this);
+    this.recording = true;
   }
 
   initLife(i, t) {
@@ -241,7 +243,7 @@ export class World {
   }
 
   record(t, rule) {
-    if (!this.seen[t]) {
+    if (!this.seen[t] && this.recording) {
       this.seen[t] = 1;
       this.discoveries.push({ id: t, rule });
     }

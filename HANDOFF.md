@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,520 tests, all passing, in a few seconds
+npm test    # node --test: about 1,550 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -48,7 +48,7 @@ else; `test/build.test.js` checks the bundle runs.
 | `src/render/tree-view.js` | Draws the recipe tree under the game; drag, zoom and click handling |
 | `src/game/tree.js` | Recipe tree layout (pure, tested): which elements show, one link into each, columns and rows |
 | `src/game/physics-panel.js` | The Physics strip: gravity dial, strength box, Newtonian and convection switches; saves settings |
-| `src/game/` | Input (brush, lines, boxes, zoom gestures), camera, UI, saved progress, demo scene |
+| `src/game/` | Input (brush, lines, boxes, zoom gestures), camera, UI, saved progress, the ready-made worlds (`scenes.js`) |
 | `scripts/recipe-table.js` | Prints the README's spoiler recipe table |
 
 ## Things to know before changing anything
@@ -186,6 +186,20 @@ else; `test/build.test.js` checks the bundle runs.
   side (`openSide`), so they don't dig up the floor. The hut has doorways in both
   walls so it doesn't cut the camp off. Keep their behaviour in-game: no
   real-world fire-starting or weapon detail.
+- **Ready-made worlds** (`src/game/scenes.js`): `SCENES` (key, name,
+  build, `showcase`), `loadScene(world, key)`; `loadDemoScene` is the
+  starting area. Each builder uses `tools(world)` (put/set/rect/box/disc,
+  `switchOn`) and the world's own API (portals, time zones, `wallMask`,
+  `pressurize`). A showcase sets `world.recording = false`, so `record`
+  discovers nothing until `clearAll` (the Clear button) or a play world.
+  `test/scenes.test.js` loads and runs every one; keep each scene's checks
+  there when changing it.
+- **Trees** (`trees.js`): a Sapling falls like a powder until it lands on
+  soil, then its ctype holds its looks (shape, leaf scheme, crown
+  thickness, thick trunk, height; see the top of the file) and its life the
+  trunk still to grow. The sapling climbs, leaving Wood; the crown is grown
+  in one step at the end. Leaves' eight colours are grouped into schemes by
+  `shade`. Leaves are discovered by the `sapling-leaves` rule.
 - **Quality levels** (`World.setQuality`, `src/game/performance.js`):
   'medium' and 'low' run `conductHeat` and `air.step` on alternate steps;
   heat then uses `k < 0.25 ? 2k : 0.5` per exchange (twice the rate, capped

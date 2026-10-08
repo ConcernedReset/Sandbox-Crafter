@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
 import { makeWorld, fillRect, run } from './helpers.js';
-import { loadDemoScene } from '../src/game/scene.js';
+import { loadDemoScene } from '../src/game/scenes.js';
 import { World } from '../src/sim/world.js';
 
 test('the air rests when it is still, and wakes when stirred', () => {
