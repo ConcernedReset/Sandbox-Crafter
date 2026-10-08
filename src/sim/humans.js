@@ -45,6 +45,15 @@ const REST_U = 5; // and sits by it
 const REACH = 3; // how far across it reaches to pick something up
 const FUEL = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST']);
 const FIRE_SET = setOf(['FIRE']);
+export const HUT_W = 9; // the hut's width
+export const HUT_WALL = 8; // its walls' height
+export const DOOR = 6; // the doorway's height
+const HUT_GAP = 4; // the least space between the hut and the pile
+const STONE_R = 80; // how far from the camp it fetches building material
+const COLD_AIR = 10; // °C: air this cold sends it to shelter
+const RAIN_R = 20; // as does rain, snow or hail falling this close
+const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
+const WOOD_ONLY = setOf(['WOOD']);
 
 export function newBrain() {
   return {
@@ -164,8 +173,8 @@ export const Humans = {
 
   // One step across the down arrow, `dir` (1 or -1) becoming the way it
   // faces: on the level, or up a step of up to `climb` cells. Running
-  // (`leap`), it carries on over a gap of up to 2 cells. Returns whether it
-  // moved.
+  // (`leap`), it carries on over a gap of up to 2 cells. Another human in
+  // the way: they squeeze past each other. Returns whether it moved.
   stepAcross(e, dir, climb, leap) {
     const rx = e.gy * dir, ry = -e.gx * dir;
     const fr = e.frame === 0 ? 1 : 0;
@@ -178,20 +187,60 @@ export const Humans = {
       }
       return true;
     }
+    const other = this.creatureAhead(e, rx, ry);
+    if (other !== null && other.kind === e.kind) return this.passBy(e, other, rx, ry, dir);
     return false;
+  },
+
+  // Squeeze past another human o, ahead of it (rx, ry): straight to just
+  // the other side of it, if there's room there.
+  passBy(e, o, rx, ry, dir) {
+    for (let k = 3; k <= 4; k++) {
+      for (let up = 0; up <= CLIMB; up++) {
+        if (this.moveBody(e, o.x + k * rx - up * e.gx, o.y + k * ry - up * e.gy, 0, dir, e.gx, e.gy)) return true;
+      }
+    }
+    return false;
+  },
+
+  // The creature in the column just past e's side (rx, ry), from its feet
+  // to its head, or null.
+  creatureAhead(e, rx, ry) {
+    for (let up = 0; up < 6; up++) {
+      const x = e.x + 2 * rx - up * e.gx, y = e.y + 2 * ry - up * e.gy;
+      if (!this.inBounds(x, y)) continue;
+      const a = y * this.w + x;
+      if (SHAPED[this.type[a]] && !this.ownCell(e, a)) {
+        const o = this.creatureById[this.ctype[a]];
+        if (o && o.kind === this.type[a]) return o;
+      }
+    }
+    return null;
   },
 
   // Walk (a step every `every` steps) towards (tx, ty) across the down
   // arrow. True once it's within `near` cells across and the target is
-  // level with its body (from 9 cells above its feet to 2 below). No
+  // level with its body (from 9 cells above its feet to 4 below). No
   // closer for GIVE_UP steps: it gives up (giveUp).
   walkTo(e, b, tx, ty, near, every) {
     const a = (tx - e.x) * e.gy - (ty - e.y) * e.gx; // across: + is the way "right" points
     const v = (tx - e.x) * e.gx + (ty - e.y) * e.gy; // along: + is down
-    if (Math.abs(a) <= near && v >= -9 && v <= 2) {
+    if (Math.abs(a) <= near && v >= -9 && v <= 4) {
       b.stuck = 0;
       b.best = Infinity;
       return true;
+    }
+    // It won't walk through its camp's fire: it waits for it to burn down
+    // (and wanders somewhere else), standing back from it.
+    if (b.camp !== null && this.acrossFire(b.camp, e.x, e.y, tx, ty)) {
+      b.stuck = 0;
+      b.goalX = -1;
+      const u = (e.x - b.camp.x) * b.camp.gy - (e.y - b.camp.y) * b.camp.gx;
+      if (Math.abs(u) < REST_U && ++b.pace >= every) {
+        b.pace = 0;
+        this.stepAcross(e, u > 0 ? 1 : -1, CLIMB, false);
+      } else this.pose(e, 0);
+      return false;
     }
     const dist = Math.abs(a) + Math.abs(v);
     if (dist < b.best) {
@@ -270,6 +319,10 @@ export const Humans = {
       b.job = 'wandering';
       return;
     }
+    if (this.shouldShelter(e, camp)) {
+      b.job = 'sheltering';
+      return;
+    }
     if (b.carry !== 0) {
       b.job = b.carryJob;
       return;
@@ -299,9 +352,173 @@ export const Humans = {
     b.job = camp.lit ? 'resting by the fire' : 'wandering';
   },
 
-  // The hut.
+  // Once the camp's fire has been lit, a hut beside it: fetch material for
+  // it. True if that gave e a job.
   hutWork(e, b, camp) {
+    if (!camp.lit) return false;
+    if (camp.hut === null) {
+      if (this.tick < camp.hutRetry) return false;
+      camp.hut = this.planHut(camp);
+      if (camp.hut === null) {
+        camp.hutRetry = this.tick + 600;
+        return false;
+      }
+    }
+    const hut = camp.hut;
+    if (hut.done) return false;
+    if (this.nextHutCell(hut) < 0) {
+      hut.done = true;
+      return false;
+    }
+    let t = this.findWanted(e, camp, MATERIAL, STONE_R);
+    if (t < 0) t = this.findWanted(e, camp, WOOD_ONLY, STONE_R);
+    if (t < 0) return false;
+    this.claim(b, camp, t);
+    b.job = 'fetching stone';
+    return true;
+  },
+
+  // A site for the hut: HUT_W columns side by side, at least HUT_GAP cells
+  // past the pile, on ground within a cell of flat, with room for it.
+  planHut(camp) {
+    for (let off = 3 + HUT_GAP; off <= 24; off++) {
+      for (const side of [1, -1]) {
+        const plan = this.hutAt(camp, side > 0 ? off : -off - (HUT_W - 1), side);
+        if (plan !== null) return plan;
+      }
+    }
+    return null;
+  },
+
+  // The blueprint for a hut over columns u0 .. u0 + HUT_W - 1 (side: which
+  // side of the pile it's on), or null. Both walls have a doorway DOOR cells
+  // high, so the hut doesn't cut the camp off from what lies beyond it. In
+  // build order: the two cells over the far doorway, the two over the near
+  // one (facing the fire), then the roof from the far wall across.
+  hutAt(camp, u0, side) {
+    let top = Infinity, bottom = -Infinity;
+    for (let u = u0; u < u0 + HUT_W; u++) {
+      const g = this.groundAt(camp, u);
+      if (g === null) return null;
+      top = Math.min(top, g);
+      bottom = Math.max(bottom, g);
+    }
+    if (bottom - top > 1) return null;
+    const floor = top - 1; // the row it stands in
+    for (let v = floor; v >= floor - HUT_WALL; v--) {
+      for (let u = u0; u < u0 + HUT_W; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c < 0 || this.builtAt(c)) return null;
+      }
+    }
+    const farU = side > 0 ? u0 + HUT_W - 1 : u0, doorU = side > 0 ? u0 : u0 + HUT_W - 1;
+    const order = [];
+    for (let v = floor - DOOR; v > floor - HUT_WALL; v--) order.push([farU, v]);
+    for (let v = floor - DOOR; v > floor - HUT_WALL; v--) order.push([doorU, v]);
+    for (let k = 0; k < HUT_W; k++) order.push([farU - side * k, floor - HUT_WALL]);
+    const cells = order.map(([u, v]) => this.campCell(camp, u, v));
+    return { cells, us: order.map(([u]) => u), set: new Set(cells), u0, floor, side, done: false };
+  },
+
+  // The ground in column u near the camp: the topmost solid (or powder)
+  // cell with open space above it, from 8 cells above the camp's spot to 8
+  // below. Its v, or null.
+  groundAt(camp, u) {
+    for (let v = -8; v <= 8; v++) {
+      const c = this.campCell(camp, u, v), a = this.campCell(camp, u, v - 1);
+      if (c < 0 || a < 0) continue;
+      if (this.builtAt(c) && !this.builtAt(a)) return v;
+    }
+    return null;
+  },
+
+  // Is cell c solid (or powder), and not a creature?
+  builtAt(c) {
+    const t = this.type[c];
+    if (t === 0 || SHAPED[t]) return false;
+    const s = DEFS[t].state;
+    return s === SOLID || s === POWDER;
+  },
+
+  nextHutCell(hut) {
+    for (let k = 0; k < hut.cells.length; k++) if (!this.builtAt(hut.cells[k])) return k;
+    return -1;
+  },
+
+  // Carry the material to the hut and put it in the lowest unfinished
+  // cell, standing inside where it can reach.
+  build(e, b) {
+    const camp = b.camp, hut = camp === null ? null : camp.hut;
+    if (hut === null) {
+      this.dropCarry(e, b);
+      return;
+    }
+    const k = this.nextHutCell(hut);
+    if (k < 0) {
+      hut.done = true;
+      this.dropCarry(e, b);
+      return;
+    }
+    const u = Math.min(hut.u0 + HUT_W - 3, Math.max(hut.u0 + 2, hut.us[k]));
+    const s = this.campCell(camp, u, hut.floor);
+    if (s < 0 || !this.walkTo(e, b, s % this.w, (s / this.w) | 0, 0, WALK_EVERY)) return;
+    this.pose(e, 0);
+    const c = hut.cells[k], t = this.type[c];
+    if (t !== 0 && (SHAPED[t] || DEFS[t].state === LIQUID)) return; // wait for it to move
+    if (t !== 0) this.clearCell(c);
+    this.spawn(c, b.carry);
+    b.carry = 0;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Put down what it's carrying beside its feet (or its head). With no room
+  // at either, or only in its hut's doorway, it lets it go.
+  dropCarry(e, b) {
+    let c = this.spawnNear(e.x, e.y, b.carry);
+    if (c < 0) c = this.spawnNear(e.x - 5 * e.gx, e.y - 5 * e.gy, b.carry);
+    if (c >= 0 && b.camp !== null && this.inDoorway(b.camp, c)) this.clearCell(c);
+    b.carry = 0;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Is cell c in a doorway of the camp's hut?
+  inDoorway(camp, c) {
+    const hut = camp.hut;
+    if (hut === null) return false;
+    const x = c % this.w, y = (c / this.w) | 0;
+    const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
+    const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
+    return (u === hut.u0 || u === hut.u0 + HUT_W - 1) && v <= hut.floor && v > hut.floor - DOOR;
+  },
+
+  // A finished hut to go to, and cold air or rain, snow or hail falling nearby.
+  shouldShelter(e, camp) {
+    if (camp.hut === null || !camp.hut.done) return false;
+    if (this.air.heat && this.air.t[this.air.at(e.x, e.y)] < COLD_AIR) return true;
+    return this.precipitation(e);
+  },
+
+  // Water, snow or hail falling (nothing under it) within RAIN_R above it.
+  precipitation(e) {
+    const { w, type } = this;
+    for (let v = -RAIN_R; v < 0; v++) {
+      for (let u = -RAIN_R; u <= RAIN_R; u++) {
+        const x = e.x + u * e.gy + v * e.gx, y = e.y - u * e.gx + v * e.gy;
+        if (!this.inBounds(x, y) || !this.inBounds(x + e.gx, y + e.gy)) continue;
+        const t = type[y * w + x];
+        if ((t === ID.WATER || t === ID.SNOW || t === ID.HAIL) && type[(y + e.gy) * w + x + e.gx] === 0) return true;
+      }
+    }
     return false;
+  },
+
+  // Go into the hut and sit in the middle.
+  shelter(e, b) {
+    const camp = b.camp, hut = camp.hut;
+    const s = this.campCell(camp, hut.u0 + (HUT_W >> 1), hut.floor);
+    if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
   },
 
   act(e, b) {
@@ -317,6 +534,8 @@ export const Humans = {
       case 'carrying wood': this.carryToPile(e, b); break;
       case 'lighting the fire': this.lightFire(e, b); break;
       case 'resting by the fire': this.restByFire(e, b); break;
+      case 'building the hut': this.build(e, b); break;
+      case 'sheltering': this.shelter(e, b); break;
       default: this.wander(e, b);
     }
   },
@@ -374,6 +593,15 @@ export const Humans = {
     return this.inBounds(x, y) ? y * this.w + x : -1;
   },
 
+  // Are (x0, y0) and (x1, y1) on opposite sides of the camp's pile, while
+  // it's burning?
+  acrossFire(camp, x0, y0, x1, y1) {
+    const u0 = (x0 - camp.x) * camp.gy - (y0 - camp.y) * camp.gx;
+    const u1 = (x1 - camp.x) * camp.gy - (y1 - camp.y) * camp.gx;
+    if (!((u0 > 2 && u1 < -2) || (u0 < -2 && u1 > 2))) return false;
+    return this.pileCount(camp, FIRE_SET) > 0;
+  },
+
   // The pile and the flames over it.
   inPile(camp, x, y) {
     const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
@@ -392,12 +620,13 @@ export const Humans = {
     return n;
   },
 
-  // Where the next piece of fuel goes: the lowest empty cell of the pile.
+  // Where the next piece of fuel goes: the lowest cell of the pile that's
+  // empty, or holds only ash from the last fire.
   pileSpace(camp) {
     for (let v = 0; v >= -2; v--) {
       for (const u of [0, -1, 1]) {
         const c = this.campCell(camp, u, v);
-        if (c >= 0 && this.type[c] === 0) return c;
+        if (c >= 0 && (this.type[c] === 0 || this.type[c] === ID.ASH)) return c;
       }
     }
     return -1;
@@ -418,6 +647,7 @@ export const Humans = {
         if (d >= bd || camp.claims.has(i) || this.isBanned(b, i) || this.inPile(camp, x, y)) continue;
         if (hut !== null && hut.set.has(i)) continue;
         if (!this.openAt(x, y) || !this.nearGround(x, y, e.gx, e.gy)) continue;
+        if (this.acrossFire(camp, e.x, e.y, x, y)) continue;
         best = i;
         bd = d;
       }
@@ -475,7 +705,8 @@ export const Humans = {
     this.release(b);
   },
 
-  // Take the fuel to the camp and put it on the pile (or wait by a full one).
+  // Take the fuel to the camp and put it on the pile (or down beside a
+  // full one, so its hands are free to light it).
   carryToPile(e, b) {
     const camp = b.camp;
     if (camp === null) {
@@ -485,9 +716,10 @@ export const Humans = {
     if (!this.walkTo(e, b, camp.x, camp.y, REACH + 1, WALK_EVERY)) return; // not into the flames
     const c = this.pileSpace(camp);
     if (c < 0) {
-      this.pose(e, FRAME_SIT);
+      this.dropCarry(e, b);
       return;
     }
+    if (this.type[c] !== 0) this.clearCell(c);
     this.spawn(c, b.carry);
     b.carry = 0;
     b.job = 'wandering';
