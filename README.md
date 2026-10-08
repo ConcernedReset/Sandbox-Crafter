@@ -526,7 +526,11 @@ Each frame (60 per second):
    acid, napalm, flames, anything very hot, grey goo, viruses, antimatter,
    black holes and blasts, and steps straight back from any flame or
    scorching thing within two cells of it, its own fire's included; it won't
-   walk through its own fire, and squeezes past other humans in its way. It
+   walk through its own fire, and squeezes past other humans in its way.
+   Anything weak in its way (powders, and solids no stronger than
+   sandstone: dirt, sand, wood, leaves, ice, glass and the like) it digs
+   through a cell at a time, up in steps if where it's going is higher, but
+   never what a human built or put down, nor stone or anything stronger. It
    swims across water to where it was going (or, going nowhere, to the
    nearest shore), coming up for air; held under for more than about 10
    seconds, it starts to drown. Humans near each other share a camp and split the work. It holds

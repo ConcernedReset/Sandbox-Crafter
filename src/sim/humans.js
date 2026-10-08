@@ -56,6 +56,12 @@ const STONE_R = 120; // how far from the camp it fetches building material
 const COLD_AIR = 10; // °C: air this cold sends it to shelter
 const RAIN_R = 20; // as does rain, snow or hail falling this close
 const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
+const WEAK = 30; // solids no stronger than this (sandstone) it can dig through, and powders
+const DIG_EVERY = 8; // steps per cell dug
+// What it digs through: powders, and solids no stronger than WEAK; never a
+// creature, a danger, or anything that can't be broken.
+const DIGGABLE = Uint8Array.from(DEFS, (d) => (!d.shape && !DANGER[d.id] && !d.indestructible
+  && (d.state === POWDER || (d.state === SOLID && d.strength > 0 && d.strength <= WEAK)) ? 1 : 0));
 const WOOD_ONLY = setOf(['WOOD']);
 
 export function newBrain() {
@@ -311,8 +317,58 @@ export const Humans = {
     if (++b.pace < every) return false;
     b.pace = 0;
     b.heading = a > 0 ? 1 : a < 0 ? -1 : e.facing; // remembered for swimming
-    this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY);
+    // Something weak in the way: it digs through it, a cell at a time (up
+    // a step, if the target is above it). Digging counts as getting closer.
+    if (!this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY) && this.digToward(e, b.heading, v < -1)) {
+      b.stuck = 0;
+      b.pace = every - DIG_EVERY;
+    }
     return false;
+  },
+
+  // Dig out one cell of what stops e stepping across the way `dir`: level,
+  // or up a step (first, if `upward`), whichever way has only diggable
+  // things in it. Returns whether it dug.
+  digToward(e, dir, upward) {
+    const out = this.footB, rx = e.gy * dir, ry = -e.gx * dir;
+    const fr = e.frame === 0 ? 1 : 0;
+    for (const up of upward ? [1, 0] : [0, 1]) {
+      if (!this.placeCells(e.kind, e.x + rx - up * e.gx, e.y + ry - up * e.gy, fr, dir, e.gx, e.gy, out)) continue;
+      let first = -1, ok = true;
+      for (let p = 0; p < e.n && ok; p++) {
+        if (e.pix[p] !== BODY || this.roomForBody(e, out[p])) continue;
+        if (!this.diggable(out[p])) ok = false;
+        else if (first < 0) first = out[p];
+      }
+      if (ok && first >= 0) {
+        this.clearCell(first);
+        return true;
+      }
+    }
+    return false;
+  },
+
+  // Can a human dig out cell c: weak (DIGGABLE), not hot, and not something
+  // a human put there?
+  diggable(c) {
+    const t = this.type[c];
+    return DIGGABLE[t] === 1 && this.temp[c] < HOT && !this.madeByHuman(c);
+  },
+
+  // Did a human put what's in cell c there (and is it still there)?
+  madeByHuman(c) {
+    const t = this.humanMade.get(c);
+    if (t === undefined) return false;
+    if (t === this.type[c]) return true;
+    this.humanMade.delete(c);
+    return false;
+  },
+
+  // A human puts element t in cell c, remembering it did.
+  putDown(c, t) {
+    if (this.type[c] !== 0) this.clearCell(c);
+    this.spawn(c, t);
+    this.humanMade.set(c, this.type[c]);
   },
 
   pose(e, fr) {
@@ -536,8 +592,7 @@ export const Humans = {
     this.pose(e, 0);
     const c = hut.cells[k], t = this.type[c];
     if (t !== 0 && (SHAPED[t] || DEFS[t].state === LIQUID)) return; // wait for it to move
-    if (t !== 0) this.clearCell(c);
-    this.spawn(c, b.carry);
+    this.putDown(c, b.carry);
     b.carry = 0;
     b.job = 'wandering';
     b.think = 0;
@@ -549,6 +604,7 @@ export const Humans = {
     let c = this.spawnNear(e.x, e.y, b.carry);
     if (c < 0) c = this.spawnNear(e.x - 5 * e.gx, e.y - 5 * e.gy, b.carry);
     if (c >= 0 && b.camp !== null && this.inDoorway(b.camp, c)) this.clearCell(c);
+    else if (c >= 0) this.humanMade.set(c, this.type[c]);
     b.carry = 0;
     b.job = 'wandering';
     b.think = 0;
@@ -705,12 +761,15 @@ export const Humans = {
   },
 
   // Where the next piece of fuel goes: the lowest cell of the pile that's
-  // empty, or holds only ash from the last fire.
+  // empty, or holds only ash from the last fire or something weak that
+  // fell or drifted in (it clears it out).
   pileSpace(camp) {
     for (let v = 0; v >= -2; v--) {
       for (const u of [0, -1, 1]) {
         const c = this.campCell(camp, u, v);
-        if (c >= 0 && (this.type[c] === 0 || this.type[c] === ID.ASH)) return c;
+        if (c < 0) continue;
+        const t = this.type[c];
+        if (t === 0 || t === ID.ASH || (!FUEL[t] && this.diggable(c))) return c;
       }
     }
     return -1;
@@ -814,8 +873,7 @@ export const Humans = {
       this.dropCarry(e, b);
       return;
     }
-    if (this.type[c] !== 0) this.clearCell(c);
-    this.spawn(c, b.carry);
+    this.putDown(c, b.carry);
     b.carry = 0;
     b.job = 'wandering';
     b.think = 0;

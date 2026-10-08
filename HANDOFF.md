@@ -190,7 +190,13 @@ else; `test/build.test.js` checks the bundle runs.
   fire pit (`clearFirePit`). Swimmers keep `brain.heading` (the way they
   last walked) and resume `wasJob` on leaving the water. `passBy` squeezes
   past a whole row of humans (up to 14 cells, never through anything
-  solid). `test/humans-situations.test.js` runs humans through many
+  solid). Walking (`walkTo`) and blocked, they dig (`digToward`) one
+  cell of whatever stops a level step, or a step up: only if every blocking
+  cell is `diggable` (a powder or a solid of strength <= 30, not hot, not
+  a danger, and not `madeByHuman`). `world.humanMade` maps cells to what a
+  human put there (`putDown`, `dropCarry`); an entry counts while the cell
+  still holds that element. Weak junk that falls into the fire pile is
+  cleared for fuel (`pileSpace`). `test/humans-situations.test.js` runs humans through many
   situations with several seeds; add a situation there for any new
   behaviour or any reported misbehaviour. The hut has doorways in both
   walls so it doesn't cut the camp off. Keep their behaviour in-game: no

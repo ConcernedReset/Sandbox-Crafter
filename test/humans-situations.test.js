@@ -177,3 +177,73 @@ test('two humans keep going for a long time: fire, hut, and no harm', () => {
   assert.ok(r.worst <= 1, JSON.stringify(r));
   assert.ok(r.litAt >= 0 && r.hutAt >= 0, JSON.stringify(r));
 });
+
+// Tight spots: weak stuff in the way (powders, and solids no stronger than
+// sandstone) is dug through; anything stronger is not.
+
+situation('a human dug into a sandstone pit digs steps up and out', (s) => {
+  const w = makeWorld(120, 60, s);
+  fillRect(w, 0, 50, 119, 59, ID.STONE);
+  fillRect(w, 0, 38, 119, 49, ID.SANDSTONE);
+  for (let y = 38; y <= 49; y++) for (let x = 52; x <= 64; x++) w.clearCell(y * 120 + x);
+  fillRect(w, 15, 33, 22, 37, ID.WOOD);
+  w.spawn(45 * 120 + 58, ID.HUMAN);
+  return w;
+}, 9000, lit, (r) => assert.ok(r.litAt >= 0, `lit (${JSON.stringify(r)})`));
+
+situation('a human breaks through a glass wall to the wood behind it', (s) => {
+  const w = flat(s, { stone: null });
+  fillRect(w, 55, 25, 57, 54, ID.GLASS);
+  return w;
+}, 8000, lit, (r) => assert.ok(r.litAt >= 0, `lit (${JSON.stringify(r)})`));
+
+situation('a human digs under a low shale overhang to the wood', (s) => {
+  const w = flat(s, { stone: null });
+  fillRect(w, 48, 20, 66, 50, ID.SHALE); // four cells of headroom under it
+  return w;
+}, 8000, lit, (r) => assert.ok(r.litAt >= 0, `lit (${JSON.stringify(r)})`));
+
+situation('a human shut in a sandstone room digs its way out to the wood', (s) => {
+  const w = flat(s, { stone: null });
+  fillRect(w, 60, 30, 100, 54, ID.SANDSTONE);
+  for (let y = 42; y <= 54; y++) for (let x = 74; x <= 86; x++) w.clearCell(y * 160 + x);
+  w.spawn(50 * 160 + 80, ID.HUMAN);
+  return w;
+}, 9000, lit, (r) => assert.ok(r.litAt >= 0, `lit (${JSON.stringify(r)})`));
+
+test('sand that drifts into the fire pile is cleared out for the fuel', () => {
+  const w = flat(1, { n: 0, wood: null, stone: null });
+  const camp = w.makeCamp(40, 54);
+  fillRect(w, 39, 52, 41, 54, ID.SAND);
+  const c = w.pileSpace(camp);
+  assert.ok(c >= 0 && w.type[c] === ID.SAND, 'sand in the pile is room for fuel');
+  w.putDown(c, ID.WOOD);
+  assert.equal(w.pileSpace(camp) === c, false, 'but not the fuel put there');
+});
+
+test('a human never digs through a hut or a pile humans made, nor through stone', () => {
+  const w = flat(1, { n: 0, wood: null, stone: null });
+  fillRect(w, 10, 50, 12, 54, ID.SAND);
+  fillRect(w, 20, 50, 22, 54, ID.STONE);
+  w.spawn(54 * 160 + 30, ID.WOOD);
+  w.humanMade.set(54 * 160 + 30, ID.WOOD);
+  const camp = w.makeCamp(40, 54);
+  w.putDown(54 * 160 + 40, ID.SAWDUST);
+  assert.equal(w.diggable(54 * 160 + 11), true, 'sand');
+  assert.equal(w.diggable(54 * 160 + 21), false, 'stone');
+  assert.equal(w.diggable(54 * 160 + 30), false, 'wood a human put there');
+  assert.equal(w.diggable(54 * 160 + 40), false, 'the pile');
+  assert.equal(w.diggable(54 * 160 + 50), false, 'empty space');
+  w.clearCell(54 * 160 + 30);
+  w.spawn(54 * 160 + 30, ID.SAND); // something else in its place since
+  assert.equal(w.diggable(54 * 160 + 30), true, 'sand where the wood was');
+  assert.ok(camp);
+});
+
+test('what a human builds is remembered as made by humans', () => {
+  const w = flat(1, { n: 2 });
+  for (let f = 0; f < 16000 && !w.camps.some((c) => c.hut?.done); f++) w.step();
+  const camp = w.camps.find((c) => c.hut?.done);
+  assert.ok(camp, 'a hut was built');
+  for (const c of camp.hut.cells) assert.equal(w.diggable(c), false, `hut cell ${c}`);
+});

@@ -41,6 +41,7 @@ export function initCreatures(world) {
   world.creatureById = [null]; // id (the ctype of its cells) -> entity
   world.freeCreatureIds = [];
   world.camps = []; // humans' camps (humans.js)
+  world.humanMade = new Map(); // cell -> what a human put there (humans.js)
   world.footA = new Int32Array(64); // scratch for working out footprints
   world.footB = new Int32Array(64);
 }
