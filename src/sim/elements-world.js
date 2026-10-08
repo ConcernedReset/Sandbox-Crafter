@@ -907,6 +907,13 @@ export const WORLD_ELEMENTS = [
     desc: 'Makes a camp, gathers wood into a pile and lights a campfire by rubbing sticks, builds a little stone hut beside it to shelter from cold and rain, and runs from fire, lava and acid.',
     hint: 'Lightning striking Clay, as in the old stories of people shaped from clay.',
   }),
+  {
+    key: 'CAMPFIRE', name: 'Campfire', sym: 'Cmp', cat: 'energy', state: SOLID, strength: 0,
+    colors: ['#ff8a2a', '#ffb03a', '#ff6a1a', '#ffd05a'], density: 1, temp: 45, holdTemp: true, conduct: 0.05,
+    life: [1500, 2500], behavior: 'campfire', lifeEnd: { to: 'ASH' },
+    desc: 'The gentle fire humans keep: it flickers and smokes a little, never spreads, and stays just warm enough to sit by. Water puts it out.',
+    hint: 'Humans light it, from a pile of Wood.',
+  },
 
   // ---- weather and the Earth ------------------------------------------------------
   {

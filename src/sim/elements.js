@@ -465,6 +465,7 @@ export const REACTIONS = [
 export const SPECIAL_RULES = [
   { id: 'plant-wood', kind: 'time', inputs: ['PLANT'], output: 'WOOD' },
   { id: 'sapling-leaves', kind: 'time', inputs: ['SAPLING'], output: 'LEAVES' },
+  { id: 'human-campfire', kind: 'contact', inputs: ['HUMAN', 'WOOD'], output: 'CAMPFIRE' },
   { id: 'battery-spark', kind: 'contact', inputs: ['BATTERY', 'METAL'], output: 'SPARK' },
   { id: 'cloud-snow', kind: 'cool', inputs: ['CLOUD'], output: 'SNOW' },
   { id: 'neutron-proton', kind: 'time', inputs: ['NEUTRON'], output: 'PROTON' },

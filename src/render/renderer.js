@@ -300,6 +300,7 @@ export class Renderer {
       this.mode[d.id] = m;
     }
     this.mode[ID.FIRE] = MODE.FIRE;
+    this.mode[ID.CAMPFIRE] = MODE.FIRE;
     this.mode[ID.PLASMA] = MODE.PLASMA;
     this.mode[ID.SPARK] = MODE.SPARK;
     this.mode[ID.LIGHTNING] = MODE.LIGHTNING;

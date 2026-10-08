@@ -47,7 +47,7 @@ const SCORCH = 100; // °C: anything this hot (but a gas) within SCORCH_R cells,
 const SCORCH_R = 2; // (flames move a cell a step, and burn in one touch)
 const REACH = 3; // how far across it reaches to pick something up
 const FUEL = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST']);
-const FIRE_SET = setOf(['FIRE']);
+const FIRE_SET = setOf(['FIRE', 'CAMPFIRE']);
 export const HUT_W = 9; // the hut's width
 export const HUT_WALL = 8; // its walls' height
 export const DOOR = 6; // the doorway's height
@@ -672,6 +672,7 @@ export const Humans = {
     const camp = {
       x, y, gx, gy, // the pile's middle (on the ground), and the way down there
       lit: false, // its fire has been lit (it may have burned out since)
+      burned: 0, // steps its fire has burned, in all
       hut: null, hutRetry: 0, // the hut's blueprint
       members: new Set(), // the humans' ids
       claims: new Set(), // cells someone is on their way to fetch
@@ -896,7 +897,10 @@ export const Humans = {
     for (let v = 0; v >= -2; v--) {
       for (let u = -1; u <= 1; u++) {
         const c = this.campCell(camp, u, v);
-        if (c >= 0 && FUEL[this.type[c]] && this.ignite(c, c % this.w, (c / this.w) | 0)) return true;
+        if (c >= 0 && FUEL[this.type[c]]) {
+          this.kindle(c);
+          return true;
+        }
       }
     }
     return false;
@@ -945,6 +949,14 @@ export const Humans = {
   release(b) {
     if (b.target >= 0 && b.camp !== null) b.camp.claims.delete(b.target);
     b.target = -1;
+  },
+
+  // Once a step: each camp counts the time its fire burns, and shot tracers
+  // fade.
+  stepCamps() {
+    for (const camp of this.camps) if (this.pileCount(camp, FIRE_SET) > 0) camp.burned++;
+    const s = this.shots;
+    for (let k = s.length - 1; k >= 0; k--) if (--s[k].ttl <= 0) s.splice(k, 1);
   },
 
   // A human that dies leaves its camp; a camp with nobody left is forgotten.

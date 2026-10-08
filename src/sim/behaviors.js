@@ -12,7 +12,7 @@ const { SOLID, POWDER, LIQUID, GAS } = State;
 const {
   WALL, FIRE, SMOKE, WATER, SNOW, PLANT, WOOD, SPARK, LIGHTNING, VOID, DIRT, MUD, GRASS, SEED,
   GLITTER, PHOTON, NEUTRON, ANTIMATTER, BLACK_HOLE, STRANGE_MATTER, DARK_MATTER, GOLD,
-  VIRUS, LYE, ELECTRON, LASER,
+  VIRUS, LYE, ELECTRON, LASER, CAMPFIRE, ASH, COAL, SALT_WATER,
 } = ID;
 
 const SPARK_COOLDOWN = 6;
@@ -23,6 +23,12 @@ export const LOOSE_FLAME = 0x8000;
 export const FIRE_DRAW = 0.04;
 export const SNUFF_AT = -3;
 const SNUFF_RATE = 0.15; // chance per frame, per unit of pressure below SNUFF_AT
+// The campfire humans light: it catches fuel touching it this often per
+// step, and puffs smoke this often.
+const CATCH = 0.004;
+const SMOKE_PUFF = 0.003;
+const KINDLING = new Uint8Array(NUM);
+for (const k of ['WOOD', 'COAL', 'PEAT', 'SAWDUST']) KINDLING[ID[k]] = 1;
 
 // Fuels that burn in place as embers rather than being used up as a flame.
 function burnsInPlace(f) {
@@ -36,6 +42,7 @@ export const Behaviors = {
     switch (name) {
       case 'fire': return this.burnOut(i, x, y, true);
       case 'plasma': return this.burnOut(i, x, y, false);
+      case 'campfire': return this.updateCampfire(i, x, y);
       case 'decay': return this.lifeRunsOut(i, d);
       case 'spark': return this.updateSpark(i, x, y);
       case 'battery': return this.updateBattery(x, y, d);
@@ -190,6 +197,38 @@ export const Behaviors = {
 
   // Put a flame out. An ember turns back into its fuel, still hot, and
   // catches again once there's air.
+  // A campfire burns gently in place at its own warm temperature: it slowly
+  // catches fuel touching it, puffs a little smoke, goes out in water, and
+  // burns down to ash. It never lights anything else.
+  updateCampfire(i, x, y) {
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k], ny = y + DY4[k];
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
+      const j = ny * this.w + nx, u = this.type[j];
+      if (u === WATER || u === SALT_WATER) {
+        this.convert(i, ASH, false, -1);
+        return true;
+      }
+      if (KINDLING[u] && this.rand() < CATCH) this.kindle(j);
+    }
+    if (this.rand() < SMOKE_PUFF) {
+      const ax = x - this.gravity.downX, ay = y - this.gravity.downY;
+      if (ax >= 0 && ay >= 0 && ax < this.w && ay < this.h && this.type[ay * this.w + ax] === 0) {
+        this.spawn(ay * this.w + ax, SMOKE);
+        this.temp[ay * this.w + ax] = DEFS[CAMPFIRE].temp;
+      }
+    }
+    return this.lifeRunsOut(i, DEFS[CAMPFIRE]);
+  },
+
+  // Fuel set alight as a campfire (by a human, or by the campfire beside
+  // it): coal burns twice as long as wood.
+  kindle(j) {
+    const was = this.type[j];
+    this.convert(j, CAMPFIRE, false, SPECIAL['human-campfire']);
+    if (was === COAL) this.life[j] = Math.min(32000, this.life[j] * 2);
+  },
+
   snuff(i, fuel, loose) {
     if (fuel && !loose && burnsInPlace(DEFS[fuel])) this.convert(i, fuel, true, -1);
     else this.clearCell(i);

@@ -42,6 +42,7 @@ export function initCreatures(world) {
   world.freeCreatureIds = [];
   world.camps = []; // humans' camps (humans.js)
   world.humanMade = new Map(); // cell -> what a human put there (humans.js)
+  world.shots = []; // pellet tracers, drawn for a few frames (humans.js)
   world.footA = new Int32Array(64); // scratch for working out footprints
   world.footB = new Int32Array(64);
 }
@@ -545,6 +546,7 @@ export const Creatures = {
   // After the particle pass: every creature takes its step (more of them
   // in a fast time zone, fewer in a slow one, going by where it stands).
   stepCreatures() {
+    this.stepCamps(); // humans.js
     const list = this.creatures;
     for (let k = list.length - 1; k >= 0; k--) {
       const e = list[k];
