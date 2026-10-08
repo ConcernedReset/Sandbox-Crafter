@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,550 tests, all passing, in a few seconds
+npm test    # node --test: about 1,600 tests, all passing, in about a minute (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -181,9 +181,18 @@ else; `test/build.test.js` checks the bundle runs.
   v down from the pile's spot); claims stop two humans fetching the same
   cell. Humans don't walk across a burning pile (`acrossFire`), squeeze
   past each other (`passBy`), and treat their own fire's flames over the
-  pile, and warm ground round it, as safe. After the first lighting only one
-  human tends the fire (`tending`); building material must be open to one
-  side (`openSide`), so they don't dig up the floor. The hut has doorways in both
+  pile, and warm ground round it, as safe; but a reflex (`scorched`) steps
+  them back from anything over 100 °C within 2 cells, every step, before
+  they think (flames cook a pixel in one touch). After the first lighting
+  the hut comes before keeping the fire fed, and only one human tends it
+  (`tending`); building material must be open to one side (`openSide`), so
+  they don't dig up the floor. A new camp clears flammable ground from its
+  fire pit (`clearFirePit`). Swimmers keep `brain.heading` (the way they
+  last walked) and resume `wasJob` on leaving the water. `passBy` squeezes
+  past a whole row of humans (up to 14 cells, never through anything
+  solid). `test/humans-situations.test.js` runs humans through many
+  situations with several seeds; add a situation there for any new
+  behaviour or any reported misbehaviour. The hut has doorways in both
   walls so it doesn't cut the camp off. Keep their behaviour in-game: no
   real-world fire-starting or weapon detail.
 - **Ready-made worlds** (`src/game/scenes.js`): `SCENES` (key, name,

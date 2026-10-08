@@ -512,22 +512,24 @@ Each frame (60 per second):
    into a Phoenix, the whole bird.
 
    **Humans** (Lightning striking Clay) have a mind of their own. A human
-   makes a camp on flat ground, fetches wood (or coal, peat or sawdust) from
-   nearby, one piece at a time, and piles it beside the camp; with six
-   pieces on the pile it kneels and rubs sticks until the pile catches, and
-   keeps the fire fed, then sits a couple of cells from it. Once the fire
-   has been lit it builds a hut beside it, 9 wide and 9 high, from stone,
-   brick, granite or concrete (wood only if there's nothing else, and then
-   it may catch fire), taken from blocks and boulders rather than the ground
-   it stands on: two short walls over doorways 6 high, and a roof. Everyone
-   helps build the first pile; after that one human keeps the fire going
-   while the others build. It
-   shelters in the hut from cold air and from rain, snow or hail. It runs
-   from lava, acid, napalm, flames, anything very hot, grey goo, viruses,
-   antimatter, black holes and blasts; it won't walk through its own fire,
-   and squeezes past other humans. In water it swims up for air and makes
-   for the shore; held under for more than about 10 seconds, it starts to
-   drown. Humans near each other share a camp and split the work. It holds
+   makes a camp on flat ground, scraping the grass off its fire pit, fetches
+   wood (or coal, peat or sawdust) from up to 120 cells away, one piece at a
+   time, and piles it beside the camp; with six pieces on the pile it kneels
+   and rubs sticks until the pile catches. Once the fire has been lit it
+   builds a hut beside it, 9 wide and 9 high, from stone, brick, granite or
+   concrete (wood only if there's nothing else, and then it may catch fire),
+   taken from blocks and boulders rather than the ground it stands on: two
+   short walls over doorways 6 high, and a roof. Then it keeps the fire fed
+   and sits a few cells from it. Everyone helps build the first pile; after
+   that one human keeps the fire going while the others build. It shelters
+   in the hut from cold air and from rain, snow or hail. It runs from lava,
+   acid, napalm, flames, anything very hot, grey goo, viruses, antimatter,
+   black holes and blasts, and steps straight back from any flame or
+   scorching thing within two cells of it, its own fire's included; it won't
+   walk through its own fire, and squeezes past other humans in its way. It
+   swims across water to where it was going (or, going nowhere, to the
+   nearest shore), coming up for air; held under for more than about 10
+   seconds, it starts to drown. Humans near each other share a camp and split the work. It holds
    its body at 37 °C, so warm ground near its fire doesn't hurt it. Hover
    over a creature to see its health, and what a human is doing.
 9. **Trees**: a **Sapling** (Seed + Fertilizer) dropped on dirt, mud, grass
@@ -853,7 +855,14 @@ portals take them through whole, blasts hurt them, time zones slow them, and
 the inspect line shows health and jobs. The human tests check the body, that
 a human runs from lava, swims to shore, drowns slowly under a lid, gathers
 wood into a pile and lights it, shares a camp, builds a hut with its
-doorways open and shelters in it from snow.
+doorways open and shelters in it from snow. The human situation tests run
+humans, each with three random seeds, through a lone camp, three and five
+humans sharing the work, a coal fire, wood far away, up terraces and across
+a pond, a pit, rolling hills, a long drop, sideways gravity, a floating
+block of wood, nothing to burn, a walled-in room, the Wilderness and the
+starting area, and a long 20,000-step run: each must get its fire lit (and
+its hut built, where that's the point) without anyone dying or being
+badly hurt.
 The tree tests check a sapling grows a trunk and a crown, waits for soil,
 grows differently every time, and grows against a sideways gravity arrow.
 The world tests load every ready-made world and run it, and check the
@@ -863,7 +872,8 @@ every creature, the gallery every element and the machine world every
 machine (with its lamps lit), and that showcases discover nothing until the
 world is cleared.
 The recipe tests run all 1243 production rules in the real simulation.
-About 1,550 tests in all, and they run in a few seconds.
+About 1,600 tests in all. Most run in a few seconds; the human situations
+take about a minute.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.

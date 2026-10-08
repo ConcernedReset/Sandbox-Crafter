@@ -11044,6 +11044,7 @@ const THINK_EVERY = 8;
 const WALK_EVERY = 4; // steps per cell walked
 const RUN_EVERY = 2; // and run
 const CLIMB = 2; // the highest step it climbs
+const PASS_REACH = 14; // how far it squeezes past other humans in its way
 const SWIM_CLIMB = 6; // or swims up, getting out of water
 const GIVE_UP = 300; // steps without getting closer before it gives up on a target
 const BAN_FOR = 1800; // and leaves that target alone
@@ -11061,12 +11062,14 @@ const FRAME_KNEEL = 2, FRAME_SIT = 3;
 const NEAR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const DANGER = setOf(['LAVA', 'ACID', 'NAPALM', 'GREEK_FIRE', 'GREY_GOO', 'VIRUS', 'ANTIMATTER', 'BLACK_HOLE']);
 const CAMP_JOIN = 60; // it joins a camp this close
-const FUEL_R = 60; // and fetches fuel this far from it
+const FUEL_R = 120; // and fetches fuel this far from it
 const PILE_LIGHT = 6; // fuel in the pile before it's lit
 const PILE_LOW = 4; // a burning pile with less is topped up
 const RUB_FOR = 180; // steps rubbing sticks before the pile catches
 const LIGHT_U = 4; // where it kneels to light the pile (across from its middle)
-const REST_U = 5; // and sits by it
+const REST_U = 7; // and sits by it
+const SCORCH = 100; // °C: anything this hot (but a gas) within SCORCH_R cells, it steps back at once
+const SCORCH_R = 2; // (flames move a cell a step, and burn in one touch)
 const REACH = 3; // how far across it reaches to pick something up
 const FUEL = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST']);
 const FIRE_SET = setOf(['FIRE']);
@@ -11074,7 +11077,7 @@ const HUT_W = 9; // the hut's width
 const HUT_WALL = 8; // its walls' height
 const DOOR = 6; // the doorway's height
 const HUT_GAP = 4; // the least space between the hut and the pile
-const STONE_R = 80; // how far from the camp it fetches building material
+const STONE_R = 120; // how far from the camp it fetches building material
 const COLD_AIR = 10; // °C: air this cold sends it to shelter
 const RAIN_R = 20; // as does rain, snow or hail falling this close
 const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
@@ -11096,6 +11099,8 @@ function newBrain() {
     breath: 0, // steps with its head under
     fleeDir: 1,
     shore: 0, // the way to the nearest shore, while swimming
+    heading: 0, // the way it was last walking (it swims on that way)
+    wasJob: 'wandering', // what it was doing before it fell in
     goalX: -1, goalY: -1, // where it's wandering to
   };
 }
@@ -11108,18 +11113,57 @@ const Humans = {
     const under = this.headUnder(e); // the liquid it's in, or 0
     if (under === 0) b.breath = 0;
     else if (++b.breath > BREATH && (b.breath - BREATH) % SUFFOCATE_EVERY === 0) this.drown(e, under);
+    // In a liquid it swims, and takes up what it was doing once it's out.
     if (this.inLiquid(e, under)) {
+      if (b.job !== 'swimming') b.wasJob = b.job;
       b.job = 'swimming';
       this.swimHuman(e, b, under);
       return;
     }
-    if (b.job === 'swimming') b.job = 'wandering';
+    if (b.job === 'swimming') b.job = b.wasJob;
     if (this.fall(e)) return;
+    // A reflex: with flames or anything scorching right beside it, it steps
+    // back from them at once, whatever it was doing (even by its own fire).
+    const away = this.scorched(e);
+    if (away !== 0) {
+      this.stepAcross(e, away, CLIMB, false);
+      return;
+    }
     if (--b.think <= 0) {
       b.think = THINK_EVERY;
       this.think(e, b);
     }
     this.act(e, b);
+  },
+
+  // Is anything hotter than SCORCH (not a gas) within SCORCH_R cells of
+  // e's body? The way (1 or -1) away from the hottest such thing, or 0.
+  scorched(e) {
+    const { w, type, temp } = this;
+    let hottest = SCORCH, side = 0;
+    const R = SCORCH_R;
+    for (let y = e.y - 6 - R; y <= e.y + R; y++) {
+      for (let x = e.x - 1 - R; x <= e.x + 1 + R; x++) {
+        if (!this.inBounds(x, y)) continue;
+        const j = y * w + x, t = type[j];
+        if (t === 0 || temp[j] <= hottest || DEFS[t].state === GAS || this.ownCell(e, j)) continue;
+        if (!this.nearBody(e, x, y, R)) continue;
+        hottest = temp[j];
+        const a = (x - e.x) * e.gy - (y - e.y) * e.gx;
+        side = a > 0 ? -1 : a < 0 ? 1 : -e.facing;
+      }
+    }
+    return side;
+  },
+
+  // Is (x, y) within r cells (either way) of one of e's pixels?
+  nearBody(e, x, y, r) {
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p];
+      if (Math.abs((c % this.w) - x) <= r && Math.abs(((c / this.w) | 0) - y) <= r) return true;
+    }
+    return false;
   },
 
   // Warm-blooded: its body drifts back to BODY_T.
@@ -11169,11 +11213,16 @@ const Humans = {
     return this.inBounds(x, y) && DEFS[this.type[y * this.w + x]].state === LIQUID;
   },
 
-  // Swim up for air, then towards the nearest shore, climbing out there.
+  // Swim up for air, then on the way it was going (or, going nowhere, to
+  // the nearest shore), climbing out at the far side.
   swimHuman(e, b, under) {
     if (++b.pace < 3) return;
     b.pace = 0;
     if (under !== 0 && this.moveBody(e, e.x - e.gx, e.y - e.gy, 0, e.facing, e.gx, e.gy)) return;
+    if (b.heading !== 0) {
+      this.stepAcross(e, b.heading, SWIM_CLIMB, false);
+      return;
+    }
     if (b.shore === 0 || this.tick % 60 === 0) b.shore = this.findShore(e);
     this.stepAcross(e, b.shore || e.facing, SWIM_CLIMB, false);
   },
@@ -11217,12 +11266,21 @@ const Humans = {
     return false;
   },
 
-  // Squeeze past another human o, ahead of it (rx, ry): straight to just
-  // the other side of it, if there's room there.
+  // Squeeze past the humans ahead of it (rx, ry): to the first place beyond
+  // them where it fits, up to PASS_REACH cells on, as long as nothing but
+  // air and creatures lies between.
   passBy(e, o, rx, ry, dir) {
-    for (let k = 3; k <= 4; k++) {
+    for (let k = 2; k <= PASS_REACH; k++) {
+      // The column k cells across, from its feet to its head.
+      for (let up = 0; up < 6; up++) {
+        const x = e.x + k * rx - up * e.gx, y = e.y + k * ry - up * e.gy;
+        if (!this.inBounds(x, y)) return false;
+        const t = this.type[y * this.w + x];
+        if (!SHAPED[t] && !this.roomForBody(e, y * this.w + x)) return false;
+      }
+      if (k < 3) continue;
       for (let up = 0; up <= CLIMB; up++) {
-        if (this.moveBody(e, o.x + k * rx - up * e.gx, o.y + k * ry - up * e.gy, 0, dir, e.gx, e.gy)) return true;
+        if (this.moveBody(e, e.x + k * rx - up * e.gx, e.y + k * ry - up * e.gy, 0, dir, e.gx, e.gy)) return true;
       }
     }
     return false;
@@ -11277,7 +11335,8 @@ const Humans = {
     }
     if (++b.pace < every) return false;
     b.pace = 0;
-    this.stepAcross(e, a > 0 ? 1 : a < 0 ? -1 : e.facing, CLIMB, every === RUN_EVERY);
+    b.heading = a > 0 ? 1 : a < 0 ? -1 : e.facing; // remembered for swimming
+    this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY);
     return false;
   },
 
@@ -11334,9 +11393,9 @@ const Humans = {
     this.chooseWork(e, b);
   },
 
-  // Its camp's needs, in order: light a pile that's ready, keep the pile
-  // fed, build the hut, then rest by the fire (or wander, before it's lit).
-  // A job under way carries on.
+  // Its camp's needs, in order: light a pile that's ready, build the first
+  // pile, then (once a fire has been lit) the hut, then keep the fire fed,
+  // then rest by it (or wander, before it's lit). A job under way carries on.
   chooseWork(e, b) {
     if (b.camp === null) b.camp = this.joinOrMakeCamp(e);
     const camp = b.camp;
@@ -11365,8 +11424,9 @@ const Humans = {
       b.job = 'lighting the fire';
       return;
     }
-    // Everyone helps build the first pile; after that one human is enough
-    // to keep the fire going.
+    // Everyone helps build the first pile. After that the hut comes first,
+    // and then one human is enough to keep the fire going.
+    if (camp.lit && this.hutWork(e, b, camp)) return;
     if (fuel < (burning ? PILE_LOW : PILE_LIGHT) && !(camp.lit && this.tending(e, camp))) {
       const t = this.findWanted(e, camp, FUEL, FUEL_R);
       if (t >= 0) {
@@ -11375,7 +11435,6 @@ const Humans = {
         return;
       }
     }
-    if (this.hutWork(e, b, camp)) return;
     b.job = camp.lit ? 'resting by the fire' : 'wandering';
   },
 
@@ -11563,6 +11622,7 @@ const Humans = {
       case 'fleeing':
         if (++b.pace >= RUN_EVERY) {
           b.pace = 0;
+          b.heading = b.fleeDir;
           this.stepAcross(e, b.fleeDir, CLIMB, true);
         }
         break;
@@ -11599,6 +11659,7 @@ const Humans = {
         const x = e.x + u * e.gy, y = e.y - u * e.gx;
         if (this.campSpot(x, y, e.gx, e.gy)) {
           camp = this.makeCamp(x, y, e.gx, e.gy);
+          this.clearFirePit(camp);
           break;
         }
       }
@@ -11621,6 +11682,17 @@ const Humans = {
       }
     }
     return true;
+  },
+
+  // A new camp clears its fire pit: grass (or anything else that burns)
+  // in the ground under and beside the pile is scraped back to dirt.
+  clearFirePit(camp) {
+    for (let u = -3; u <= 3; u++) {
+      for (let v = 1; v <= 2; v++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && this.type[c] !== 0 && DEFS[this.type[c]].flammable > 0) this.convert(c, ID.DIRT, false, -1);
+      }
+    }
   },
 
   // The cell u across and v down from the camp's spot, in its frame; -1
