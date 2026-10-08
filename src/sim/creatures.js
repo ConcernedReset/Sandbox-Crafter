@@ -85,7 +85,10 @@ export const Creatures = {
 
   // Drop e from the lists (its cells are left as they are).
   forgetCreature(e) {
-    if (e.brain !== null) this.leaveCamp(e); // humans.js
+    if (e.brain !== null) { // humans.js
+      this.dropInventory(e);
+      this.leaveCamp(e);
+    }
     const list = this.creatures, last = list.pop();
     if (last !== e) {
       list[e.slot] = last;

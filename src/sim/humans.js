@@ -9,6 +9,7 @@ import { DEFS, ID, NUM, State } from './elements.js';
 import { SHAPED, SUFFOCATE_EVERY, BODY } from './creatures.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
+const { COAL, SALT, GUNPOWDER, WOOD } = ID;
 const setOf = (keys) => {
   const s = new Uint8Array(NUM);
   for (const k of keys) s[ID[k]] = 1;
@@ -63,6 +64,9 @@ const DIG_EVERY = 8; // steps per cell dug
 const DIGGABLE = Uint8Array.from(DEFS, (d) => (!d.shape && !DANGER[d.id] && !d.indestructible
   && (d.state === POWDER || (d.state === SOLID && d.strength > 0 && d.strength <= WEAK)) ? 1 : 0));
 const WOOD_ONLY = setOf(['WOOD']);
+export const STACK = 10; // the most of any one element it carries
+export const HELD_PICKAXE = -1, HELD_GUN = -2; // what it shows in its hand, besides a pixel
+const FEED = setOf(['WOOD', 'PEAT', 'SAWDUST']); // fuel it feeds the fire before coal
 
 export function newBrain() {
   return {
@@ -74,8 +78,11 @@ export function newBrain() {
     best: Infinity, // its closest yet to the target
     stuck: 0, // steps without getting closer
     banned: new Map(), // cell -> tick until which it's left alone
-    carry: 0, // the element in its hands
-    carryJob: 'wandering', // what it's doing with it
+    items: new Map(), // element -> how many it carries (up to STACK)
+    tool: 0, weapon: 0, // a pickaxe, a gun (1 if it has one)
+    armour: 0, // hits its armour can still take (0: none)
+    held: 0, // what it shows in its hand: an element, HELD_PICKAXE or HELD_GUN
+    fetchSet: null, fetchR: 0, fetchSide: false, // what it's fetching, and where from
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
     fleeDir: 1,
@@ -84,6 +91,13 @@ export function newBrain() {
     wasJob: 'wandering', // what it was doing before it fell in
     goalX: -1, goalY: -1, // where it's wandering to
   };
+}
+
+// What a human carries, for the inspect line: "wood 7, coal 3; pickaxe, gun".
+export function inventoryNote(b) {
+  const items = [...b.items].map(([t, k]) => `${DEFS[t].name.toLowerCase()} ${k}`).join(', ');
+  const gear = [b.tool && 'pickaxe', b.weapon && 'gun', b.armour > 0 && 'armour'].filter(Boolean).join(', ');
+  return [items, gear].filter(Boolean).join('; ');
 }
 
 export const Humans = {
@@ -371,6 +385,84 @@ export const Humans = {
     this.humanMade.set(c, this.type[c]);
   },
 
+  has(b, t) {
+    return b.items.get(t) ?? 0;
+  },
+
+  // How many it carries of everything in `set`.
+  holding(b, set) {
+    let n = 0;
+    for (const [t, k] of b.items) if (set[t]) n += k;
+    return n;
+  },
+
+  // Put one t in its inventory, if it has room: true if it did.
+  stow(b, t) {
+    const k = this.has(b, t);
+    if (k >= STACK) return false;
+    b.items.set(t, k + 1);
+    b.held = t;
+    this.mixPowder(b);
+    return true;
+  },
+
+  takeOut(b, t) {
+    const k = this.has(b, t);
+    if (k === 0) return false;
+    if (k === 1) b.items.delete(t);
+    else b.items.set(t, k - 1);
+    return true;
+  },
+
+  // Take out one of whatever in `set` it has most of: that element, or 0.
+  takeAny(b, set) {
+    let best = 0, most = 0;
+    for (const [t, k] of b.items) {
+      if (set[t] && k > most) {
+        best = t;
+        most = k;
+      }
+    }
+    if (best !== 0) this.takeOut(b, best);
+    return best;
+  },
+
+  // Coal and Salt carried together make Gunpowder (the game's own Coal +
+  // Salt reaction), two at a time, up to a full stack.
+  mixPowder(b) {
+    while (this.has(b, COAL) > 0 && this.has(b, SALT) > 0 && this.has(b, GUNPOWDER) <= STACK - 2) {
+      this.takeOut(b, COAL);
+      this.takeOut(b, SALT);
+      b.items.set(GUNPOWDER, this.has(b, GUNPOWDER) + 2);
+    }
+  },
+
+  // Set off to fetch the nearest thing in `set` (within `radius` of the camp,
+  // open to one side if `side`): true if there was one.
+  gather(e, b, camp, set, radius, job, side = false) {
+    const t = this.findWanted(e, camp, set, radius, side);
+    if (t < 0) return false;
+    this.claim(b, camp, t);
+    b.fetchSet = set;
+    b.fetchR = radius;
+    b.fetchSide = side;
+    b.job = job;
+    return true;
+  },
+
+  // A human that dies drops the pixels it carried round where it lay; its
+  // tool, weapon and armour are lost.
+  dropInventory(e) {
+    const b = e.brain;
+    for (const [t, k] of b.items) {
+      for (let n = 0; n < k; n++) {
+        const c = this.freeSpaceNear(e.y * this.w + e.x);
+        if (c >= 0) this.spawn(c, t);
+      }
+    }
+    b.items.clear();
+  },
+
   pose(e, fr) {
     if (e.frame !== fr) this.moveBody(e, e.x, e.y, fr, e.facing, e.gx, e.gy);
   },
@@ -438,13 +530,7 @@ export const Humans = {
       b.job = 'sheltering';
       return;
     }
-    if (b.carry !== 0) {
-      b.job = b.carryJob;
-      return;
-    }
-    if ((b.job === 'gathering wood' && b.target >= 0 && FUEL[this.type[b.target]])
-      || (b.job === 'fetching stone' && b.target >= 0 && SHAPED[this.type[b.target]] === 0 && this.type[b.target] !== 0)
-      || (b.job === 'lighting the fire' && camp.lighter === e.id)) return;
+    if (this.carryingOn(e, b, camp)) return;
     this.release(b);
     const fuel = this.pileCount(camp, FUEL), burning = this.pileCount(camp, FIRE_SET) > 0;
     if (burning) camp.lit = true;
@@ -456,17 +542,30 @@ export const Humans = {
       return;
     }
     // Everyone helps build the first pile. After that the hut comes first,
-    // and then one human is enough to keep the fire going.
+    // and then one human is enough to keep the fire going, from its stock.
     if (camp.lit && this.hutWork(e, b, camp)) return;
     if (fuel < (burning ? PILE_LOW : PILE_LIGHT) && !(camp.lit && this.tending(e, camp))) {
-      const t = this.findWanted(e, camp, FUEL, FUEL_R);
-      if (t >= 0) {
-        this.claim(b, camp, t);
-        b.job = 'gathering wood';
+      if (this.holding(b, FUEL) > 0) {
+        b.job = 'carrying wood';
         return;
       }
+      if (this.gather(e, b, camp, FUEL, FUEL_R, 'gathering wood')) return;
     }
     b.job = camp.lit ? 'resting by the fire' : 'wandering';
+  },
+
+  // A job under way carries on: something still there to fetch, a load
+  // still to deliver, the fire it's lighting.
+  carryingOn(e, b, camp) {
+    switch (b.job) {
+      case 'gathering wood':
+      case 'fetching stone': return b.target >= 0 && b.fetchSet[this.type[b.target]] === 1;
+      case 'carrying wood': return this.holding(b, FUEL) > 0;
+      case 'building the hut': return camp.hut !== null && !camp.hut.done
+        && (this.holding(b, MATERIAL) > 0 || (camp.hut.wood && this.has(b, WOOD) > 0));
+      case 'lighting the fire': return camp.lighter === e.id;
+      default: return false;
+    }
   },
 
   // Is another member of the camp already fetching fuel?
@@ -496,13 +595,17 @@ export const Humans = {
       hut.done = true;
       return false;
     }
+    if (this.holding(b, MATERIAL) > 0 || (hut.wood && this.has(b, WOOD) > 0 && b.job === 'building the hut')) {
+      b.job = 'building the hut';
+      return true;
+    }
     // From blocks and boulders, not the ground it stands on.
-    let t = this.findWanted(e, camp, MATERIAL, STONE_R, true);
-    if (t < 0) t = this.findWanted(e, camp, WOOD_ONLY, STONE_R, true);
-    if (t < 0) return false;
-    this.claim(b, camp, t);
-    b.job = 'fetching stone';
-    return true;
+    if (this.gather(e, b, camp, MATERIAL, STONE_R, 'fetching stone', true)) return true;
+    if (this.gather(e, b, camp, WOOD_ONLY, STONE_R, 'fetching stone', true)) {
+      hut.wood = true;
+      return true;
+    }
+    return false;
   },
 
   // A site for the hut: HUT_W columns side by side, at least HUT_GAP cells
@@ -544,7 +647,7 @@ export const Humans = {
     for (let v = floor - DOOR; v > floor - HUT_WALL; v--) order.push([doorU, v]);
     for (let k = 0; k < HUT_W; k++) order.push([farU - side * k, floor - HUT_WALL]);
     const cells = order.map(([u, v]) => this.campCell(camp, u, v));
-    return { cells, us: order.map(([u]) => u), set: new Set(cells), u0, floor, side, done: false };
+    return { cells, us: order.map(([u]) => u), set: new Set(cells), u0, floor, side, done: false, wood: false };
   },
 
   // The ground in column u near the camp: the topmost solid (or powder)
@@ -576,14 +679,11 @@ export const Humans = {
   // cell, standing inside where it can reach.
   build(e, b) {
     const camp = b.camp, hut = camp === null ? null : camp.hut;
-    if (hut === null) {
-      this.dropCarry(e, b);
-      return;
-    }
-    const k = this.nextHutCell(hut);
+    const k = hut === null ? -1 : this.nextHutCell(hut);
     if (k < 0) {
-      hut.done = true;
-      this.dropCarry(e, b);
+      if (hut !== null) hut.done = true;
+      b.job = 'wandering'; // it keeps what it carries
+      b.think = 0;
       return;
     }
     const u = Math.min(hut.u0 + HUT_W - 3, Math.max(hut.u0 + 2, hut.us[k]));
@@ -592,32 +692,13 @@ export const Humans = {
     this.pose(e, 0);
     const c = hut.cells[k], t = this.type[c];
     if (t !== 0 && (SHAPED[t] || DEFS[t].state === LIQUID)) return; // wait for it to move
-    this.putDown(c, b.carry);
-    b.carry = 0;
-    b.job = 'wandering';
-    b.think = 0;
-  },
-
-  // Put down what it's carrying beside its feet (or its head). With no room
-  // at either, or only in its hut's doorway, it lets it go.
-  dropCarry(e, b) {
-    let c = this.spawnNear(e.x, e.y, b.carry);
-    if (c < 0) c = this.spawnNear(e.x - 5 * e.gx, e.y - 5 * e.gy, b.carry);
-    if (c >= 0 && b.camp !== null && this.inDoorway(b.camp, c)) this.clearCell(c);
-    else if (c >= 0) this.humanMade.set(c, this.type[c]);
-    b.carry = 0;
-    b.job = 'wandering';
-    b.think = 0;
-  },
-
-  // Is cell c in a doorway of the camp's hut?
-  inDoorway(camp, c) {
-    const hut = camp.hut;
-    if (hut === null) return false;
-    const x = c % this.w, y = (c / this.w) | 0;
-    const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
-    const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
-    return (u === hut.u0 || u === hut.u0 + HUT_W - 1) && v <= hut.floor && v > hut.floor - DOOR;
+    const m = this.takeAny(b, MATERIAL) || (hut.wood && this.takeOut(b, WOOD) ? WOOD : 0);
+    if (m === 0) {
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    this.putDown(c, m); // and on to the next cell, while it has more
   },
 
   // A finished hut to go to, and cold air or rain, snow or hail falling nearby.
@@ -843,21 +924,26 @@ export const Humans = {
     return this.campCell(camp, side * u, 0);
   },
 
-  // Walk to the target and pick it up.
+  // Walk to the target and pick it up; then the nearest more of the same,
+  // until its hands are full or there's no more. Stone fetched for the hut
+  // then goes to build it.
   fetch(e, b) {
     const t = b.target;
-    if (t < 0 || this.type[t] === 0 || SHAPED[this.type[t]]) {
+    if (t < 0 || !b.fetchSet[this.type[t]]) {
       this.release(b);
       b.job = 'wandering';
       b.think = 0;
       return;
     }
     if (!this.walkTo(e, b, t % this.w, (t / this.w) | 0, REACH, WALK_EVERY)) return;
-    b.carry = this.type[t];
-    b.carryJob = b.job === 'gathering wood' ? 'carrying wood' : 'building the hut';
-    b.job = b.carryJob;
-    this.clearCell(t);
+    const u = this.type[t];
     this.release(b);
+    if (this.stow(b, u)) {
+      this.clearCell(t);
+      if (this.holding(b, b.fetchSet) < STACK && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide)) return;
+    }
+    b.job = b.job === 'fetching stone' ? 'building the hut' : 'wandering';
+    b.think = 0;
   },
 
   // Take the fuel to the camp and put it on the pile (or down beside a
@@ -869,13 +955,17 @@ export const Humans = {
       return;
     }
     if (!this.walkTo(e, b, camp.x, camp.y, REACH + 1, WALK_EVERY)) return; // not into the flames
+    // A piece a step: up to what lighting needs, or until a burning fire has
+    // enough (coal last; the rest it keeps).
+    const want = this.pileCount(camp, FIRE_SET) > 0 ? PILE_LOW : PILE_LIGHT;
     const c = this.pileSpace(camp);
-    if (c < 0) {
-      this.dropCarry(e, b);
-      return;
+    if (c >= 0 && this.pileCount(camp, FUEL) < want) {
+      const t = this.takeAny(b, FEED) || this.takeAny(b, FUEL);
+      if (t !== 0) {
+        this.putDown(c, t);
+        return;
+      }
     }
-    this.putDown(c, b.carry);
-    b.carry = 0;
     b.job = 'wandering';
     b.think = 0;
   },
@@ -935,7 +1025,7 @@ export const Humans = {
     b.goalX = -1;
     b.stuck = 0;
     b.best = Infinity;
-    if (b.carry === 0) b.job = 'wandering';
+    b.job = 'wandering';
     b.think = 0;
   },
 

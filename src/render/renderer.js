@@ -791,11 +791,11 @@ export class Renderer {
     // What a human carries: one pixel above its hands, on the side it faces.
     for (const e of world.creatures) {
       const b = e.brain;
-      if (b === null || b.carry === 0) continue;
+      if (b === null || b.held <= 0) continue;
       const up = e.frame >= 2 ? 4 : 5; // kneeling and sitting, its hands are lower
       const x = e.x + e.facing * e.gy - up * e.gx, y = e.y - e.facing * e.gx - up * e.gy;
       if (x < 0 || y < 0 || x >= w || y >= h) continue;
-      const q = b.carry * SHADES * 3;
+      const q = b.held * SHADES * 3;
       pixels[y * w + x] = pack(this.palRGB[q], this.palRGB[q + 1], this.palRGB[q + 2]);
     }
   }

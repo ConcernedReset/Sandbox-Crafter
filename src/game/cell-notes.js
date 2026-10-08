@@ -3,6 +3,7 @@
 // doing).
 
 import { PASS_ORDER } from '../sim/walls.js';
+import { inventoryNote } from '../sim/humans.js';
 
 const SPEED_NAMES = ['', '¼×', '½×', '2×', '4×'];
 
@@ -21,7 +22,11 @@ export function cellNotes(world, i) {
   const e = world.creatureAt(i);
   if (e) {
     notes.push(`health ${e.n - e.lost} of ${e.n}`);
-    if (e.brain) notes.push(e.brain.job);
+    if (e.brain) {
+      notes.push(e.brain.job);
+      const inv = inventoryNote(e.brain);
+      if (inv) notes.push(inv);
+    }
   }
   return notes;
 }
