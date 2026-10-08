@@ -17,10 +17,13 @@ const food = (key, name, sym, state, colors, extra) => ({ key, name, sym, cat: '
 const life = (key, name, sym, state, colors, extra) => ({ key, name, sym, cat: 'life', state, colors, ...extra });
 
 // A creature. It moves itself, so it's a SOLID that the physics leaves alone.
+// Creatures live LIFE_SCALE times the life ranges written below.
 const WATERS = ['WATER', 'SALT_WATER'];
+const LIFE_SCALE = 3;
 const critter = (key, name, sym, colors, c, extra) => ({
   key, name, sym, cat: 'creature', state: SOLID, colors, strength: 0, density: 1, conduct: 0.1,
   behavior: 'critter', critter: c, ...extra,
+  life: extra.life.map((v) => v * LIFE_SCALE),
 });
 
 export const WORLD_ELEMENTS = [

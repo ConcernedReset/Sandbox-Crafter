@@ -17,6 +17,7 @@ import { CHEMISTRY_ELEMENTS, CHEMISTRY_REACTIONS, CHEMISTRY_HITS } from './eleme
 import { WORLD_ELEMENTS, WORLD_REACTIONS, WORLD_HITS, WORLD_PAIRS } from './elements-world.js';
 import { MACHINE_ELEMENTS, MACHINE_REACTIONS } from './elements-machines.js';
 import { MORE_ELEMENTS, MORE_REACTIONS, MORE_HITS } from './elements-more.js';
+import { compileShape } from './shapes.js';
 
 export { State, AMBIENT };
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
@@ -605,6 +606,7 @@ function normalize(e, i) {
     batteryRate: e.batteryRate ?? 1,
     critter: null,
     stalk: null,
+    shape: e.shape ? compileShape(e.shape, e.key) : null, // shaped creatures (creatures.js)
     // everything else
     lifeEnd: null,
     produce: null,
@@ -620,6 +622,8 @@ function normalize(e, i) {
   // Anything that glows when excited counts down its glow like Neon does.
   if (e.excite && d.behavior === null) d.behavior = 'neon';
   if (e.machine) d.behavior = 'machine';
+  // A creature several cells big is moved as a whole (creatures.js).
+  if (d.shape) d.behavior = 'body';
   // Liquids, gases and loose energy can be pushed aside by heavier things.
   d.displaceable = !d.projectile
     && (e.state === LIQUID || e.state === GAS || (e.state === ENERGY && !d.fixed));
@@ -759,6 +763,9 @@ ELEMENT_LIST.forEach((e, i) => {
       spark: c.spark ?? 0,
       ignite: !!c.ignite,
       tough: !!c.tough,
+      climb: c.climb ?? 1, // the highest step a walker climbs
+      burst: !!c.burst, // swims in bursts, mostly upward (squid)
+      wades: c.moves === 'swim' || c.moves === 'human', // goes into liquids
       // A swimmer's trail (squid ink) needs water to be left in.
       trail: c.trail ? {
         id: id(c.trail[0]),

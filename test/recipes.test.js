@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {
   DEFS, ID, NUM, RULES, REACT, State, STARTERS, COLLECTIBLE, ruleLabel,
 } from '../src/sim/elements.js';
-import { makeWorld, fillRect, wallBox } from './helpers.js';
+import { makeWorld, fillRect, wallBox, ageCreatures } from './helpers.js';
 
 const MAX_FRAMES = 4000;
 
@@ -74,6 +74,11 @@ function setUp(rule) {
         for (let k = 0; k < 40; k++) w.spawnProjectile(a, midX + (k % 8), midY + (k >> 3), 0, 0);
       } else {
         fill(home(a), a);
+      }
+      // Creatures live longer than a recipe test runs: age them, for what
+      // they leave when they die.
+      if (DEFS[a].critter && DEFS[a].lifeEnd && (rule.output === DEFS[a].lifeEnd.to || rule.output === DEFS[a].lifeEnd.alt)) {
+        hooks.push(() => ageCreatures(w, a, 60));
       }
       break;
     case 'decay':

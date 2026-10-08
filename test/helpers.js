@@ -42,6 +42,15 @@ export function meanY(world, t) {
   return n ? sum / n : NaN;
 }
 
+// Bring every creature of kind t to within `left` steps of old age: single
+// cells count their life down, shaped ones count their age up.
+export function ageCreatures(world, t, left) {
+  for (let i = 0; i < world.type.length; i++) {
+    if (world.type[i] === t && world.life[i] > left) world.life[i] = left;
+  }
+  for (const e of world.creatures ?? []) if (e.kind === t) e.age = Math.max(e.age, e.lifespan - left);
+}
+
 export function run(world, frames, each) {
   for (let f = 0; f < frames; f++) {
     if (each) each(f);
