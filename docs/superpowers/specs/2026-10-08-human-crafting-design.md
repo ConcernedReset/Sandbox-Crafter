@@ -60,8 +60,11 @@ step-back reflex fired about 80 times in 12,000 steps of the Wilderness.
 
 ## 3. When crafting starts, and in what order
 
-- Each camp counts its lightings (`camp.lightings`). Crafting starts once
-  the fire has been lit twice and the hut is finished.
+- Each camp counts the steps its fire has burned (`camp.burned`). Crafting
+  starts once the hut is finished and the fire has burned for 3,000 steps in
+  all, however many lightings that took. (Agreed in chat in place of "lit
+  twice": a tended fire never goes out, so a group would never light it a
+  second time.)
 - Each human crafts for itself. One human still keeps the fire fed; the
   others work through the steps.
 - **The steps, in order:**
