@@ -50,11 +50,11 @@ const only = (w, t) => {
 
 test('a seed grows into a whole body, ring by ring outward', () => {
   const w = floored();
-  w.spawn(10 * 40 + 20, ID.FISH); // Task 5 makes this a human (more rings)
+  w.spawn(10 * 40 + 20, ID.HUMAN);
   const counts = [];
-  for (let k = 0; k < 8; k++) { w.step(); counts.push(countOf(w, ID.FISH)); }
+  for (let k = 0; k < 8; k++) { w.step(); counts.push(countOf(w, ID.HUMAN)); }
   assert.equal(counts[0], 1, 'the seed hatches first');
-  assert.equal(counts.at(-1), DEFS[ID.FISH].shape.n, 'then the whole body is there');
+  assert.equal(counts.at(-1), DEFS[ID.HUMAN].shape.n, 'then the whole body is there');
   for (let k = 1; k < counts.length; k++) assert.ok(counts[k] >= counts[k - 1], `never shrinks: ${counts}`);
 });
 

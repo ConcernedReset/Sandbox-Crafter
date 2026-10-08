@@ -877,6 +877,26 @@ export const WORLD_ELEMENTS = [
     desc: 'The mythical firebird that burns without being consumed, setting light to whatever it passes, and crumbling to ash at the end of its life.',
     hint: 'A Bird that flies into Fire, and likes it.',
   }),
+  critter('HUMAN', 'Human', 'Hmn', ['#f0c8a0', '#c83a3a', '#3a3a5a'], {
+    moves: 'human',
+  }, {
+    life: [24000, 24000], lifeEnd: { to: 'BONE', alt: 'MEAT', altChance: 0.5 },
+    shape: {
+      frames: [
+        ['.k.', 'ksk', '.s.', '.p.', 'p.p', 'p.p'], // walking
+        ['.k.', 'ksk', '.s.', '.p.', '.pp', 'pp.'], // walking, legs crossing
+        ['...', '.k.', 'ksk', '.s.', 'ppp', 'pp.'], // kneeling
+        ['...', '.k.', 'ksk', '.s.', '.pp', 'ppp'], // sitting
+      ],
+      palette: {
+        k: ['#f0c8a0', '#d8a878', '#a8784a', '#6a4428'],
+        s: ['#c83a3a', '#3a6ac8', '#3aa85a', '#e8c83a', '#8a4ac8', '#e8e8e8'],
+        p: ['#3a3a5a', '#4a3a2a'],
+      },
+    },
+    desc: 'Makes a camp, gathers wood into a pile and lights a campfire by rubbing sticks, builds a little stone hut beside it to shelter from cold and rain, and runs from fire, lava and acid.',
+    hint: 'Lightning striking Clay, as in the old stories of people shaped from clay.',
+  }),
 
   // ---- weather and the Earth ------------------------------------------------------
   {
@@ -1190,6 +1210,7 @@ export const WORLD_REACTIONS = [
   { a: 'BEE', b: 'PHOSPHOR', chance: 0.02, aTo: 'FIREFLY', bTo: null },
   { a: 'LICHEN', b: 'WATER', chance: 0.005, aTo: null, bTo: 'TARDIGRADE' },
   { a: 'BIRD', b: 'FIRE', chance: 0.3, aTo: 'PHOENIX', bTo: null },
+  { a: 'CLAY', b: 'LIGHTNING', chance: 0.1, aTo: 'HUMAN', bTo: null },
 
   { a: 'MILK', b: 'SALT', chance: 0.02, aTo: 'TOFU', bTo: 'EMPTY' },
   { a: 'GLUE', b: 'SUGAR', chance: 0.02, aTo: 'JELLY', bTo: 'EMPTY' },

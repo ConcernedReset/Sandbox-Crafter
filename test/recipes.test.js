@@ -198,6 +198,10 @@ const CONTACT_SETUPS = {
     fillRect(w, box.x0, box.y0, box.x1, box.y0 + 10, ID.HELIUM);
     return (f) => { if (f % 10 === 0) w.paint(25, box.y0 + 14, 4, ID.PLASMA); };
   },
+  'CLAY+LIGHTNING': (w, box) => {
+    fillRect(w, box.x0, box.y1 - 5, box.x1, box.y1, ID.CLAY);
+    w.spawn(box.y0 * w.w + 25, ID.LIGHTNING);
+  },
   'BATTERY+METAL': (w, box) => {
     w.spawn(box.y1 * w.w + 20, ID.BATTERY);
     fillRect(w, 21, box.y1, 40, box.y1, ID.METAL);

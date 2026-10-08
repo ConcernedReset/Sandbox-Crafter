@@ -83,6 +83,7 @@ export const Creatures = {
 
   // Drop e from the lists (its cells are left as they are).
   forgetCreature(e) {
+    if (e.brain !== null) this.leaveCamp(e); // humans.js
     const list = this.creatures, last = list.pop();
     if (last !== e) {
       list[e.slot] = last;
@@ -562,7 +563,8 @@ export const Creatures = {
       e.pushY = 0;
     }
     if (this.fling(e)) return;
-    this.stepAnimal(e);
+    if (DEFS[e.kind].critter.moves === 'human') this.stepHuman(e);
+    else this.stepAnimal(e);
   },
 
   // An animal's step: sparks and fire from a pixel (eels, the phoenix),
