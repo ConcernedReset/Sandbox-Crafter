@@ -340,7 +340,9 @@ export const Humans = {
       b.job = 'lighting the fire';
       return;
     }
-    if (fuel < (burning ? PILE_LOW : PILE_LIGHT)) {
+    // Everyone helps build the first pile; after that one human is enough
+    // to keep the fire going.
+    if (fuel < (burning ? PILE_LOW : PILE_LIGHT) && !(camp.lit && this.tending(e, camp))) {
       const t = this.findWanted(e, camp, FUEL, FUEL_R);
       if (t >= 0) {
         this.claim(b, camp, t);
@@ -350,6 +352,15 @@ export const Humans = {
     }
     if (this.hutWork(e, b, camp)) return;
     b.job = camp.lit ? 'resting by the fire' : 'wandering';
+  },
+
+  // Is another member of the camp already fetching fuel?
+  tending(e, camp) {
+    for (const id of camp.members) {
+      const o = this.creatureById[id];
+      if (o && o !== e && o.brain !== null && (o.brain.job === 'gathering wood' || o.brain.job === 'carrying wood')) return true;
+    }
+    return false;
   },
 
   // Once the camp's fire has been lit, a hut beside it: fetch material for
@@ -370,8 +381,9 @@ export const Humans = {
       hut.done = true;
       return false;
     }
-    let t = this.findWanted(e, camp, MATERIAL, STONE_R);
-    if (t < 0) t = this.findWanted(e, camp, WOOD_ONLY, STONE_R);
+    // From blocks and boulders, not the ground it stands on.
+    let t = this.findWanted(e, camp, MATERIAL, STONE_R, true);
+    if (t < 0) t = this.findWanted(e, camp, WOOD_ONLY, STONE_R, true);
     if (t < 0) return false;
     this.claim(b, camp, t);
     b.job = 'fetching stone';
@@ -633,9 +645,10 @@ export const Humans = {
   },
 
   // The nearest cell to e within `radius` of the camp holding something in
-  // `set`, open to the air, within reach of ground a human stands on, and
-  // not in the pile or the hut, nor claimed or given up on. -1 if none.
-  findWanted(e, camp, set, radius) {
+  // `set`, open to the air (`side`: open to one side, so it isn't the
+  // ground underfoot), within reach of ground a human stands on, and not in
+  // the pile or the hut, nor claimed or given up on. -1 if none.
+  findWanted(e, camp, set, radius, side = false) {
     const { w, h, type } = this;
     const b = e.brain, hut = camp.hut;
     let best = -1, bd = Infinity;
@@ -647,12 +660,22 @@ export const Humans = {
         if (d >= bd || camp.claims.has(i) || this.isBanned(b, i) || this.inPile(camp, x, y)) continue;
         if (hut !== null && hut.set.has(i)) continue;
         if (!this.openAt(x, y) || !this.nearGround(x, y, e.gx, e.gy)) continue;
+        if (side && !this.openSide(x, y, e.gx, e.gy)) continue;
         if (this.acrossFire(camp, e.x, e.y, x, y)) continue;
         best = i;
         bd = d;
       }
     }
     return best;
+  },
+
+  // Is there empty space beside (x, y), across the down arrow?
+  openSide(x, y, gx, gy) {
+    for (const s of [1, -1]) {
+      const nx = x + s * gy, ny = y - s * gx;
+      if (this.inBounds(nx, ny) && this.type[ny * this.w + nx] === 0) return true;
+    }
+    return false;
   },
 
   openAt(x, y) {

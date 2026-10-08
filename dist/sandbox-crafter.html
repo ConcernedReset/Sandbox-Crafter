@@ -4274,10 +4274,13 @@ const food = (key, name, sym, state, colors, extra) => ({ key, name, sym, cat: '
 const life = (key, name, sym, state, colors, extra) => ({ key, name, sym, cat: 'life', state, colors, ...extra });
 
 // A creature. It moves itself, so it's a SOLID that the physics leaves alone.
+// Creatures live LIFE_SCALE times the life ranges written below.
 const WATERS = ['WATER', 'SALT_WATER'];
+const LIFE_SCALE = 3;
 const critter = (key, name, sym, colors, c, extra) => ({
   key, name, sym, cat: 'creature', state: SOLID, colors, strength: 0, density: 1, conduct: 0.1,
   behavior: 'critter', critter: c, ...extra,
+  life: extra.life.map((v) => v * LIFE_SCALE),
 });
 
 const WORLD_ELEMENTS = [
@@ -4997,6 +5000,7 @@ const WORLD_ELEMENTS = [
     moves: 'swim', home: WATERS, speed: 0.08, breed: 0.2, eats: [{ food: 'PLANKTON' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'SALT_WATER' }, render: 'pulse', alpha: 0.75, glowAmount: 0.2,
+    shape: { frames: [['.b.', 'bbb', 't.t'], ['bbb', 'b.b', '.t.']], palette: { b: ['#d8a0f0', '#c890e8', '#e8b8fc'], t: ['#f0d0fc'] }, pulse: true },
     desc: 'A drifting bell of jelly that is 95% water, with no brain, heart or bones. Jellyfish have been around for 500 million years.',
     hint: 'Plankton and Slime.',
   }),
@@ -5004,6 +5008,7 @@ const WORLD_ELEMENTS = [
     moves: 'swim', home: WATERS, speed: 0.4, breed: 0.1, eats: [{ food: 'ALGAE' }, { food: 'PLANKTON' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'BONE', alt: 'MEAT', altChance: 0.5 },
+    shape: { frames: [['bbbe', '.bb.'], ['.bbe', 'bbb.']], palette: { b: ['#e88a3a', '#6a9ae8', '#e8c83a', '#8ae86a'], e: ['#1a1a1a'] } },
     desc: 'Swims through water eating algae and plankton, and breeds when well fed. Out of water it soon dies.',
     hint: 'An Egg laid in Salt Water.',
   }),
@@ -5011,6 +5016,7 @@ const WORLD_ELEMENTS = [
     moves: 'swim', home: WATERS, speed: 0.3, breed: 0.05, spark: 0.02, eats: [{ food: 'FISH' }],
   }, {
     life: [2500, 3500], lifeEnd: { to: 'MEAT' },
+    shape: { frames: [['bb..be', '..bb..'], ['..bb.e', 'bb..b.']], palette: { b: ['#3a4a3a', '#445444'], e: ['#c8c840'] } },
     desc: 'Not really an eel but a knifefish that stuns prey with jolts of up to 800 volts. Electric fish inspired Volta\'s first battery.',
     hint: 'A Fish that swallowed a Battery.',
   }),
@@ -5019,6 +5025,7 @@ const WORLD_ELEMENTS = [
     eats: [{ food: 'SEED' }, { food: 'FRUIT' }, { food: 'ANT' }, { food: 'WORM' }, { food: 'LOCUST' }],
   }, {
     life: [1800, 2600], lifeEnd: { to: 'FEATHER' },
+    shape: { frames: [['w.w', '.b.'], ['...', 'wbw']], palette: { w: ['#5a4a3a', '#8a6a4a', '#3a3a3a'], b: ['#e8e0d0', '#8a6a4a'] } },
     desc: 'Flies about eating seeds, fruit and insects, and lays eggs when well fed. Birds are the dinosaurs that survived.',
     hint: 'Hatch an Egg up in a Cloud.',
   }),
@@ -5035,22 +5042,25 @@ const WORLD_ELEMENTS = [
     eats: [{ food: 'ALGAE' }, { food: 'PLANT' }, { food: 'MOSS' }, { food: 'LICHEN' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'SEASHELL' },
+    shape: { frames: [['ss.', 'bbb']], palette: { s: ['#c8a070', '#b88a5a'], b: ['#e8c898'] } },
     desc: 'A slow grazer that carries its limestone house on its back, and leaves the shell behind when it dies.',
     hint: 'A Worm that builds a Limestone shell.',
   }),
   critter('SQUID', 'Squid', 'Sqd', ['#e8a8a0', '#dc9c94', '#f4b4ac'], {
-    moves: 'swim', home: WATERS, speed: 0.4, breed: 0.05, trail: ['INK', 0.02],
+    moves: 'swim', burst: true, home: WATERS, speed: 0.4, breed: 0.05, trail: ['INK', 0.02],
     eats: [{ food: 'FISH' }, { food: 'PLANKTON' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'MEAT' },
+    shape: { frames: [['.m.', 'mmm', 'mem', 't.t'], ['.m.', 'mmm', 'mem', '.tt']], palette: { m: ['#e8a8a0', '#dc9c94'], e: ['#2a2a2a'], t: ['#f4b4ac'] } },
     desc: 'Jet-propelled, with three hearts and blue blood, and it squirts a cloud of ink to escape.',
     hint: 'A Jellyfish that has learned to use Ink.',
   }),
   critter('FROG', 'Frog', 'Frg', ['#5aa83a', '#4e9c30', '#66b444'], {
-    moves: 'walk', speed: 0.3, breed: 0.1,
+    moves: 'walk', climb: 2, speed: 0.3, breed: 0.1,
     eats: [{ food: 'ANT' }, { food: 'LOCUST' }, { food: 'BEE' }, { food: 'FIREFLY' }, { food: 'BUTTERFLY' }, { food: 'TERMITE' }],
   }, {
     life: [2000, 3000], lifeEnd: { to: 'MEAT' },
+    shape: { frames: [['.ge', 'ggg'], ['gge', 'g.g']], palette: { g: ['#5aa83a', '#4e9c30', '#66b444'], e: ['#e8e040'] } },
     desc: 'Starts life as a tadpole with gills and ends up a hopping insect-catcher that partly breathes through its skin.',
     hint: 'A Fish that crawls out onto the Mud.',
   }),
@@ -5075,6 +5085,7 @@ const WORLD_ELEMENTS = [
     eats: [{ food: 'ANT' }, { food: 'BEE' }, { food: 'FIREFLY' }, { food: 'BUTTERFLY' }, { food: 'LOCUST' }, { food: 'TERMITE' }],
   }, {
     life: [2000, 3000],
+    shape: { frames: [['lbl', 'l.l'], ['lbl', '.ll']], palette: { b: ['#2a2a2a', '#3a3434'], l: ['#1e1e1e'] } },
     desc: 'Eight legs, no wings, and not an insect at all. It trails silk wherever it walks and eats any bug it catches.',
     hint: 'An Ant that learns to spin Glue.',
   }),
@@ -5119,8 +5130,29 @@ const WORLD_ELEMENTS = [
     moves: 'fly', speed: 0.6, ignite: true, tough: true,
   }, {
     cat: 'special', life: [1500, 2500], lifeEnd: { to: 'ASH' }, glowAmount: 0.8, temp: 600, holdTemp: true,
+    shape: { frames: [['w...w', '.wbw.', '..t..'], ['.....', 'wwbww', '..t..']], palette: { w: ['#ff6a1a', '#ffb02a'], b: ['#ffe05a'], t: ['#ff3a1a'] } },
     desc: 'The mythical firebird that burns without being consumed, setting light to whatever it passes, and crumbling to ash at the end of its life.',
     hint: 'A Bird that flies into Fire, and likes it.',
+  }),
+  critter('HUMAN', 'Human', 'Hmn', ['#f0c8a0', '#c83a3a', '#3a3a5a'], {
+    moves: 'human',
+  }, {
+    life: [24000, 24000], lifeEnd: { to: 'BONE', alt: 'MEAT', altChance: 0.5 },
+    shape: {
+      frames: [
+        ['.k.', 'ksk', '.s.', '.p.', 'p.p', 'p.p'], // walking
+        ['.k.', 'ksk', '.s.', '.p.', '.pp', 'pp.'], // walking, legs crossing
+        ['...', '.k.', 'ksk', '.s.', 'ppp', 'pp.'], // kneeling
+        ['...', '.k.', 'ksk', '.s.', '.pp', 'ppp'], // sitting
+      ],
+      palette: {
+        k: ['#f0c8a0', '#d8a878', '#a8784a', '#6a4428'],
+        s: ['#c83a3a', '#3a6ac8', '#3aa85a', '#e8c83a', '#8a4ac8', '#e8e8e8'],
+        p: ['#3a3a5a', '#4a3a2a'],
+      },
+    },
+    desc: 'Makes a camp, gathers wood into a pile and lights a campfire by rubbing sticks, builds a little stone hut beside it to shelter from cold and rain, and runs from fire, lava and acid.',
+    hint: 'Lightning striking Clay, as in the old stories of people shaped from clay.',
   }),
 
   // ---- weather and the Earth ------------------------------------------------------
@@ -5435,6 +5467,7 @@ const WORLD_REACTIONS = [
   { a: 'BEE', b: 'PHOSPHOR', chance: 0.02, aTo: 'FIREFLY', bTo: null },
   { a: 'LICHEN', b: 'WATER', chance: 0.005, aTo: null, bTo: 'TARDIGRADE' },
   { a: 'BIRD', b: 'FIRE', chance: 0.3, aTo: 'PHOENIX', bTo: null },
+  { a: 'CLAY', b: 'LIGHTNING', chance: 0.1, aTo: 'HUMAN', bTo: null },
 
   { a: 'MILK', b: 'SALT', chance: 0.02, aTo: 'TOFU', bTo: 'EMPTY' },
   { a: 'GLUE', b: 'SUGAR', chance: 0.02, aTo: 'JELLY', bTo: 'EMPTY' },
@@ -5903,6 +5936,66 @@ const MORE_HITS = [
 return { MORE_ELEMENTS, MORE_REACTIONS, MORE_HITS };
 })();
 
+__modules["src/sim/shapes.js"] = (() => {
+// Bodies for the bigger creatures (creatures.js). A shape is a few frames
+// of small pictures, each a list of rows, top row first:
+//
+//   shape: {
+//     frames: [['a.a', '.b.'], ['...', 'aba']], // wings up, wings down
+//     palette: { a: ['#5a4a3a', '#8a6a4a'], b: ['#e8e0d0'] },
+//   }
+//
+// '.' is no pixel; any other letter is a pixel coloured from that letter's
+// palette entry. A letter with several colours gives each creature one of
+// them, picked when it's born (so humans wear different shirts). Every
+// frame has the same number of pixels, numbered in reading order. The
+// anchor, where the creature stands, is the middle of the bottom row: a
+// pixel's offset is (column - floor(width / 2), row - (height - 1)).
+// `pulse: true` switches frames on a timer instead of as the creature moves.
+
+const SHAPE_COLORS = 32; // palette slots per shape (a cell's shade & 31)
+
+const hex = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+
+function compileShape(src, key) {
+  const letters = Object.keys(src.palette);
+  const base = [], options = [], colors = [];
+  for (const l of letters) {
+    base.push(colors.length);
+    options.push(src.palette[l].length);
+    for (const c of src.palette[l]) colors.push(hex(c));
+  }
+  if (colors.length > SHAPE_COLORS) throw new Error(`${key}: more than ${SHAPE_COLORS} colours`);
+  const h = src.frames[0].length, w = src.frames[0][0].length;
+  const frames = src.frames.map((rows) => {
+    if (rows.length !== h || rows.some((r) => r.length !== w)) throw new Error(`${key}: frames differ in size`);
+    const dx = [], dy = [], letter = [];
+    rows.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (ch === '.') return;
+      const l = letters.indexOf(ch);
+      if (l < 0) throw new Error(`${key}: no colour for '${ch}'`);
+      dx.push(x - (w >> 1));
+      dy.push(y - (h - 1));
+      letter.push(l);
+    }));
+    return { dx: Int8Array.from(dx), dy: Int8Array.from(dy), letter: Uint8Array.from(letter) };
+  });
+  const n = frames[0].dx.length;
+  if (frames.some((f) => f.dx.length !== n)) throw new Error(`${key}: frames have different numbers of pixels`);
+  // A seed grows from the pixel nearest the middle of the shape outwards.
+  const f = frames[0], my = -(h - 1) / 2;
+  const far = (p) => f.dx[p] * f.dx[p] + (f.dy[p] - my) ** 2;
+  const order = [...Array(n).keys()].sort((a, b) => far(a) - far(b));
+  return {
+    w, h, n, frames, letters, base, options, order,
+    colors: Array.from({ length: SHAPE_COLORS }, (_, k) => colors[k % colors.length]),
+    pulse: !!src.pulse,
+  };
+}
+
+return { SHAPE_COLORS, compileShape };
+})();
+
 __modules["src/sim/elements.js"] = (() => {
 // Every element, reaction and recipe in the game is defined in this file and
 // in elements-expansion.js, elements-periodic.js, elements-chemistry.js,
@@ -5919,6 +6012,7 @@ const { CHEMISTRY_ELEMENTS, CHEMISTRY_REACTIONS, CHEMISTRY_HITS } = __modules["s
 const { WORLD_ELEMENTS, WORLD_REACTIONS, WORLD_HITS, WORLD_PAIRS } = __modules["src/sim/elements-world.js"];
 const { MACHINE_ELEMENTS, MACHINE_REACTIONS } = __modules["src/sim/elements-machines.js"];
 const { MORE_ELEMENTS, MORE_REACTIONS, MORE_HITS } = __modules["src/sim/elements-more.js"];
+const { compileShape } = __modules["src/sim/shapes.js"];
 
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
@@ -6507,6 +6601,7 @@ function normalize(e, i) {
     batteryRate: e.batteryRate ?? 1,
     critter: null,
     stalk: null,
+    shape: e.shape ? compileShape(e.shape, e.key) : null, // shaped creatures (creatures.js)
     // everything else
     lifeEnd: null,
     produce: null,
@@ -6522,6 +6617,8 @@ function normalize(e, i) {
   // Anything that glows when excited counts down its glow like Neon does.
   if (e.excite && d.behavior === null) d.behavior = 'neon';
   if (e.machine) d.behavior = 'machine';
+  // A creature several cells big is moved as a whole (creatures.js).
+  if (d.shape) d.behavior = 'body';
   // Liquids, gases and loose energy can be pushed aside by heavier things.
   d.displaceable = !d.projectile
     && (e.state === LIQUID || e.state === GAS || (e.state === ENERGY && !d.fixed));
@@ -6661,6 +6758,9 @@ ELEMENT_LIST.forEach((e, i) => {
       spark: c.spark ?? 0,
       ignite: !!c.ignite,
       tough: !!c.tough,
+      climb: c.climb ?? 1, // the highest step a walker climbs
+      burst: !!c.burst, // swims in bursts, mostly upward (squid)
+      wades: c.moves === 'swim' || c.moves === 'human', // goes into liquids
       // A swimmer's trail (squid ink) needs water to be left in.
       trail: c.trail ? {
         id: id(c.trail[0]),
@@ -6902,7 +7002,7 @@ MASS[ID.WHITE_HOLE] = -500;
 const DISPENSABLE = new Uint8Array(NUM);
 for (const d of DEFS) {
   DISPENSABLE[d.id] = CLONEABLE[d.id] && !CONDUCTOR[d.id] && !MACHINE[d.id]
-    && (d.state !== SOLID || d.behavior === 'critter') ? 1 : 0;
+    && (d.state !== SOLID || d.behavior === 'critter' || d.behavior === 'body') ? 1 : 0;
 }
 
 const setOf = (keys) => {
@@ -7353,6 +7453,7 @@ const Behaviors = {
         }
         return false;
       case 'critter': return this.updateCritter(i, x, y, t, d);
+      case 'body': return this.updateBody(i, x, y, t);
       case 'stalk': return this.updateStalk(i, x, y, t, d);
       case 'meteor': return this.updateMeteor(i, x, y, d);
       case 'ferrofluid': return this.updateFerrofluid(i, x, y);
@@ -8835,6 +8936,691 @@ const Particles = {
 return { initParticles, Particles };
 })();
 
+__modules["src/sim/creatures.js"] = (() => {
+// Shaped creatures: the bigger animals and humans have bodies several cells
+// big (shapes.js). Each is an entity in world.creatures, and its body is
+// written into the grid as cells of its element, with ctype holding the
+// entity's id and shade the pixel's palette slot. Fire, acid, the eraser
+// and heat reach those cells like any other; on its next step the entity
+// looks at them, and a pixel that is no longer its own is damaged. A
+// creature dies when half its pixels are damaged, or of old age, and heals
+// a pixel at a time while nothing hurts it.
+//
+// A lone cell of a shaped creature (ctype 0) is a seed: painted, made by a
+// recipe, hatched or bred. It grows into a whole body, ring by ring outward
+// from where it is, wherever the body fits round it.
+//
+// Mixed into World.prototype; initCreatures sets up the storage.
+
+const { DEFS, ID, State, AMBIENT } = __modules["src/sim/elements.js"];
+const { DX8, DY8 } = __modules["src/sim/gravity.js"];
+const { SPEEDS, SLOW_EVERY } = __modules["src/sim/time.js"];
+const { PASS_BIT } = __modules["src/sim/walls.js"];
+
+const { LIQUID } = State;
+const { WALL, ASH } = ID;
+
+const SHAPED = Uint8Array.from(DEFS, (d) => (d.shape ? 1 : 0));
+// What fliers and walkers move through: empty space, gases and loose flames.
+const AIRY = Uint8Array.from(DEFS, (d) => (d.id === 0 || (d.displaceable && d.state !== LIQUID) ? 1 : 0));
+const GROW_EVERY = 2; // steps per ring of a growing body
+const GROW_GIVE_UP = 120; // steps a seed, or a blocked ring, waits for room
+const HEAL_AFTER = 150; // steps without harm for each pixel healed
+const SUFFOCATE_EVERY = 30; // steps per pixel lost out of breath (or water)
+const HOT_HURT = 60; // °C: a pixel hotter than this, or colder than
+const COLD_HURT = -15; // this, is damaged (unless the creature is tough)
+const NEWBORN_GRACE = 60; // steps after birth before heat can hurt it
+const MAX_FALL = 4; // cells a step
+
+// What each pixel of a body is.
+const BODY = 0, HURT = 1, UNBORN = 2;
+
+function initCreatures(world) {
+  world.creatures = []; // every entity, in no particular order
+  world.creatureById = [null]; // id (the ctype of its cells) -> entity
+  world.freeCreatureIds = [];
+  world.camps = []; // humans' camps (humans.js)
+  world.footA = new Int32Array(64); // scratch for working out footprints
+  world.footB = new Int32Array(64);
+}
+
+const Creatures = {
+  newCreature(t, x, y, facing, gx, gy) {
+    const d = DEFS[t], sh = d.shape;
+    const id = this.freeCreatureIds.length > 0 ? this.freeCreatureIds.pop() : this.creatureById.length;
+    if (id > 65535) return null;
+    const look = new Uint8Array(sh.letters.length);
+    for (let l = 0; l < look.length; l++) look[l] = (this.rand() * sh.options[l]) | 0;
+    const e = {
+      id, kind: t, x, y, facing, frame: 0, gx, gy,
+      n: sh.n,
+      pix: new Uint8Array(sh.n).fill(UNBORN), // BODY, HURT or UNBORN, per pixel
+      cells: new Int32Array(sh.n).fill(-1), // where each pixel is (-1: nowhere)
+      ring: new Uint8Array(sh.n), // when each pixel grows, in rings from the seed
+      look, // the colour picked for each palette letter
+      seed: 0, // the pixel it grew from
+      grow: 0, // steps since it hatched while it's growing, then -1
+      wait: 0, // growing steps a ring has been blocked
+      lost: 0, // damaged pixels
+      burnt: 0, // of those, damaged by heat
+      hurtAt: 0, // the tick it was last hurt
+      age: 0,
+      lifespan: d.lifeMin + ((this.rand() * (d.lifeMax - d.lifeMin + 1)) | 0),
+      fallV: 0, // falling speed, cells a step
+      vx: 0, vy: 0, // thrown by a blast
+      pushX: 0, pushY: 0, // carried by a conveyor this step
+      dry: 0, // steps a swimmer has been out of water
+      wades: d.critter.wades,
+      brain: null, // a human's (humans.js)
+      slot: this.creatures.length, // its place in world.creatures
+    };
+    if (id === this.creatureById.length) this.creatureById.push(e);
+    else this.creatureById[id] = e;
+    this.creatures.push(e);
+    return e;
+  },
+
+  // Drop e from the lists (its cells are left as they are).
+  forgetCreature(e) {
+    if (e.brain !== null) this.leaveCamp(e); // humans.js
+    const list = this.creatures, last = list.pop();
+    if (last !== e) {
+      list[e.slot] = last;
+      last.slot = e.slot;
+    }
+    this.creatureById[e.id] = null;
+    this.freeCreatureIds.push(e.id);
+  },
+
+  // Take e out of the world, clearing the cells still its own (but `keep`).
+  removeCreature(e, keep = -1) {
+    for (let p = 0; p < e.n; p++) {
+      const c = e.cells[p];
+      if (c >= 0 && c !== keep && this.ownCell(e, c)) this.clearCell(c);
+    }
+    this.forgetCreature(e);
+  },
+
+  ownCell(e, c) {
+    return this.type[c] === e.kind && this.ctype[c] === e.id;
+  },
+
+  // The way down at (x, y), as one of the four straight directions: a body
+  // stands upright along it. null where nothing pulls.
+  downFor(x, y) {
+    const g = this.gravity;
+    if (!g.newtonian) return { gx: g.downX, gy: g.downY };
+    const k = g.dirA[this.air.at(x, y)];
+    if (k < 0) return null;
+    return { gx: DX8[k & 6], gy: DY8[k & 6] }; // a diagonal rounds to its neighbour
+  },
+
+  // The cells of a kind's frame `fr` with its anchor at (x, y), facing
+  // `facing` (1 or -1), standing along down (gx, gy), into `out`. False if
+  // any falls outside the world.
+  placeCells(kind, x, y, fr, facing, gx, gy, out) {
+    const f = DEFS[kind].shape.frames[fr];
+    const rx = gy * facing, ry = -gx * facing;
+    const { w, h } = this;
+    for (let p = 0; p < f.dx.length; p++) {
+      const cx = x + f.dx[p] * rx + f.dy[p] * gx, cy = y + f.dx[p] * ry + f.dy[p] * gy;
+      if (cx < 0 || cy < 0 || cx >= w || cy >= h) return false;
+      out[p] = cy * w + cx;
+    }
+    return true;
+  },
+
+  inFootprint(c, out, n) {
+    for (let p = 0; p < n; p++) if (out[p] === c) return true;
+    return false;
+  },
+
+  // Can e's body take cell c? Its own cells, empty space, a wall that lets
+  // solids through, or anything it can push aside: gases and flames, and
+  // liquids for creatures that go into them.
+  roomForBody(e, c) {
+    const u = this.type[c];
+    if (u === 0) return true;
+    if (u === e.kind && this.ctype[c] === e.id) return true;
+    if (u === WALL) return (this.wall[c] & PASS_BIT[e.kind]) !== 0;
+    const d = DEFS[u];
+    if (!d.displaceable) return false;
+    return d.state !== LIQUID || e.wades;
+  },
+
+  // Push the loose thing in cell c into the nearest free space (but not a
+  // cell of `out`), or clear it. Walls stay.
+  makeRoom(c, out, n) {
+    const u = this.type[c];
+    if (u === 0 || u === WALL) return;
+    const m = this.freeSpaceNear(c);
+    if (m >= 0 && !this.inFootprint(m, out, n)) this.swap(c, m);
+    else this.clearCell(c);
+  },
+
+  writePixel(e, p, c, T, fr) {
+    const sh = DEFS[e.kind].shape;
+    const l = sh.frames[fr].letter[p];
+    this.type[c] = e.kind;
+    this.ctype[c] = e.id;
+    this.temp[c] = T;
+    this.life[c] = 0;
+    this.vx[c] = 0;
+    this.vy[c] = 0;
+    this.loose[c] = 0;
+    this.shade[c] = sh.base[l] + e.look[l];
+    this.clock[c] = this.pass;
+    e.cells[p] = c;
+  },
+
+  // The average temperature of e's body.
+  bodyTemp(e) {
+    let sum = 0, k = 0;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      sum += this.temp[e.cells[p]];
+      k++;
+    }
+    return k > 0 ? sum / k : AMBIENT;
+  },
+
+  // A shaped creature's cell in the particle pass. Part of a body: nothing
+  // to do but react like any cell (the entity does the rest). A seed tries
+  // to hatch; one that finds no room for GROW_GIVE_UP steps is gone.
+  updateBody(i, x, y, t) {
+    if (this.ctype[i] !== 0) return false;
+    if (this.hatch(i, x, y, t)) return true;
+    if (++this.life[i] > GROW_GIVE_UP) {
+      this.clearCell(i);
+      return true;
+    }
+    return false;
+  },
+
+  // A seed at i (x, y): find a place for the whole body covering i, with
+  // room for every pixel, trying first the pixels nearest the middle of the
+  // shape on the seed, and start growing there. False while there's no room.
+  hatch(i, x, y, t) {
+    const sh = DEFS[t].shape, f = sh.frames[0];
+    const { gx, gy } = this.downFor(x, y) ?? { gx: 0, gy: 1 };
+    const facing = this.rand() < 0.5 ? 1 : -1;
+    const rx = gy * facing, ry = -gx * facing;
+    const probe = { kind: t, id: -1, wades: DEFS[t].critter.wades };
+    const out = this.footA;
+    for (let k = 0; k < sh.n; k++) {
+      const p = sh.order[k];
+      const ax = x - (f.dx[p] * rx + f.dy[p] * gx), ay = y - (f.dx[p] * ry + f.dy[p] * gy);
+      if (!this.placeCells(t, ax, ay, 0, facing, gx, gy, out)) continue;
+      let room = true;
+      for (let q = 0; q < sh.n && room; q++) room = out[q] === i || this.roomForBody(probe, out[q]);
+      if (!room) continue;
+      const e = this.newCreature(t, ax, ay, facing, gx, gy);
+      if (e === null) return false;
+      for (let q = 0; q < sh.n; q++) e.ring[q] = Math.max(Math.abs(f.dx[q] - f.dx[p]), Math.abs(f.dy[q] - f.dy[p]));
+      e.seed = p;
+      this.writePixel(e, p, i, this.temp[i], 0);
+      e.pix[p] = BODY;
+      return true;
+    }
+    return false;
+  },
+
+  // Being born: another ring of pixels every GROW_EVERY steps, each where
+  // there's room (anything loose in the way is pushed aside). A ring
+  // blocked for GROW_GIVE_UP growing steps: the body shrinks back to its
+  // seed, which looks for room again (or gives up, see updateBody).
+  growStep(e) {
+    e.grow++;
+    if (e.grow % GROW_EVERY !== 0) return;
+    const ring = e.grow / GROW_EVERY;
+    const out = this.footA;
+    if (!this.placeCells(e.kind, e.x, e.y, e.frame, e.facing, e.gx, e.gy, out)) return;
+    const T = this.bodyTemp(e);
+    let unborn = 0, blocked = false;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== UNBORN) continue;
+      if (e.ring[p] > ring) { unborn++; continue; }
+      const c = out[p];
+      if (!this.roomForBody(e, c)) { unborn++; blocked = true; continue; }
+      this.makeRoom(c, out, e.n);
+      this.writePixel(e, p, c, T, e.frame);
+      e.pix[p] = BODY;
+    }
+    if (unborn === 0) { e.grow = -1; return; }
+    if (blocked && ++e.wait > GROW_GIVE_UP) {
+      const s = e.cells[e.seed];
+      if (e.pix[e.seed] !== BODY) { this.removeCreature(e); return; }
+      this.removeCreature(e, s);
+      this.ctype[s] = 0; // a seed again
+      this.life[s] = 0;
+    }
+  },
+
+  // Move e's body: anchor (x, y), frame fr, facing, down (gx, gy). Liquids,
+  // gases and flames in the way go into the cells it leaves (or the nearest
+  // free space). False, changing nothing, if anything else is in the way or
+  // it would leave the world.
+  moveBody(e, x, y, fr, facing, gx, gy) {
+    const out = this.footA, old = this.footB, n = e.n;
+    if (!this.placeCells(e.kind, x, y, fr, facing, gx, gy, out)) return false;
+    for (let p = 0; p < n; p++) if (e.pix[p] === BODY && !this.roomForBody(e, out[p])) return false;
+    let sum = 0, k = 0;
+    for (let p = 0; p < n; p++) {
+      const c = e.cells[p];
+      old[p] = c;
+      if (c < 0) continue;
+      sum += this.temp[c];
+      k++;
+      this.clearCell(c);
+      e.cells[p] = -1;
+    }
+    const T = k > 0 ? sum / k : AMBIENT;
+    let f = 0;
+    for (let p = 0; p < n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = out[p], u = this.type[c];
+      if (u === 0 || u === WALL) continue;
+      while (f < n && (old[f] < 0 || this.type[old[f]] !== 0 || this.inFootprint(old[f], out, n))) f++;
+      if (f < n) this.swap(c, old[f++]);
+      else this.makeRoom(c, out, n);
+    }
+    for (let p = 0; p < n; p++) if (e.pix[p] === BODY) this.writePixel(e, p, out[p], T, fr);
+    e.x = x;
+    e.y = y;
+    e.frame = fr;
+    e.facing = facing;
+    e.gx = gx;
+    e.gy = gy;
+    return true;
+  },
+
+  hurt(e, p, heat) {
+    e.pix[p] = HURT;
+    e.cells[p] = -1;
+    e.lost++;
+    if (heat) e.burnt++;
+    e.hurtAt = this.tick;
+  },
+
+  // A random pixel of e's body, or -1 if there's none left.
+  randomPixel(e) {
+    const s = (this.rand() * e.n) | 0;
+    for (let k = 0; k < e.n; k++) {
+      const p = (s + k) % e.n;
+      if (e.pix[p] === BODY) return p;
+    }
+    return -1;
+  },
+
+  // Its cell, or -1.
+  randomCell(e) {
+    const p = this.randomPixel(e);
+    return p < 0 ? -1 : e.cells[p];
+  },
+
+  hurtRandom(e) {
+    const p = this.randomPixel(e);
+    if (p < 0) return;
+    this.clearCell(e.cells[p]);
+    this.hurt(e, p, false);
+  },
+
+  // Look at e's cells: any no longer its own is a damaged pixel, as is one
+  // too hot or cold. A cell turned into another shaped creature (Bird +
+  // Fire) turns the whole creature into one: the body goes, and that cell
+  // is the new one's seed (which may have hatched already, if it was turned
+  // between steps). False if the creature is gone.
+  checkBody(e) {
+    const { type, ctype, temp } = this;
+    const feels = !DEFS[e.kind].critter.tough && e.age >= NEWBORN_GRACE;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p], u = type[c];
+      if (u === e.kind && ctype[c] === e.id) {
+        if (feels && (temp[c] > HOT_HURT || temp[c] < COLD_HURT)) {
+          this.clearCell(c);
+          this.hurt(e, p, true);
+        }
+        continue;
+      }
+      if (SHAPED[u] && u !== e.kind && (ctype[c] === 0 || this.seedOf(ctype[c]) === c)) {
+        this.removeCreature(e, c);
+        return false;
+      }
+      this.hurt(e, p, false);
+    }
+    if (e.lost * 2 >= e.n) {
+      this.creatureDies(e);
+      return false;
+    }
+    return true;
+  },
+
+  // The cell creature `id` is growing from, while it's being born; else -1.
+  seedOf(id) {
+    const o = this.creatureById[id];
+    return o && o.grow >= 0 ? o.cells[o.seed] : -1;
+  },
+
+  // What's left of the body becomes its remains: ash if it died mostly of
+  // heat, otherwise what its kind leaves (lifeEnd), pixel by pixel.
+  creatureDies(e) {
+    const le = DEFS[e.kind].lifeEnd;
+    const burnt = e.burnt * 2 > e.lost;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p];
+      if (burnt) this.convert(c, ASH, false, -1);
+      else if (le === null) this.clearCell(c);
+      else if (le.alt >= 0 && this.rand() < le.altChance) this.convert(c, le.alt, false, le.altRule);
+      else this.convert(c, le.to, false, le.rule);
+    }
+    this.forgetCreature(e);
+  },
+
+  // A damaged pixel grows back, where its place is empty.
+  healPixel(e) {
+    const out = this.footA;
+    if (!this.placeCells(e.kind, e.x, e.y, e.frame, e.facing, e.gx, e.gy, out)) return;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== HURT || this.type[out[p]] !== 0) continue;
+      const T = this.bodyTemp(e);
+      this.writePixel(e, p, out[p], T, e.frame);
+      e.pix[p] = BODY;
+      e.lost--;
+      if (e.burnt > e.lost) e.burnt = e.lost;
+      e.hurtAt = this.tick;
+      return;
+    }
+  },
+
+  // Is anything holding e up: a cell under one of its pixels that isn't
+  // its own, empty, a gas or flame, or (for creatures that go into
+  // liquids) a liquid? The edge of the world holds it up too.
+  supported(e) {
+    const { w, h, type } = this;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p];
+      const nx = (c % w) + e.gx, ny = ((c / w) | 0) + e.gy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) return true;
+      const j = ny * w + nx, u = type[j];
+      if (u === 0 || (u === e.kind && this.ctype[j] === e.id)) continue;
+      if (u === WALL) {
+        if ((this.wall[j] & PASS_BIT[e.kind]) !== 0) continue;
+        return true;
+      }
+      const d = DEFS[u];
+      if (d.displaceable && (d.state !== LIQUID || e.wades)) continue;
+      return true;
+    }
+    return false;
+  },
+
+  // With nothing under it, it falls along its down, faster each step like
+  // a grain. True while it's in the air.
+  fall(e) {
+    if (this.downAt(this.air.at(e.x, e.y)) < 0 || this.supported(e)) {
+      e.fallV = 0;
+      return false;
+    }
+    e.fallV = Math.min(MAX_FALL, e.fallV + 0.25);
+    const n = Math.max(1, e.fallV | 0);
+    for (let s = 0; s < n; s++) {
+      if (!this.moveBody(e, e.x + e.gx, e.y + e.gy, e.frame, e.facing, e.gx, e.gy)) {
+        e.fallV = 0;
+        break;
+      }
+      // On a portal: it goes through on its next step (portalCreature).
+      if (this.portalCells !== 0 && this.portalAt[e.y * this.w + e.x] !== 0) break;
+    }
+    return true;
+  },
+
+  // Thrown by a blast: a cell a step along (vx, vy) while it's moving fast
+  // enough, slowing down. True while it's flying.
+  fling(e) {
+    const sx = Math.abs(e.vx) >= 0.5 ? Math.sign(e.vx) : 0, sy = Math.abs(e.vy) >= 0.5 ? Math.sign(e.vy) : 0;
+    if (sx === 0 && sy === 0) {
+      e.vx = 0;
+      e.vy = 0;
+      return false;
+    }
+    if (sx !== 0 && !this.moveBody(e, e.x + sx, e.y, e.frame, e.facing, e.gx, e.gy)) e.vx = 0;
+    if (sy !== 0 && !this.moveBody(e, e.x, e.y + sy, e.frame, e.facing, e.gx, e.gy)) e.vy = 0;
+    e.vx *= 0.85;
+    e.vy *= 0.85;
+    return true;
+  },
+
+  // Turn upright when the way down changes.
+  orient(e) {
+    const dn = this.downFor(e.x, e.y);
+    if (dn === null || (dn.gx === e.gx && dn.gy === e.gy)) return;
+    this.moveBody(e, e.x, e.y, e.frame, e.facing, dn.gx, dn.gy);
+  },
+
+  // Painting a shaped creature puts down seeds a body apart: each into
+  // empty space with no other creature's seed or body that close.
+  paintCreatures(area, t) {
+    const { w: sw, h: sh } = DEFS[t].shape;
+    area((i, x, y) => {
+      if (this.type[i] !== 0) return;
+      for (let dy = -sh; dy <= sh; dy++) {
+        for (let dx = -sw; dx <= sw; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < this.w && ny < this.h && SHAPED[this.type[ny * this.w + nx]]) return;
+        }
+      }
+      this.spawn(i, t);
+    });
+  },
+
+  // A conveyor under creature `id` moves it a cell (on its next step).
+  nudgeCreature(id, dx, dy) {
+    const e = this.creatureById[id];
+    if (e) {
+      e.pushX = dx;
+      e.pushY = dy;
+    }
+  },
+
+  // Standing or falling on a portal: the whole body goes through, if
+  // there's room for it past the other end.
+  portalCreature(e) {
+    const a = e.y * this.w + e.x;
+    const v = this.portalAt[a];
+    if (v === 0) return false;
+    const pr = this.portals[(v >> 17) - 1];
+    if (pr.b === null) return false;
+    const end = ((v >> 16) & 1) === 0 ? pr.a : pr.b;
+    // The way it's going: down while falling, else the way it faces.
+    const mx = e.fallV > 0 ? e.gx : e.gy * e.facing, my = e.fallV > 0 ? e.gy : -e.gx * e.facing;
+    const out = this.portalExit(a, mx * end.nx + my * end.ny < 0 ? -1 : 1);
+    if (out === null || out.j < 0) return false;
+    return this.moveBody(e, out.j % this.w, (out.j / this.w) | 0, e.frame, e.facing, e.gx, e.gy);
+  },
+
+  // A blast within r of (x, y): each pixel it reaches may be destroyed (the
+  // likelier the stronger and closer), and the creature is thrown away
+  // from it and upward. Walls shield.
+  blastCreatures(x, y, strength, r) {
+    const r2 = r * r;
+    for (const e of this.creatures) {
+      if (Math.abs(e.x - x) > r + 8 || Math.abs(e.y - y) > r + 8) continue;
+      let hit = false;
+      for (let p = 0; p < e.n; p++) {
+        if (e.pix[p] !== BODY) continue;
+        const c = e.cells[p], cx = c % this.w, cy = (c / this.w) | 0;
+        const d2 = (cx - x) ** 2 + (cy - y) ** 2;
+        if (d2 > r2 || this.wallBetween(x, y, cx, cy)) continue;
+        hit = true;
+        if (this.rand() < Math.min(0.9, strength / (8 * Math.max(1, Math.sqrt(d2))))) {
+          this.clearCell(c);
+          this.hurt(e, p, false);
+        }
+      }
+      if (!hit) continue;
+      const dx = e.x - x, dy = e.y - y, dist = Math.max(1, Math.hypot(dx, dy));
+      const f = (strength * 0.7) / dist;
+      e.vx += (dx / dist) * f * 0.5 - e.gx * f * 0.3;
+      e.vy += (dy / dist) * f * 0.5 - e.gy * f * 0.3;
+    }
+  },
+
+  // The creature cell i belongs to, or null.
+  creatureAt(i) {
+    const t = this.type[i];
+    if (!SHAPED[t] || this.ctype[i] === 0) return null;
+    const e = this.creatureById[this.ctype[i]];
+    return e && e.kind === t ? e : null;
+  },
+
+  // After the particle pass: every creature takes its step (more of them
+  // in a fast time zone, fewer in a slow one, going by where it stands).
+  stepCreatures() {
+    const list = this.creatures;
+    for (let k = list.length - 1; k >= 0; k--) {
+      const e = list[k];
+      let reps = 1;
+      if (this.zoneCount !== 0) {
+        const s = this.speed[e.y * this.w + e.x];
+        if (s !== 0) reps = SPEEDS[s] >= 1 ? SPEEDS[s] : (this.tick % SLOW_EVERY[s] === 0 ? 1 : 0);
+      }
+      for (let r = 0; r < reps && this.creatureById[e.id] === e; r++) this.stepCreature(e);
+    }
+  },
+
+  stepCreature(e) {
+    if (!this.checkBody(e)) return;
+    if (e.grow >= 0) {
+      this.growStep(e);
+      return;
+    }
+    if (++e.age >= e.lifespan) {
+      this.creatureDies(e);
+      return;
+    }
+    if (e.lost > 0 && this.tick - e.hurtAt >= HEAL_AFTER) this.healPixel(e);
+    this.orient(e);
+    if (this.portalCells !== 0 && this.portalCreature(e)) return;
+    if (e.pushX !== 0 || e.pushY !== 0) {
+      this.moveBody(e, e.x + e.pushX, e.y + e.pushY, e.frame, e.facing, e.gx, e.gy);
+      e.pushX = 0;
+      e.pushY = 0;
+    }
+    if (this.fling(e)) return;
+    if (DEFS[e.kind].critter.moves === 'human') this.stepHuman(e);
+    else this.stepAnimal(e);
+  },
+
+  // An animal's step: sparks and fire from a pixel (eels, the phoenix),
+  // eating something touching it, then moving the way its kind moves.
+  stepAnimal(e) {
+    const d = DEFS[e.kind], c = d.critter;
+    const i = this.randomCell(e);
+    if (i < 0) return;
+    const x = i % this.w, y = (i / this.w) | 0;
+    if (c.spark && this.rand() < c.spark) for (let n = 0; n < 3; n++) this.emitAt(ID.ELECTRON, x, y);
+    if (c.ignite && this.rand() < 0.2) this.igniteAround(x, y);
+    if (this.rand() < 0.1) {
+      const j = this.randomNeighbor(x, y);
+      const meal = j >= 0 && !this.ownCell(e, j) ? c.food[this.type[j]] : null;
+      if (meal) {
+        this.eat(i, j, x, y, e.kind, d, meal);
+        e.age = Math.max(0, e.age - 300); // well fed
+        return;
+      }
+    }
+    if (d.shape.pulse) {
+      const fr = (this.tick >> 4) & 1;
+      if (fr !== e.frame) this.moveBody(e, e.x, e.y, fr, e.facing, e.gx, e.gy);
+    }
+    if (c.moves === 'swim') this.swimAbout(e, c);
+    else if (c.moves === 'fly') this.flyAbout(e, c);
+    else this.walkAbout(e, c);
+  },
+
+  // Does any pixel of e touch a cell holding something in `set`?
+  touches(e, set) {
+    const { w, h, type } = this;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p], x = c % w, y = (c / w) | 0;
+      if ((x + 1 < w && set[type[c + 1]]) || (x > 0 && set[type[c - 1]])
+        || (y + 1 < h && set[type[c + w]]) || (y > 0 && set[type[c - w]])) return true;
+    }
+    return false;
+  },
+
+  // Would every pixel of e, placed so, be in its own cells or cells holding
+  // something in `set`?
+  fitsIn(e, x, y, fr, facing, set) {
+    const out = this.footB;
+    if (!this.placeCells(e.kind, x, y, fr, facing, e.gx, e.gy, out)) return false;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] === BODY && !set[this.type[out[p]]] && !this.ownCell(e, out[p])) return false;
+    }
+    return true;
+  },
+
+  // One cell across the down arrow (`dir`, 1 or -1, becomes its facing)
+  // and `up` cells against it, into cells holding something in `set`,
+  // flipping to its other frame. A trail (silk, ink) may be left where it
+  // stood. Returns whether it moved.
+  tryMove(e, dir, up, set) {
+    const sh = DEFS[e.kind].shape;
+    const x = e.x + e.gy * dir - up * e.gx, y = e.y - e.gx * dir - up * e.gy;
+    const fr = sh.frames.length === 2 && !sh.pulse ? e.frame ^ 1 : e.frame;
+    if (!this.fitsIn(e, x, y, fr, dir, set)) return false;
+    const was = e.y * this.w + e.x;
+    if (!this.moveBody(e, x, y, fr, dir, e.gx, e.gy)) return false;
+    const c = DEFS[e.kind].critter, tr = c.trail;
+    if (tr !== null && this.rand() < tr.chance && (this.type[was] === 0 || c.home[this.type[was]])) {
+      this.spawn(was, tr.id);
+      this.record(tr.id, tr.rule);
+    }
+    return true;
+  },
+
+  // Swimmers move only through water. Out of it they fall, and lose a
+  // pixel every SUFFOCATE_EVERY steps until they're back in.
+  swimAbout(e, c) {
+    if (!this.touches(e, c.home)) {
+      if (++e.dry % SUFFOCATE_EVERY === 0) this.hurtRandom(e);
+      this.fall(e);
+      return;
+    }
+    e.dry = 0;
+    if (this.rand() >= c.speed) return;
+    const dir = this.rand() < 0.1 ? -e.facing : e.facing;
+    const r = this.rand();
+    const up = c.burst ? (r < 0.5 ? 1 : r < 0.6 ? -1 : 0) : (r < 0.15 ? 1 : r < 0.3 ? -1 : 0);
+    if (!this.tryMove(e, dir, up, c.home)) this.tryMove(e, -dir, 0, c.home);
+  },
+
+  // Fliers flap about through the air.
+  flyAbout(e, c) {
+    if (this.rand() >= c.speed) return;
+    const dir = this.rand() < 0.15 ? -e.facing : e.facing;
+    const r = this.rand();
+    const up = r < 0.25 ? 1 : r < 0.5 ? -1 : 0;
+    if (!this.tryMove(e, dir, up, AIRY)) this.tryMove(e, -dir, 0, AIRY);
+  },
+
+  // Walkers fall with nothing under them; otherwise they walk along the
+  // ground, up steps of up to c.climb cells, and turn round at walls.
+  walkAbout(e, c) {
+    if (this.fall(e)) return;
+    if (this.rand() >= c.speed) return;
+    for (let up = 0; up <= c.climb; up++) if (this.tryMove(e, e.facing, up, AIRY)) return;
+    this.moveBody(e, e.x, e.y, e.frame, -e.facing, e.gx, e.gy);
+  },
+};
+
+return { SHAPED, AIRY, GROW_EVERY, GROW_GIVE_UP, HEAL_AFTER, SUFFOCATE_EVERY, HOT_HURT, COLD_HURT, NEWBORN_GRACE, BODY, initCreatures, Creatures };
+})();
+
 __modules["src/sim/machines.js"] = (() => {
 // Machines and the controls that drive them, mixed into World.prototype.
 //
@@ -8860,6 +9646,7 @@ const { DEFS, ID, State } = __modules["src/sim/elements.js"];
 const { CONDUCTOR, POWERED, DISPENSABLE, GASLIKE } = __modules["src/sim/lookups.js"];
 const { MIN_TEMP } = __modules["src/sim/constants.js"];
 const { CELL } = __modules["src/sim/air.js"];
+const { SHAPED } = __modules["src/sim/creatures.js"];
 
 const { SOLID, POWDER, GAS, ENERGY } = State;
 const { DOOR, PHOTON, VALVE, BATTERY, SPARK, FIRE, NEUTRON } = ID;
@@ -9330,6 +10117,7 @@ const Machines = {
   shutDoor(c) {
     const u = this.type[c];
     if (u !== 0) {
+      if (SHAPED[u]) return false; // wait for a creature in the doorway to move
       const e = DEFS[u];
       if (e.state === SOLID && !this.loose[c] && e.behavior !== 'critter') return true;
       const m = this.freeSpaceNear(c);
@@ -9587,6 +10375,7 @@ __modules["src/sim/machines-motion.js"] = (() => {
 const { DEFS, ID, State } = __modules["src/sim/elements.js"];
 const { GASLIKE } = __modules["src/sim/lookups.js"];
 const { dirIndex } = __modules["src/sim/machines.js"];
+const { SHAPED } = __modules["src/sim/creatures.js"];
 
 const { POWDER, LIQUID } = State;
 const { PISTON_ARM } = ID;
@@ -9616,12 +10405,15 @@ const MotionMachines = {
     const tx = x - downX, ty = y - downY;
     if (!this.inBounds(tx, ty)) return;
     const j = ty * w + tx, u = type[j];
-    if (u === 0 || this.clock[j] === this.pass || !(CARRIED[u] || this.loose[j])) return;
+    if (u === 0) return;
     const across = downY !== 0; // the belt runs along x when gravity is up or down
     const f = this.powerFrom[i];
     let s = across ? Math.sign(x - (f % w)) : Math.sign(y - ((f / w) | 0));
     if (f < 0 || s === 0) s = 1;
     const nx = across ? tx + s : tx, ny = across ? ty : ty + s;
+    // A shaped creature rides as a whole (creatures.js).
+    if (SHAPED[u] && this.ctype[j] !== 0) { this.nudgeCreature(this.ctype[j], nx - tx, ny - ty); return; }
+    if (this.clock[j] === this.pass || !(CARRIED[u] || this.loose[j])) return;
     if (!this.inBounds(nx, ny)) return;
     const m = ny * w + nx;
     if (roomFor(type[m])) this.swap(j, m);
@@ -9677,7 +10469,7 @@ const MotionMachines = {
       if (!this.inBounds(cx, cy)) return false;
       const u = type[cy * w + cx];
       if (roomFor(u)) break;
-      if (DEFS[u].indestructible || u === PISTON_ARM) return false;
+      if (DEFS[u].indestructible || u === PISTON_ARM || SHAPED[u]) return false; // a creature stalls it
     }
     if (n === PISTON_PUSH) return false;
     for (let t = n; t > 0; t--) {
@@ -9854,7 +10646,8 @@ const Portals = {
   crossPortal(i, x, y, t) {
     const d = DEFS[t];
     const moves = d.state === POWDER || d.state === LIQUID || d.state === GAS
-      || (d.state === ENERGY && !d.fixed) || (d.state === SOLID && (this.loose[i] || d.cat === 'creature'));
+      || (d.state === ENERGY && !d.fixed) || (d.state === SOLID && (this.loose[i] || (d.cat === 'creature' && d.shape === null)));
+    // (A shaped creature goes through whole: portalCreature, creatures.js.)
     if (!moves) return false;
     const v = this.portalAt[i];
     const p = this.portals[(v >> 17) - 1];
@@ -10206,6 +10999,841 @@ const Sleep = {
 return { CHUNK, SLEEP_AFTER, initSleep, Sleep };
 })();
 
+__modules["src/sim/humans.js"] = (() => {
+// Humans: shaped creatures (creatures.js) with minds of their own. A human
+// makes a camp, gathers fuel into a pile beside it and lights it by
+// rubbing sticks, builds a small hut nearby, shelters there from cold and
+// rain, and runs from danger. It decides what to do every THINK_EVERY
+// steps (think) and works at it in between (act). Humans near one camp
+// share it and split the work. Mixed into World.prototype.
+
+const { DEFS, ID, NUM, State } = __modules["src/sim/elements.js"];
+const { SHAPED, SUFFOCATE_EVERY, BODY } = __modules["src/sim/creatures.js"];
+
+const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
+const setOf = (keys) => {
+  const s = new Uint8Array(NUM);
+  for (const k of keys) s[ID[k]] = 1;
+  return s;
+};
+
+const THINK_EVERY = 8;
+const WALK_EVERY = 4; // steps per cell walked
+const RUN_EVERY = 2; // and run
+const CLIMB = 2; // the highest step it climbs
+const SWIM_CLIMB = 6; // or swims up, getting out of water
+const GIVE_UP = 300; // steps without getting closer before it gives up on a target
+const BAN_FOR = 1800; // and leaves that target alone
+const DANGER_R = 16; // it runs from danger this close
+const SAFE_R = 24; // until there's none this close
+// °C: anything this hot (but a gas) is danger. Its body holds BODY_T, so
+// ground warmed by a fire is safe to walk on.
+const HOT = 150;
+const BLAST_FEAR = 4; // and air pressure this high, from a blast
+const BREATH = 600; // steps it can hold its breath
+const BODY_T = 37; // it keeps its body at this temperature,
+const KEEP_WARM = 0.2; // this much of the way back each step
+const SHORE_R = 40; // how far it looks for a shore
+const FRAME_KNEEL = 2, FRAME_SIT = 3;
+const NEAR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const DANGER = setOf(['LAVA', 'ACID', 'NAPALM', 'GREEK_FIRE', 'GREY_GOO', 'VIRUS', 'ANTIMATTER', 'BLACK_HOLE']);
+const CAMP_JOIN = 60; // it joins a camp this close
+const FUEL_R = 60; // and fetches fuel this far from it
+const PILE_LIGHT = 6; // fuel in the pile before it's lit
+const PILE_LOW = 4; // a burning pile with less is topped up
+const RUB_FOR = 180; // steps rubbing sticks before the pile catches
+const LIGHT_U = 4; // where it kneels to light the pile (across from its middle)
+const REST_U = 5; // and sits by it
+const REACH = 3; // how far across it reaches to pick something up
+const FUEL = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST']);
+const FIRE_SET = setOf(['FIRE']);
+const HUT_W = 9; // the hut's width
+const HUT_WALL = 8; // its walls' height
+const DOOR = 6; // the doorway's height
+const HUT_GAP = 4; // the least space between the hut and the pile
+const STONE_R = 80; // how far from the camp it fetches building material
+const COLD_AIR = 10; // °C: air this cold sends it to shelter
+const RAIN_R = 20; // as does rain, snow or hail falling this close
+const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
+const WOOD_ONLY = setOf(['WOOD']);
+
+function newBrain() {
+  return {
+    job: 'wandering', // what it's doing (shown in the inspect line)
+    think: 0, // steps to its next decision
+    pace: 0, // steps since its last step taken
+    camp: null,
+    target: -1, // the cell it's going for
+    best: Infinity, // its closest yet to the target
+    stuck: 0, // steps without getting closer
+    banned: new Map(), // cell -> tick until which it's left alone
+    carry: 0, // the element in its hands
+    carryJob: 'wandering', // what it's doing with it
+    rub: 0, // steps spent rubbing sticks
+    breath: 0, // steps with its head under
+    fleeDir: 1,
+    shore: 0, // the way to the nearest shore, while swimming
+    goalX: -1, goalY: -1, // where it's wandering to
+  };
+}
+
+const Humans = {
+  stepHuman(e) {
+    if (e.brain === null) e.brain = newBrain();
+    const b = e.brain;
+    this.keepWarm(e);
+    const under = this.headUnder(e); // the liquid it's in, or 0
+    if (under === 0) b.breath = 0;
+    else if (++b.breath > BREATH && (b.breath - BREATH) % SUFFOCATE_EVERY === 0) this.drown(e, under);
+    if (this.inLiquid(e, under)) {
+      b.job = 'swimming';
+      this.swimHuman(e, b, under);
+      return;
+    }
+    if (b.job === 'swimming') b.job = 'wandering';
+    if (this.fall(e)) return;
+    if (--b.think <= 0) {
+      b.think = THINK_EVERY;
+      this.think(e, b);
+    }
+    this.act(e, b);
+  },
+
+  // Warm-blooded: its body drifts back to BODY_T.
+  keepWarm(e) {
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p];
+      this.temp[c] += (BODY_T - this.temp[c]) * KEEP_WARM;
+    }
+  },
+
+  // Out of breath: a pixel lost, and the liquid closes over where it was
+  // (it doesn't leave a pocket of air to breathe from).
+  drown(e, liquid) {
+    const p = this.randomPixel(e);
+    if (p < 0) return;
+    const c = e.cells[p];
+    this.clearCell(c);
+    this.hurt(e, p, false);
+    this.spawn(c, liquid);
+  },
+
+  // Is its head under: no air beside its topmost pixel left, and liquid
+  // there? The liquid, or 0. (Pressed against a lid under water, it still
+  // can't breathe.)
+  headUnder(e) {
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p], x = c % this.w, y = (c / this.w) | 0;
+      let wet = 0;
+      for (const [dx, dy] of NEAR4) {
+        if (!this.inBounds(x + dx, y + dy)) continue;
+        const j = (y + dy) * this.w + x + dx, t = this.type[j];
+        if (this.ownCell(e, j)) continue;
+        if (t === 0 || DEFS[t].state === GAS) return 0; // air: it breathes
+        if (DEFS[t].state === LIQUID) wet = t;
+      }
+      return wet;
+    }
+    return 0;
+  },
+
+  // In a liquid: its head under, or liquid under its feet.
+  inLiquid(e, under) {
+    if (under !== 0) return true;
+    const x = e.x + e.gx, y = e.y + e.gy;
+    return this.inBounds(x, y) && DEFS[this.type[y * this.w + x]].state === LIQUID;
+  },
+
+  // Swim up for air, then towards the nearest shore, climbing out there.
+  swimHuman(e, b, under) {
+    if (++b.pace < 3) return;
+    b.pace = 0;
+    if (under !== 0 && this.moveBody(e, e.x - e.gx, e.y - e.gy, 0, e.facing, e.gx, e.gy)) return;
+    if (b.shore === 0 || this.tick % 60 === 0) b.shore = this.findShore(e);
+    this.stepAcross(e, b.shore || e.facing, SWIM_CLIMB, false);
+  },
+
+  // The way (1 or -1) to the nearest column within SHORE_R with ground at
+  // most SWIM_CLIMB cells above its feet and no liquid on it; 0 if none.
+  findShore(e) {
+    for (let d = 1; d <= SHORE_R; d++) {
+      for (const dir of [1, -1]) {
+        for (let up = 0; up <= SWIM_CLIMB; up++) {
+          const x = e.x + d * dir * e.gy - up * e.gx, y = e.y - d * dir * e.gx - up * e.gy;
+          const ax = x - e.gx, ay = y - e.gy;
+          if (!this.inBounds(x, y) || !this.inBounds(ax, ay)) continue;
+          const t = this.type[y * this.w + x], s = DEFS[t].state;
+          const above = DEFS[this.type[ay * this.w + ax]].state;
+          if ((s === SOLID || s === POWDER) && above !== LIQUID && !SHAPED[t]) return dir;
+        }
+      }
+    }
+    return 0;
+  },
+
+  // One step across the down arrow, `dir` (1 or -1) becoming the way it
+  // faces: on the level, or up a step of up to `climb` cells. Running
+  // (`leap`), it carries on over a gap of up to 2 cells. Another human in
+  // the way: they squeeze past each other. Returns whether it moved.
+  stepAcross(e, dir, climb, leap) {
+    const rx = e.gy * dir, ry = -e.gx * dir;
+    const fr = e.frame === 0 ? 1 : 0;
+    for (let up = 0; up <= climb; up++) {
+      if (!this.moveBody(e, e.x + rx - up * e.gx, e.y + ry - up * e.gy, fr, dir, e.gx, e.gy)) continue;
+      if (leap && up === 0) {
+        for (let more = 0; more < 2 && !this.supported(e); more++) {
+          if (!this.moveBody(e, e.x + rx, e.y + ry, fr, dir, e.gx, e.gy)) break;
+        }
+      }
+      return true;
+    }
+    const other = this.creatureAhead(e, rx, ry);
+    if (other !== null && other.kind === e.kind) return this.passBy(e, other, rx, ry, dir);
+    return false;
+  },
+
+  // Squeeze past another human o, ahead of it (rx, ry): straight to just
+  // the other side of it, if there's room there.
+  passBy(e, o, rx, ry, dir) {
+    for (let k = 3; k <= 4; k++) {
+      for (let up = 0; up <= CLIMB; up++) {
+        if (this.moveBody(e, o.x + k * rx - up * e.gx, o.y + k * ry - up * e.gy, 0, dir, e.gx, e.gy)) return true;
+      }
+    }
+    return false;
+  },
+
+  // The creature in the column just past e's side (rx, ry), from its feet
+  // to its head, or null.
+  creatureAhead(e, rx, ry) {
+    for (let up = 0; up < 6; up++) {
+      const x = e.x + 2 * rx - up * e.gx, y = e.y + 2 * ry - up * e.gy;
+      if (!this.inBounds(x, y)) continue;
+      const a = y * this.w + x;
+      if (SHAPED[this.type[a]] && !this.ownCell(e, a)) {
+        const o = this.creatureById[this.ctype[a]];
+        if (o && o.kind === this.type[a]) return o;
+      }
+    }
+    return null;
+  },
+
+  // Walk (a step every `every` steps) towards (tx, ty) across the down
+  // arrow. True once it's within `near` cells across and the target is
+  // level with its body (from 9 cells above its feet to 4 below). No
+  // closer for GIVE_UP steps: it gives up (giveUp).
+  walkTo(e, b, tx, ty, near, every) {
+    const a = (tx - e.x) * e.gy - (ty - e.y) * e.gx; // across: + is the way "right" points
+    const v = (tx - e.x) * e.gx + (ty - e.y) * e.gy; // along: + is down
+    if (Math.abs(a) <= near && v >= -9 && v <= 4) {
+      b.stuck = 0;
+      b.best = Infinity;
+      return true;
+    }
+    // It won't walk through its camp's fire: it waits for it to burn down
+    // (and wanders somewhere else), standing back from it.
+    if (b.camp !== null && this.acrossFire(b.camp, e.x, e.y, tx, ty)) {
+      b.stuck = 0;
+      b.goalX = -1;
+      const u = (e.x - b.camp.x) * b.camp.gy - (e.y - b.camp.y) * b.camp.gx;
+      if (Math.abs(u) < REST_U && ++b.pace >= every) {
+        b.pace = 0;
+        this.stepAcross(e, u > 0 ? 1 : -1, CLIMB, false);
+      } else this.pose(e, 0);
+      return false;
+    }
+    const dist = Math.abs(a) + Math.abs(v);
+    if (dist < b.best) {
+      b.best = dist;
+      b.stuck = 0;
+    } else if (++b.stuck > GIVE_UP) {
+      this.giveUp(e, b);
+      return false;
+    }
+    if (++b.pace < every) return false;
+    b.pace = 0;
+    this.stepAcross(e, a > 0 ? 1 : a < 0 ? -1 : e.facing, CLIMB, every === RUN_EVERY);
+    return false;
+  },
+
+  pose(e, fr) {
+    if (e.frame !== fr) this.moveBody(e, e.x, e.y, fr, e.facing, e.gx, e.gy);
+  },
+
+  // The nearest danger within r of e (a cell index), or -1: something in
+  // DANGER, anything but a gas hotter than HOT (its own campfire aside), or
+  // a blast's pressure (then the cell beside it on the side the pressure
+  // is higher).
+  findDanger(e, r) {
+    const { w, h, type, temp } = this;
+    const camp = e.brain.camp;
+    let best = -1, bd = Infinity;
+    for (let y = Math.max(0, e.y - r); y <= Math.min(h - 1, e.y + r); y++) {
+      for (let x = Math.max(0, e.x - r); x <= Math.min(w - 1, e.x + r); x++) {
+        const i = y * w + x, t = type[i];
+        if (t === 0 || t === e.kind) continue;
+        if (!DANGER[t] && (temp[i] <= HOT || DEFS[t].state === GAS)) continue;
+        if (camp !== null && this.inCampFire(camp, x, y, DEFS[t].state === ENERGY)) continue;
+        const d = (x - e.x) ** 2 + (y - e.y) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = i;
+        }
+      }
+    }
+    if (best < 0 && this.air.p[this.air.at(e.x, e.y)] > BLAST_FEAR) {
+      const l = this.pressureAt(Math.max(0, e.x - 8), e.y), rt = this.pressureAt(Math.min(w - 1, e.x + 8), e.y);
+      best = e.y * w + (l > rt ? Math.max(0, e.x - 1) : Math.min(w - 1, e.x + 1));
+    }
+    return best;
+  },
+
+  // Is (x, y) part of its camp's fire: flames (`flame`) right over the
+  // pile, or anything else hot round it (the ground it has warmed)?
+  inCampFire(camp, x, y, flame) {
+    const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
+    const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
+    const r = flame ? 2 : 6;
+    return u >= -r && u <= r && v >= -20 && v <= 4;
+  },
+
+  think(e, b) {
+    const danger = this.findDanger(e, b.job === 'fleeing' ? SAFE_R : DANGER_R);
+    if (danger >= 0) {
+      const a = ((danger % this.w) - e.x) * e.gy - (((danger / this.w) | 0) - e.y) * e.gx;
+      b.fleeDir = a > 0 ? -1 : a < 0 ? 1 : -e.facing;
+      b.job = 'fleeing';
+      return;
+    }
+    if (b.job === 'fleeing') b.job = 'wandering';
+    this.chooseWork(e, b);
+  },
+
+  // Its camp's needs, in order: light a pile that's ready, keep the pile
+  // fed, build the hut, then rest by the fire (or wander, before it's lit).
+  // A job under way carries on.
+  chooseWork(e, b) {
+    if (b.camp === null) b.camp = this.joinOrMakeCamp(e);
+    const camp = b.camp;
+    if (camp === null) {
+      b.job = 'wandering';
+      return;
+    }
+    if (this.shouldShelter(e, camp)) {
+      b.job = 'sheltering';
+      return;
+    }
+    if (b.carry !== 0) {
+      b.job = b.carryJob;
+      return;
+    }
+    if ((b.job === 'gathering wood' && b.target >= 0 && FUEL[this.type[b.target]])
+      || (b.job === 'fetching stone' && b.target >= 0 && SHAPED[this.type[b.target]] === 0 && this.type[b.target] !== 0)
+      || (b.job === 'lighting the fire' && camp.lighter === e.id)) return;
+    this.release(b);
+    const fuel = this.pileCount(camp, FUEL), burning = this.pileCount(camp, FIRE_SET) > 0;
+    if (burning) camp.lit = true;
+    if (camp.lighter !== 0 && this.creatureById[camp.lighter]?.brain?.job !== 'lighting the fire') camp.lighter = 0;
+    if (!burning && fuel >= PILE_LIGHT && camp.lighter === 0) {
+      camp.lighter = e.id;
+      b.rub = 0;
+      b.job = 'lighting the fire';
+      return;
+    }
+    // Everyone helps build the first pile; after that one human is enough
+    // to keep the fire going.
+    if (fuel < (burning ? PILE_LOW : PILE_LIGHT) && !(camp.lit && this.tending(e, camp))) {
+      const t = this.findWanted(e, camp, FUEL, FUEL_R);
+      if (t >= 0) {
+        this.claim(b, camp, t);
+        b.job = 'gathering wood';
+        return;
+      }
+    }
+    if (this.hutWork(e, b, camp)) return;
+    b.job = camp.lit ? 'resting by the fire' : 'wandering';
+  },
+
+  // Is another member of the camp already fetching fuel?
+  tending(e, camp) {
+    for (const id of camp.members) {
+      const o = this.creatureById[id];
+      if (o && o !== e && o.brain !== null && (o.brain.job === 'gathering wood' || o.brain.job === 'carrying wood')) return true;
+    }
+    return false;
+  },
+
+  // Once the camp's fire has been lit, a hut beside it: fetch material for
+  // it. True if that gave e a job.
+  hutWork(e, b, camp) {
+    if (!camp.lit) return false;
+    if (camp.hut === null) {
+      if (this.tick < camp.hutRetry) return false;
+      camp.hut = this.planHut(camp);
+      if (camp.hut === null) {
+        camp.hutRetry = this.tick + 600;
+        return false;
+      }
+    }
+    const hut = camp.hut;
+    if (hut.done) return false;
+    if (this.nextHutCell(hut) < 0) {
+      hut.done = true;
+      return false;
+    }
+    // From blocks and boulders, not the ground it stands on.
+    let t = this.findWanted(e, camp, MATERIAL, STONE_R, true);
+    if (t < 0) t = this.findWanted(e, camp, WOOD_ONLY, STONE_R, true);
+    if (t < 0) return false;
+    this.claim(b, camp, t);
+    b.job = 'fetching stone';
+    return true;
+  },
+
+  // A site for the hut: HUT_W columns side by side, at least HUT_GAP cells
+  // past the pile, on ground within a cell of flat, with room for it.
+  planHut(camp) {
+    for (let off = 3 + HUT_GAP; off <= 24; off++) {
+      for (const side of [1, -1]) {
+        const plan = this.hutAt(camp, side > 0 ? off : -off - (HUT_W - 1), side);
+        if (plan !== null) return plan;
+      }
+    }
+    return null;
+  },
+
+  // The blueprint for a hut over columns u0 .. u0 + HUT_W - 1 (side: which
+  // side of the pile it's on), or null. Both walls have a doorway DOOR cells
+  // high, so the hut doesn't cut the camp off from what lies beyond it. In
+  // build order: the two cells over the far doorway, the two over the near
+  // one (facing the fire), then the roof from the far wall across.
+  hutAt(camp, u0, side) {
+    let top = Infinity, bottom = -Infinity;
+    for (let u = u0; u < u0 + HUT_W; u++) {
+      const g = this.groundAt(camp, u);
+      if (g === null) return null;
+      top = Math.min(top, g);
+      bottom = Math.max(bottom, g);
+    }
+    if (bottom - top > 1) return null;
+    const floor = top - 1; // the row it stands in
+    for (let v = floor; v >= floor - HUT_WALL; v--) {
+      for (let u = u0; u < u0 + HUT_W; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c < 0 || this.builtAt(c)) return null;
+      }
+    }
+    const farU = side > 0 ? u0 + HUT_W - 1 : u0, doorU = side > 0 ? u0 : u0 + HUT_W - 1;
+    const order = [];
+    for (let v = floor - DOOR; v > floor - HUT_WALL; v--) order.push([farU, v]);
+    for (let v = floor - DOOR; v > floor - HUT_WALL; v--) order.push([doorU, v]);
+    for (let k = 0; k < HUT_W; k++) order.push([farU - side * k, floor - HUT_WALL]);
+    const cells = order.map(([u, v]) => this.campCell(camp, u, v));
+    return { cells, us: order.map(([u]) => u), set: new Set(cells), u0, floor, side, done: false };
+  },
+
+  // The ground in column u near the camp: the topmost solid (or powder)
+  // cell with open space above it, from 8 cells above the camp's spot to 8
+  // below. Its v, or null.
+  groundAt(camp, u) {
+    for (let v = -8; v <= 8; v++) {
+      const c = this.campCell(camp, u, v), a = this.campCell(camp, u, v - 1);
+      if (c < 0 || a < 0) continue;
+      if (this.builtAt(c) && !this.builtAt(a)) return v;
+    }
+    return null;
+  },
+
+  // Is cell c solid (or powder), and not a creature?
+  builtAt(c) {
+    const t = this.type[c];
+    if (t === 0 || SHAPED[t]) return false;
+    const s = DEFS[t].state;
+    return s === SOLID || s === POWDER;
+  },
+
+  nextHutCell(hut) {
+    for (let k = 0; k < hut.cells.length; k++) if (!this.builtAt(hut.cells[k])) return k;
+    return -1;
+  },
+
+  // Carry the material to the hut and put it in the lowest unfinished
+  // cell, standing inside where it can reach.
+  build(e, b) {
+    const camp = b.camp, hut = camp === null ? null : camp.hut;
+    if (hut === null) {
+      this.dropCarry(e, b);
+      return;
+    }
+    const k = this.nextHutCell(hut);
+    if (k < 0) {
+      hut.done = true;
+      this.dropCarry(e, b);
+      return;
+    }
+    const u = Math.min(hut.u0 + HUT_W - 3, Math.max(hut.u0 + 2, hut.us[k]));
+    const s = this.campCell(camp, u, hut.floor);
+    if (s < 0 || !this.walkTo(e, b, s % this.w, (s / this.w) | 0, 0, WALK_EVERY)) return;
+    this.pose(e, 0);
+    const c = hut.cells[k], t = this.type[c];
+    if (t !== 0 && (SHAPED[t] || DEFS[t].state === LIQUID)) return; // wait for it to move
+    if (t !== 0) this.clearCell(c);
+    this.spawn(c, b.carry);
+    b.carry = 0;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Put down what it's carrying beside its feet (or its head). With no room
+  // at either, or only in its hut's doorway, it lets it go.
+  dropCarry(e, b) {
+    let c = this.spawnNear(e.x, e.y, b.carry);
+    if (c < 0) c = this.spawnNear(e.x - 5 * e.gx, e.y - 5 * e.gy, b.carry);
+    if (c >= 0 && b.camp !== null && this.inDoorway(b.camp, c)) this.clearCell(c);
+    b.carry = 0;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Is cell c in a doorway of the camp's hut?
+  inDoorway(camp, c) {
+    const hut = camp.hut;
+    if (hut === null) return false;
+    const x = c % this.w, y = (c / this.w) | 0;
+    const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
+    const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
+    return (u === hut.u0 || u === hut.u0 + HUT_W - 1) && v <= hut.floor && v > hut.floor - DOOR;
+  },
+
+  // A finished hut to go to, and cold air or rain, snow or hail falling nearby.
+  shouldShelter(e, camp) {
+    if (camp.hut === null || !camp.hut.done) return false;
+    if (this.air.heat && this.air.t[this.air.at(e.x, e.y)] < COLD_AIR) return true;
+    return this.precipitation(e);
+  },
+
+  // Water, snow or hail falling (nothing under it) within RAIN_R above it.
+  precipitation(e) {
+    const { w, type } = this;
+    for (let v = -RAIN_R; v < 0; v++) {
+      for (let u = -RAIN_R; u <= RAIN_R; u++) {
+        const x = e.x + u * e.gy + v * e.gx, y = e.y - u * e.gx + v * e.gy;
+        if (!this.inBounds(x, y) || !this.inBounds(x + e.gx, y + e.gy)) continue;
+        const t = type[y * w + x];
+        if ((t === ID.WATER || t === ID.SNOW || t === ID.HAIL) && type[(y + e.gy) * w + x + e.gx] === 0) return true;
+      }
+    }
+    return false;
+  },
+
+  // Go into the hut and sit in the middle.
+  shelter(e, b) {
+    const camp = b.camp, hut = camp.hut;
+    const s = this.campCell(camp, hut.u0 + (HUT_W >> 1), hut.floor);
+    if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
+  },
+
+  act(e, b) {
+    switch (b.job) {
+      case 'fleeing':
+        if (++b.pace >= RUN_EVERY) {
+          b.pace = 0;
+          this.stepAcross(e, b.fleeDir, CLIMB, true);
+        }
+        break;
+      case 'gathering wood':
+      case 'fetching stone': this.fetch(e, b); break;
+      case 'carrying wood': this.carryToPile(e, b); break;
+      case 'lighting the fire': this.lightFire(e, b); break;
+      case 'resting by the fire': this.restByFire(e, b); break;
+      case 'building the hut': this.build(e, b); break;
+      case 'sheltering': this.shelter(e, b); break;
+      default: this.wander(e, b);
+    }
+  },
+
+  makeCamp(x, y, gx = this.gravity.downX, gy = this.gravity.downY) {
+    const camp = {
+      x, y, gx, gy, // the pile's middle (on the ground), and the way down there
+      lit: false, // its fire has been lit (it may have burned out since)
+      hut: null, hutRetry: 0, // the hut's blueprint
+      members: new Set(), // the humans' ids
+      claims: new Set(), // cells someone is on their way to fetch
+      lighter: 0, // who is lighting the fire
+    };
+    this.camps.push(camp);
+    return camp;
+  },
+
+  // The camp within CAMP_JOIN, or a new one on flat dry ground a few cells
+  // beside e. null if there's nowhere for one.
+  joinOrMakeCamp(e) {
+    let camp = this.camps.find((c) => Math.max(Math.abs(c.x - e.x), Math.abs(c.y - e.y)) <= CAMP_JOIN) ?? null;
+    if (camp === null) {
+      for (const u of [3, -3, 4, -4, 5, -5, 6, -6]) {
+        const x = e.x + u * e.gy, y = e.y - u * e.gx;
+        if (this.campSpot(x, y, e.gx, e.gy)) {
+          camp = this.makeCamp(x, y, e.gx, e.gy);
+          break;
+        }
+      }
+    }
+    if (camp !== null) camp.members.add(e.id);
+    return camp;
+  },
+
+  // Flat dry ground for a pile at (x, y): it and the cells either side
+  // empty with solid ground (or powder) under them, and no liquid beside.
+  campSpot(x, y, gx, gy) {
+    for (let u = -1; u <= 1; u++) {
+      const cx = x + u * gy, cy = y - u * gx;
+      if (!this.inBounds(cx, cy) || !this.inBounds(cx + gx, cy + gy)) return false;
+      if (this.type[cy * this.w + cx] !== 0) return false;
+      const g = this.type[(cy + gy) * this.w + cx + gx], s = DEFS[g].state;
+      if (g === 0 || SHAPED[g] || (s !== SOLID && s !== POWDER)) return false;
+      for (const [dx, dy] of [[gy, -gx], [-gy, gx], [-gx, -gy]]) {
+        if (this.inBounds(cx + dx, cy + dy) && DEFS[this.type[(cy + dy) * this.w + cx + dx]].state === LIQUID) return false;
+      }
+    }
+    return true;
+  },
+
+  // The cell u across and v down from the camp's spot, in its frame; -1
+  // outside the world.
+  campCell(camp, u, v) {
+    const x = camp.x + u * camp.gy + v * camp.gx, y = camp.y - u * camp.gx + v * camp.gy;
+    return this.inBounds(x, y) ? y * this.w + x : -1;
+  },
+
+  // Are (x0, y0) and (x1, y1) on opposite sides of the camp's pile, while
+  // it's burning?
+  acrossFire(camp, x0, y0, x1, y1) {
+    const u0 = (x0 - camp.x) * camp.gy - (y0 - camp.y) * camp.gx;
+    const u1 = (x1 - camp.x) * camp.gy - (y1 - camp.y) * camp.gx;
+    if (!((u0 > 2 && u1 < -2) || (u0 < -2 && u1 > 2))) return false;
+    return this.pileCount(camp, FIRE_SET) > 0;
+  },
+
+  // The pile and the flames over it.
+  inPile(camp, x, y) {
+    const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
+    const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
+    return u >= -2 && u <= 2 && v >= -4 && v <= 0;
+  },
+
+  pileCount(camp, set) {
+    let n = 0;
+    for (let v = -4; v <= 0; v++) {
+      for (let u = -2; u <= 2; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && set[this.type[c]]) n++;
+      }
+    }
+    return n;
+  },
+
+  // Where the next piece of fuel goes: the lowest cell of the pile that's
+  // empty, or holds only ash from the last fire.
+  pileSpace(camp) {
+    for (let v = 0; v >= -2; v--) {
+      for (const u of [0, -1, 1]) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && (this.type[c] === 0 || this.type[c] === ID.ASH)) return c;
+      }
+    }
+    return -1;
+  },
+
+  // The nearest cell to e within `radius` of the camp holding something in
+  // `set`, open to the air (`side`: open to one side, so it isn't the
+  // ground underfoot), within reach of ground a human stands on, and not in
+  // the pile or the hut, nor claimed or given up on. -1 if none.
+  findWanted(e, camp, set, radius, side = false) {
+    const { w, h, type } = this;
+    const b = e.brain, hut = camp.hut;
+    let best = -1, bd = Infinity;
+    for (let y = Math.max(0, camp.y - radius); y <= Math.min(h - 1, camp.y + radius); y++) {
+      for (let x = Math.max(0, camp.x - radius); x <= Math.min(w - 1, camp.x + radius); x++) {
+        const i = y * w + x;
+        if (!set[type[i]]) continue;
+        const d = Math.abs(x - e.x) + Math.abs(y - e.y);
+        if (d >= bd || camp.claims.has(i) || this.isBanned(b, i) || this.inPile(camp, x, y)) continue;
+        if (hut !== null && hut.set.has(i)) continue;
+        if (!this.openAt(x, y) || !this.nearGround(x, y, e.gx, e.gy)) continue;
+        if (side && !this.openSide(x, y, e.gx, e.gy)) continue;
+        if (this.acrossFire(camp, e.x, e.y, x, y)) continue;
+        best = i;
+        bd = d;
+      }
+    }
+    return best;
+  },
+
+  // Is there empty space beside (x, y), across the down arrow?
+  openSide(x, y, gx, gy) {
+    for (const s of [1, -1]) {
+      const nx = x + s * gy, ny = y - s * gx;
+      if (this.inBounds(nx, ny) && this.type[ny * this.w + nx] === 0) return true;
+    }
+    return false;
+  },
+
+  openAt(x, y) {
+    const { w, h, type } = this;
+    const i = y * w + x;
+    return (x + 1 < w && type[i + 1] === 0) || (x > 0 && type[i - 1] === 0)
+      || (y + 1 < h && type[i + w] === 0) || (y > 0 && type[i - w] === 0);
+  },
+
+  // Is there a place within 3 cells of (x, y) a human could stand: empty,
+  // with solid ground or powder under it?
+  nearGround(x, y, gx, gy) {
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (!this.inBounds(nx, ny) || !this.inBounds(nx + gx, ny + gy)) continue;
+        if (this.type[ny * this.w + nx] !== 0) continue;
+        const g = this.type[(ny + gy) * this.w + nx + gx], s = DEFS[g].state;
+        if (g !== 0 && (s === SOLID || s === POWDER)) return true;
+      }
+    }
+    return false;
+  },
+
+  isBanned(b, i) {
+    const t = b.banned.get(i);
+    return t !== undefined && t > this.tick;
+  },
+
+  // The cell `u` across from the camp's spot on the side e is on.
+  besideCamp(e, camp, u) {
+    const side = (e.x - camp.x) * camp.gy - (e.y - camp.y) * camp.gx >= 0 ? 1 : -1;
+    return this.campCell(camp, side * u, 0);
+  },
+
+  // Walk to the target and pick it up.
+  fetch(e, b) {
+    const t = b.target;
+    if (t < 0 || this.type[t] === 0 || SHAPED[this.type[t]]) {
+      this.release(b);
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    if (!this.walkTo(e, b, t % this.w, (t / this.w) | 0, REACH, WALK_EVERY)) return;
+    b.carry = this.type[t];
+    b.carryJob = b.job === 'gathering wood' ? 'carrying wood' : 'building the hut';
+    b.job = b.carryJob;
+    this.clearCell(t);
+    this.release(b);
+  },
+
+  // Take the fuel to the camp and put it on the pile (or down beside a
+  // full one, so its hands are free to light it).
+  carryToPile(e, b) {
+    const camp = b.camp;
+    if (camp === null) {
+      b.think = 0;
+      return;
+    }
+    if (!this.walkTo(e, b, camp.x, camp.y, REACH + 1, WALK_EVERY)) return; // not into the flames
+    const c = this.pileSpace(camp);
+    if (c < 0) {
+      this.dropCarry(e, b);
+      return;
+    }
+    if (this.type[c] !== 0) this.clearCell(c);
+    this.spawn(c, b.carry);
+    b.carry = 0;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Kneel beside the pile and rub sticks; after RUB_FOR steps it catches.
+  lightFire(e, b) {
+    const camp = b.camp, s = this.besideCamp(e, camp, LIGHT_U);
+    if (s < 0 || !this.walkTo(e, b, s % this.w, (s / this.w) | 0, 0, WALK_EVERY)) return;
+    this.pose(e, FRAME_KNEEL);
+    if (++b.rub < RUB_FOR) return;
+    b.rub = 0;
+    if (this.lightPile(camp)) camp.lit = true;
+    camp.lighter = 0;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  lightPile(camp) {
+    for (let v = 0; v >= -2; v--) {
+      for (let u = -1; u <= 1; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && FUEL[this.type[c]] && this.ignite(c, c % this.w, (c / this.w) | 0)) return true;
+      }
+    }
+    return false;
+  },
+
+  // Sit a couple of cells from the fire.
+  restByFire(e, b) {
+    const s = this.besideCamp(e, b.camp, REST_U);
+    if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
+  },
+
+  // Amble about near its camp (or where it is), stopping now and then.
+  wander(e, b) {
+    if (b.goalX < 0) {
+      const cx = b.camp !== null ? b.camp.x : e.x, cy = b.camp !== null ? b.camp.y : e.y;
+      const d = ((this.rand() * 21) | 0) - 10;
+      b.goalX = Math.min(this.w - 1, Math.max(0, cx + d * e.gy));
+      b.goalY = Math.min(this.h - 1, Math.max(0, cy - d * e.gx));
+    }
+    if (this.walkTo(e, b, b.goalX, b.goalY, 1, WALK_EVERY)) {
+      this.pose(e, 0);
+      if (this.rand() < 0.01) b.goalX = -1;
+    }
+  },
+
+  // No closer for GIVE_UP steps: leave that target alone for a while.
+  giveUp(e, b) {
+    if (b.target >= 0) {
+      b.banned.set(b.target, this.tick + BAN_FOR);
+      this.release(b);
+    }
+    b.goalX = -1;
+    b.stuck = 0;
+    b.best = Infinity;
+    if (b.carry === 0) b.job = 'wandering';
+    b.think = 0;
+  },
+
+  claim(b, camp, t) {
+    b.target = t;
+    camp.claims.add(t);
+    b.best = Infinity;
+    b.stuck = 0;
+  },
+
+  release(b) {
+    if (b.target >= 0 && b.camp !== null) b.camp.claims.delete(b.target);
+    b.target = -1;
+  },
+
+  // A human that dies leaves its camp; a camp with nobody left is forgotten.
+  leaveCamp(e) {
+    const b = e.brain, camp = b.camp;
+    if (camp === null) return;
+    this.release(b);
+    camp.members.delete(e.id);
+    if (camp.lighter === e.id) camp.lighter = 0;
+    if (camp.members.size === 0) this.camps.splice(this.camps.indexOf(camp), 1);
+    b.camp = null;
+  },
+};
+
+return { THINK_EVERY, WALK_EVERY, RUN_EVERY, DANGER_R, BREATH, FRAME_KNEEL, HUT_W, HUT_WALL, DOOR, newBrain, Humans };
+})();
+
 __modules["src/sim/world.js"] = (() => {
 // The particle simulation. The world is a grid where every cell holds at
 // most one particle; per-cell data lives in parallel typed arrays so the
@@ -10241,6 +11869,8 @@ const { WALL_HERE, PASS, PASS_BIT, stops } = __modules["src/sim/walls.js"];
 const { TimeZones, SPEEDS, SLOW_EVERY } = __modules["src/sim/time.js"];
 const { Portals, initPortals } = __modules["src/sim/portals.js"];
 const { Sleep, initSleep } = __modules["src/sim/sleep.js"];
+const { Creatures, initCreatures, SHAPED } = __modules["src/sim/creatures.js"];
+const { Humans } = __modules["src/sim/humans.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -10338,6 +11968,7 @@ class World {
     initMachines(this);
     initPortals(this);
     initSleep(this);
+    initCreatures(this);
     this.setQuality('high');
   }
 
@@ -10396,11 +12027,13 @@ class World {
     this.pn = 0;
     this.doorTimer.fill(0);
     this.doorList.length = 0;
+    initCreatures(this);
   }
 
   initLife(i, t) {
     const d = DEFS[t];
-    this.life[i] = d.lifeMax ? d.lifeMin + ((this.rand() * (d.lifeMax - d.lifeMin + 1)) | 0) : 0;
+    // A shaped creature's age is kept by its entity (creatures.js), not its cells.
+    this.life[i] = d.lifeMax && d.shape === null ? d.lifeMin + ((this.rand() * (d.lifeMax - d.lifeMin + 1)) | 0) : 0;
   }
 
   // Place a fresh particle (used by painting and by clones).
@@ -10546,6 +12179,7 @@ class World {
         this.vy[j] += pushAcross * py + pushAlong * downY;
       }
     }
+    if (this.creatures.length !== 0) this.blastCreatures(x, y, strength, r); // creatures.js
   }
 
   randomNeighbor(x, y) {
@@ -10651,6 +12285,7 @@ class World {
       }
     }
     if (this.zoneBox !== null) this.fastPasses(fromBottom);
+    if (this.creatures.length !== 0) this.stepCreatures(); // shaped creatures (creatures.js)
     for (let a = 0; a < next.length; a++) if (air.solid[a] >= SEAL_COUNT) next[a] = 1;
     air.next = air.blocked;
     air.blocked = next;
@@ -11593,6 +13228,7 @@ class World {
       return;
     }
     if (t === SPARK) { this.sparkArea(area, density); return; }
+    if (SHAPED[t]) { this.paintCreatures(area, t); return; } // seeds a body apart (creatures.js)
     area((i) => {
       const u = this.type[i];
       // With Replace on, whatever is in the way is overwritten (but painting
@@ -11727,7 +13363,7 @@ class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans);
 
 return { VOID_TOP, World, MIN_TEMP };
 })();
@@ -11750,6 +13386,8 @@ const { CELL } = __modules["src/sim/air.js"];
 const { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } = __modules["src/sim/world.js"];
 const { PASS } = __modules["src/sim/walls.js"];
 const { portalHues } = __modules["src/sim/portals.js"];
+const { SHAPED } = __modules["src/sim/creatures.js"];
+const { SHAPE_COLORS } = __modules["src/sim/shapes.js"];
 
 const BG = [10, 12, 16];
 const SHADES = 8;
@@ -11994,6 +13632,7 @@ class Renderer {
 
   buildPalettes() {
     this.palRGB = new Uint8Array(NUM * SHADES * 3);
+    this.shapeRGB = new Uint8Array(NUM * SHAPE_COLORS * 3); // shaped creatures' pixels (shapes.js)
     this.mode = new Uint8Array(NUM);
     this.alpha = new Float32Array(NUM);
     this.glowAmt = new Float32Array(NUM);
@@ -12022,6 +13661,7 @@ class Renderer {
         const [r, g, b] = hex(d.colors[s % d.colors.length]);
         this.palRGB.set([r, g, b], (d.id * SHADES + s) * 3);
       }
+      if (d.shape) d.shape.colors.forEach((rgb, s) => this.shapeRGB.set(rgb, (d.id * SHAPE_COLORS + s) * 3));
       let m = MODE.PLAIN;
       if (d.state === State.GAS) m = MODE.GAS;
       if (d.glow) m = MODE.MOLTEN;
@@ -12171,7 +13811,7 @@ class Renderer {
   }
 
   paint() {
-    const { world, pixels, palRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
+    const { world, pixels, palRGB, shapeRGB, mode, alpha, glowAmt, frame, view, exciteRGB, flameRGB, lightRGB } = this;
     const { w, h, type, temp, life, ctype, shade, loose, doorTimer, doorKind, wall } = world;
     const air = world.air;
     const cols = air.cols;
@@ -12227,8 +13867,13 @@ class Renderer {
         } else {
           count++;
           const s = shade[i] & 7;
-          const p = (t * SHADES + s) * 3;
-          r = palRGB[p]; g = palRGB[p + 1]; b = palRGB[p + 2];
+          if (SHAPED[t] === 1) { // a creature's pixel: its own palette (shapes.js)
+            const p = (t * SHAPE_COLORS + (shade[i] & 31)) * 3;
+            r = shapeRGB[p]; g = shapeRGB[p + 1]; b = shapeRGB[p + 2];
+          } else {
+            const p = (t * SHADES + s) * 3;
+            r = palRGB[p]; g = palRGB[p + 1]; b = palRGB[p + 2];
+          }
           let emit = 0;
           let wisp = -1; // see-through: drawn this opaque (and blurred, if SOFT)
           switch (mode[t]) {
@@ -12512,6 +14157,16 @@ class Renderer {
         for (let x = x0; x <= x1; x++) { blend(y0 * w + x, rgb, 0.35); blend(y1 * w + x, rgb, 0.35); }
         for (let y = y0 + 1; y < y1; y++) { blend(y * w + x0, rgb, 0.35); blend(y * w + x1, rgb, 0.35); }
       }
+    }
+    // What a human carries: one pixel above its hands, on the side it faces.
+    for (const e of world.creatures) {
+      const b = e.brain;
+      if (b === null || b.carry === 0) continue;
+      const up = e.frame >= 2 ? 4 : 5; // kneeling and sitting, its hands are lower
+      const x = e.x + e.facing * e.gy - up * e.gx, y = e.y - e.facing * e.gx - up * e.gy;
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const q = b.carry * SHADES * 3;
+      pixels[y * w + x] = pack(this.palRGB[q], this.palRGB[q + 1], this.palRGB[q + 2]);
     }
   }
 
@@ -13902,7 +15557,8 @@ return { loadDemoScene };
 
 __modules["src/game/cell-notes.js"] = (() => {
 // Extra notes for the inspect line about cell i: a wall that lets things
-// through, a time zone, a portal.
+// through, a time zone, a portal, a creature's health (and what a human is
+// doing).
 
 const { PASS_ORDER } = __modules["src/sim/walls.js"];
 
@@ -13919,6 +15575,11 @@ function cellNotes(world, i) {
     // The first pair is blue and orange; later pairs have other colours.
     const name = p.slot === 0 ? (p.end === 0 ? 'blue' : 'orange') : (p.end === 0 ? 'first' : 'second');
     notes.push(`Portal ${p.slot + 1}, ${name} end${p.paired ? '' : ' (draw the other end)'}`);
+  }
+  const e = world.creatureAt(i);
+  if (e) {
+    notes.push(`health ${e.n - e.lost} of ${e.n}`);
+    if (e.brain) notes.push(e.brain.job);
   }
   return notes;
 }

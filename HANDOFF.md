@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,490 tests, all passing, in a few seconds
+npm test    # node --test: about 1,520 tests, all passing, in a few seconds
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -151,6 +151,41 @@ else; `test/build.test.js` checks the bundle runs.
   nothing sleeps under Newtonian gravity. `world.sleeping = false` turns it
   off (tests compare with it). The air skips its whole step while
   `Air.settle` finds it still (`AIR_STILL`, `HEAT_STILL`).
+- **Shaped creatures** (`shapes.js`, `creatures.js`): an element with a
+  `shape` (frames of small pictures, palette letters, `pulse`) gets the
+  `body` behaviour. Each creature is an entity in `world.creatures` /
+  `creatureById`; its body is real cells of its element, `ctype` = the
+  entity's id, `shade` = the palette slot (the renderer reads `shapeRGB`).
+  A lone cell (`ctype` 0) is a seed: `updateBody` hatches it, finding a
+  placement for the whole body round it, and `growStep` grows the rest ring
+  by ring. `stepCreatures` runs after the particle pass (and fast passes),
+  before heat and air: `checkBody` treats any cell that's no longer the
+  entity's as a damaged pixel (a cell converted into another shaped
+  creature turns the whole creature into it), then age, healing, gravity,
+  portals, conveyor pushes, blasts and the animal or human step.
+  `initLife` gives shaped cells no life (the entity keeps `age`). **The
+  entity contract: anything new that moves or rewrites cells on its own
+  must skip shaped body cells (`SHAPED[t]`) or move the whole entity** (see
+  `nudgeCreature`, `portalCreature`, `blastCreatures`, `shove`,
+  `shutDoor`, `paintCreatures`); anything that changes a body cell is
+  damage on the creature's next step. Creatures treat every world edge as
+  solid (loops and voids aren't crossed). New creatures get
+  `NEWBORN_GRACE` steps before heat can hurt them (a human made by
+  lightning is born in heated clay).
+- **Humans** (`humans.js`): `stepHuman` keeps the body at 37 °C, handles
+  breath (drowning fills the lost pixel with the liquid, so it leaves no air
+  pocket) and swimming, falling, then `think` every 8 steps (danger, then
+  `chooseWork`) and `act` every step. `brain.job` is the job's
+  user-facing name (shown in the inspect line). Camps live in
+  `world.camps` with their own frame (`campCell(camp, u, v)`: u across,
+  v down from the pile's spot); claims stop two humans fetching the same
+  cell. Humans don't walk across a burning pile (`acrossFire`), squeeze
+  past each other (`passBy`), and treat their own fire's flames over the
+  pile, and warm ground round it, as safe. After the first lighting only one
+  human tends the fire (`tending`); building material must be open to one
+  side (`openSide`), so they don't dig up the floor. The hut has doorways in both
+  walls so it doesn't cut the camp off. Keep their behaviour in-game: no
+  real-world fire-starting or weapon detail.
 - **Quality levels** (`World.setQuality`, `src/game/performance.js`):
   'medium' and 'low' run `conductHeat` and `air.step` on alternate steps;
   heat then uses `k < 0.25 ? 2k : 0.5` per exchange (twice the rate, capped

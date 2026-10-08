@@ -529,6 +529,14 @@ export const Creatures = {
     }
   },
 
+  // The creature cell i belongs to, or null.
+  creatureAt(i) {
+    const t = this.type[i];
+    if (!SHAPED[t] || this.ctype[i] === 0) return null;
+    const e = this.creatureById[this.ctype[i]];
+    return e && e.kind === t ? e : null;
+  },
+
   // After the particle pass: every creature takes its step (more of them
   // in a fast time zone, fewer in a slow one, going by where it stands).
   stepCreatures() {

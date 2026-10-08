@@ -5,7 +5,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFS, ID } from '../src/sim/elements.js';
 import { compileShape } from '../src/sim/shapes.js';
-import { makeWorld, fillRect, run, countOf } from './helpers.js';
+import { makeWorld, fillRect, run, countOf, wallBox } from './helpers.js';
+import { GROW_GIVE_UP, HEAL_AFTER, NEWBORN_GRACE } from '../src/sim/creatures.js';
+import { cellNotes } from '../src/game/cell-notes.js';
 
 test('a shape compiles to pixel offsets from the middle of its bottom row', () => {
   const s = compileShape({
@@ -31,8 +33,6 @@ test('creatures live three times as long as they used to', () => {
   assert.deepEqual([DEFS[ID.FISH].lifeMin, DEFS[ID.FISH].lifeMax], [6000, 9000]);
   assert.deepEqual([DEFS[ID.TARDIGRADE].lifeMin, DEFS[ID.TARDIGRADE].lifeMax], [9000, 11700]);
 });
-
-import { GROW_GIVE_UP, HEAL_AFTER, NEWBORN_GRACE } from '../src/sim/creatures.js';
 
 // A floor of stone along the bottom two rows.
 function floored(w = 40, h = 30) {
@@ -145,8 +145,6 @@ test('clearing the world clears its creatures', () => {
   w.clearAll();
   assert.equal(w.creatures.length, 0);
 });
-
-import { wallBox } from './helpers.js';
 
 test('fish swim about in water and stay in it', () => {
   const w = makeWorld(60, 40);
@@ -262,4 +260,18 @@ test('a creature in a quarter-speed zone ages a quarter as fast', () => {
   const a0 = e.age;
   run(w, 80);
   assert.ok(Math.abs(e.age - a0 - 20) <= 1, `aged ${e.age - a0}`);
+});
+
+test('the inspect line shows a creature\'s health, and a human\'s job', () => {
+  const w = floored();
+  w.spawn(27 * 40 + 10, ID.SNAIL);
+  w.spawn(20 * 40 + 30, ID.HUMAN);
+  run(w, 30);
+  const snail = only(w, ID.SNAIL), person = only(w, ID.HUMAN);
+  w.clearCell(snail.cells[0]);
+  w.step();
+  assert.ok(cellNotes(w, snail.cells.find((c) => c >= 0)).includes('health 4 of 5'));
+  const notes = cellNotes(w, person.cells.find((c) => c >= 0));
+  assert.ok(notes.includes('health 10 of 10'));
+  assert.ok(notes.includes(person.brain.job), notes.join(' · '));
 });

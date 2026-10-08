@@ -1,5 +1,6 @@
 // Extra notes for the inspect line about cell i: a wall that lets things
-// through, a time zone, a portal.
+// through, a time zone, a portal, a creature's health (and what a human is
+// doing).
 
 import { PASS_ORDER } from '../sim/walls.js';
 
@@ -16,6 +17,11 @@ export function cellNotes(world, i) {
     // The first pair is blue and orange; later pairs have other colours.
     const name = p.slot === 0 ? (p.end === 0 ? 'blue' : 'orange') : (p.end === 0 ? 'first' : 'second');
     notes.push(`Portal ${p.slot + 1}, ${name} end${p.paired ? '' : ' (draw the other end)'}`);
+  }
+  const e = world.creatureAt(i);
+  if (e) {
+    notes.push(`health ${e.n - e.lost} of ${e.n}`);
+    if (e.brain) notes.push(e.brain.job);
   }
   return notes;
 }

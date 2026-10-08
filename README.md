@@ -475,8 +475,46 @@ Each frame (60 per second):
    themselves: swimmers through water, flyers through air, walkers along
    surfaces, burrowers through soil. They eat what they find (bees turn
    flowers into honey, worms turn ash into soil), breed or lay eggs when well
-   fed, and die of old age, of heat or cold, or, for fish, of being out of
-   water, leaving bones, feathers or shells behind.
+   fed, and die of old age (they live three times as long as they used to),
+   leaving bones, feathers or shells behind.
+
+   The bigger ones have bodies several pixels big, and move as a whole:
+   Fish (4 × 2, with a flicking tail), Electric Eel (6 × 2, wiggling), Squid
+   (3 × 4, swimming up in bursts), Jellyfish (3 × 3, pulsing), Bird (3 × 2,
+   flapping), Frog (3 × 2, climbing 2-cell steps), Snail and Spider (3 × 2),
+   Phoenix (5 × 3) and the Human (3 × 6). The tiny ones (plankton, insects,
+   worms, tardigrades) are still single pixels. Painted, they're put down a
+   body apart, and each grows outward from where it starts over a few
+   frames, wherever its body fits. They're hurt pixel by pixel: a pixel
+   that's burnt, dissolved, erased, blown away or eaten, or hotter than
+   60 °C or colder than −15 °C, is gone, and the body shows the gap. A fish
+   out of water, or a human out of breath, loses a pixel every half second.
+   Half its pixels gone, a creature dies, and what's left becomes its
+   remains (ash, if it burned). A hurt creature grows a pixel back every 2½
+   seconds while nothing hurts it. A conveyor carries a creature whole, a
+   portal takes it through whole, a blast hurts it and throws it, a piston
+   stops against it and a door waits for it. A Bird that catches fire turns
+   into a Phoenix, the whole bird.
+
+   **Humans** (Lightning striking Clay) have a mind of their own. A human
+   makes a camp on flat ground, fetches wood (or coal, peat or sawdust) from
+   nearby, one piece at a time, and piles it beside the camp; with six
+   pieces on the pile it kneels and rubs sticks until the pile catches, and
+   keeps the fire fed, then sits a couple of cells from it. Once the fire
+   has been lit it builds a hut beside it, 9 wide and 9 high, from stone,
+   brick, granite or concrete (wood only if there's nothing else, and then
+   it may catch fire), taken from blocks and boulders rather than the ground
+   it stands on: two short walls over doorways 6 high, and a roof. Everyone
+   helps build the first pile; after that one human keeps the fire going
+   while the others build. It
+   shelters in the hut from cold air and from rain, snow or hail. It runs
+   from lava, acid, napalm, flames, anything very hot, grey goo, viruses,
+   antimatter, black holes and blasts; it won't walk through its own fire,
+   and squeezes past other humans. In water it swims up for air and makes
+   for the shore; held under for more than about 10 seconds, it starts to
+   drown. Humans near each other share a camp and split the work. It holds
+   its body at 37 °C, so warm ground near its fire doesn't hurt it. Hover
+   over a creature to see its health, and what a human is doing.
 9. **Growing things**: wheat, sugarcane, cactus and kelp grow straight up to a
    random height; moss, lichen, coral and mould creep into what they feed on.
 10. **Light and colour**: gases like neon, argon, xenon and sodium vapour
@@ -657,6 +695,9 @@ src/sim/elements-chemistry.js  acids, lab chemicals, pigments, rocks and gems
 src/sim/elements-world.js      alloys, materials, gadgets, plants, food,
                                creatures, weather, space and more particles
 src/sim/elements-machines.js   switches, sensors, doors, lamps and other machines
+src/sim/shapes.js              the bigger creatures' pictures, compiled to pixel offsets
+src/sim/creatures.js           creatures several pixels big: birth, damage, healing, moving
+src/sim/humans.js              what humans do: camps, campfires, huts, fleeing, swimming
 src/sim/elements-more.js       gap-fillers: ores, reactions that were missing, new uses
 src/sim/world.js               the grid simulation: movement, heat, reactions
 src/sim/behaviors.js           special behaviours (fire, plants, black holes...)
@@ -778,8 +819,19 @@ that nothing sleeps under Newtonian gravity; and that the settled starting
 scene needs a tenth of the particle updates. The performance tests check
 Medium's heat keeps pace with High's without overshooting, the air steps
 every other step, Low's particle cap, Auto's levels, and the saved choice.
-The recipe tests run all 1235 production rules in the real simulation.
-About 1,490 tests in all, and they run in a few seconds.
+The creature tests check shapes compile, a seed grows ring by ring (and
+gives up with no room), a body falls whole with sand piling on it, lost
+pixels are damage and half the body lost is death, only the hot pixels are
+hurt and they heal, death by heat leaves ash, a bird turned to a phoenix
+turns whole, fish stay in the water and die out of it, birds flap, snails
+climb a step, painting spaces creatures out, conveyors carry them and
+portals take them through whole, blasts hurt them, time zones slow them, and
+the inspect line shows health and jobs. The human tests check the body, that
+a human runs from lava, swims to shore, drowns slowly under a lid, gathers
+wood into a pile and lights it, shares a camp, builds a hut with its
+doorways open and shelters in it from snow.
+The recipe tests run all 1238 production rules in the real simulation.
+About 1,520 tests in all, and they run in a few seconds.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.

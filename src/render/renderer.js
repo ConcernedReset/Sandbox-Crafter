@@ -787,6 +787,16 @@ export class Renderer {
         for (let y = y0 + 1; y < y1; y++) { blend(y * w + x0, rgb, 0.35); blend(y * w + x1, rgb, 0.35); }
       }
     }
+    // What a human carries: one pixel above its hands, on the side it faces.
+    for (const e of world.creatures) {
+      const b = e.brain;
+      if (b === null || b.carry === 0) continue;
+      const up = e.frame >= 2 ? 4 : 5; // kneeling and sitting, its hands are lower
+      const x = e.x + e.facing * e.gy - up * e.gx, y = e.y - e.facing * e.gx - up * e.gy;
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const q = b.carry * SHADES * 3;
+      pixels[y * w + x] = pack(this.palRGB[q], this.palRGB[q + 1], this.palRGB[q + 2]);
+    }
   }
 
   // Turn the gas layer into an image, blurred (here, unless the canvas blurs
