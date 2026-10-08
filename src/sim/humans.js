@@ -57,12 +57,19 @@ const STONE_R = 120; // how far from the camp it fetches building material
 const COLD_AIR = 10; // °C: air this cold sends it to shelter
 const RAIN_R = 20; // as does rain, snow or hail falling this close
 const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
-const WEAK = 30; // solids no stronger than this (sandstone) it can dig through, and powders
+export const HAND_DIG = 30; // the strongest solid it digs by hand (sandstone); powders always
+export const TOOL_DIG = 150; // and with a pickaxe (stone, granite, most metals)
 const DIG_EVERY = 8; // steps per cell dug
-// What it digs through: powders, and solids no stronger than WEAK; never a
-// creature, a danger, or anything that can't be broken.
-const DIGGABLE = Uint8Array.from(DEFS, (d) => (!d.shape && !DANGER[d.id] && !d.indestructible
-  && (d.state === POWDER || (d.state === SOLID && d.strength > 0 && d.strength <= WEAK)) ? 1 : 0));
+// How hard each thing is to dig: 1 for powders, a solid's strength, 0 for
+// what it never digs (creatures, dangers, anything that can't be broken).
+const DIG = Uint16Array.from(DEFS, (d) => (d.shape || DANGER[d.id] || d.indestructible ? 0
+  : d.state === POWDER ? 1 : d.state === SOLID ? d.strength : 0));
+const METALS = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.cat === 'metal' || d.cat === 'alloy') ? 1 : 0));
+export const RESOURCES = { coal: setOf(['COAL']), salt: setOf(['SALT']), metal: METALS };
+// What it keeps when it digs through it: fuel, salt, metal, building stone.
+const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' ? 1 : 0));
+const MINE_R = 120; // how far from the camp it looks for coal, salt and metal
+const SEAM_R = 8; // and how near the last one it looks for more of the same
 const WOOD_ONLY = setOf(['WOOD']);
 export const STACK = 10; // the most of any one element it carries
 export const HELD_PICKAXE = -1, HELD_GUN = -2; // what it shows in its hand, besides a pixel
@@ -83,6 +90,8 @@ export function newBrain() {
     armour: 0, // hits its armour can still take (0: none)
     held: 0, // what it shows in its hand: an element, HELD_PICKAXE or HELD_GUN
     fetchSet: null, fetchR: 0, fetchSide: false, // what it's fetching, and where from
+    mineKey: '', wantN: 0, // what it's mining (a RESOURCES key) and how many it wants
+    skip: new Map(), // resource key -> tick until which it doesn't look for it
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
     fleeDir: 1,
@@ -331,9 +340,14 @@ export const Humans = {
     if (++b.pace < every) return false;
     b.pace = 0;
     b.heading = a > 0 ? 1 : a < 0 ? -1 : e.facing; // remembered for swimming
-    // Something weak in the way: it digs through it, a cell at a time (up
-    // a step, if the target is above it). Digging counts as getting closer.
-    if (!this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY) && this.digToward(e, b.heading, v < -1)) {
+    // Something in the way it can dig: it digs through it, a cell at a
+    // time (up a step, if the target is above it, or down one). Mining
+    // something deep below, it digs a staircase down rather than walking
+    // over it. Digging counts as getting closer.
+    const vdir = v < -1 ? -1 : v > 4 ? 1 : 0;
+    const deep = b.job === 'mining' && vdir > 0 && Math.abs(a) <= v;
+    if ((deep && this.digToward(e, b, b.heading, 1))
+      || (!this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY) && this.digToward(e, b, b.heading, vdir))) {
       b.stuck = 0;
       b.pace = every - DIG_EVERY;
     }
@@ -341,32 +355,39 @@ export const Humans = {
   },
 
   // Dig out one cell of what stops e stepping across the way `dir`: level,
-  // or up a step (first, if `upward`), whichever way has only diggable
-  // things in it. Returns whether it dug.
-  digToward(e, dir, upward) {
+  // up a step or down one (first, as `vdir` says: -1 up, 1 down), whichever
+  // has only things it can dig in it. Useful things go into its pockets.
+  // Returns whether it dug.
+  digToward(e, b, dir, vdir) {
     const out = this.footB, rx = e.gy * dir, ry = -e.gx * dir;
-    const fr = e.frame === 0 ? 1 : 0;
-    for (const up of upward ? [1, 0] : [0, 1]) {
+    const fr = e.frame === 0 ? 1 : 0, limit = this.digLimit(b);
+    for (const up of vdir < 0 ? [1, 0] : vdir > 0 ? [-1, 0] : [0, 1]) {
       if (!this.placeCells(e.kind, e.x + rx - up * e.gx, e.y + ry - up * e.gy, fr, dir, e.gx, e.gy, out)) continue;
       let first = -1, ok = true;
       for (let p = 0; p < e.n && ok; p++) {
         if (e.pix[p] !== BODY || this.roomForBody(e, out[p])) continue;
-        if (!this.diggable(out[p])) ok = false;
+        if (!this.diggable(out[p], limit)) ok = false;
         else if (first < 0) first = out[p];
       }
       if (ok && first >= 0) {
+        if (USEFUL[this.type[first]]) this.stow(b, this.type[first]);
         this.clearCell(first);
+        if (b.tool !== 0) b.held = HELD_PICKAXE;
         return true;
       }
     }
     return false;
   },
 
-  // Can a human dig out cell c: weak (DIGGABLE), not hot, and not something
-  // a human put there?
-  diggable(c) {
-    const t = this.type[c];
-    return DIGGABLE[t] === 1 && this.temp[c] < HOT && !this.madeByHuman(c);
+  // Can a human dig out cell c, digging things up to strength `limit`: not
+  // too hard, not hot, and not something a human put there?
+  diggable(c, limit = HAND_DIG) {
+    const s = DIG[this.type[c]];
+    return s > 0 && s <= limit && this.temp[c] < HOT && !this.madeByHuman(c);
+  },
+
+  digLimit(b) {
+    return b.tool !== 0 ? TOOL_DIG : HAND_DIG;
   },
 
   // Did a human put what's in cell c there (and is it still there)?
@@ -564,6 +585,7 @@ export const Humans = {
       case 'building the hut': return camp.hut !== null && !camp.hut.done
         && (this.holding(b, MATERIAL) > 0 || (camp.hut.wood && this.has(b, WOOD) > 0));
       case 'lighting the fire': return camp.lighter === e.id;
+      case 'mining': return b.target >= 0 && b.fetchSet[this.type[b.target]] === 1;
       default: return false;
     }
   },
@@ -744,6 +766,7 @@ export const Humans = {
       case 'lighting the fire': this.lightFire(e, b); break;
       case 'resting by the fire': this.restByFire(e, b); break;
       case 'building the hut': this.build(e, b); break;
+      case 'mining': this.mine(e, b); break;
       case 'sheltering': this.shelter(e, b); break;
       default: this.wander(e, b);
     }
@@ -924,6 +947,78 @@ export const Humans = {
     return this.campCell(camp, side * u, 0);
   },
 
+  // The nearest cell of `set` within MINE_R of the camp (and within `near`
+  // of e) that it can dig, buried or not: not something a human put there,
+  // claimed, or given up on. -1 if none.
+  findDeposit(e, camp, set, limit, near = Infinity) {
+    const { w, h, type } = this;
+    const b = e.brain;
+    let best = -1, bd = Infinity;
+    for (let y = Math.max(0, camp.y - MINE_R); y <= Math.min(h - 1, camp.y + MINE_R); y++) {
+      for (let x = Math.max(0, camp.x - MINE_R); x <= Math.min(w - 1, camp.x + MINE_R); x++) {
+        const i = y * w + x;
+        if (!set[type[i]]) continue;
+        const d = Math.abs(x - e.x) + Math.abs(y - e.y);
+        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit)) continue;
+        best = i;
+        bd = d;
+      }
+    }
+    return best;
+  },
+
+  // Set off to mine `key` (a RESOURCES key) until it holds `goal` of it.
+  // False if there's none it can reach (it skips that one for a while).
+  startMining(e, b, camp, key, goal) {
+    if ((b.skip.get(key) ?? 0) > this.tick) return false;
+    const set = RESOURCES[key];
+    const t = this.findDeposit(e, camp, set, this.digLimit(b));
+    if (t < 0) {
+      b.skip.set(key, this.tick + BAN_FOR);
+      return false;
+    }
+    this.claim(b, camp, t);
+    b.fetchSet = set;
+    b.mineKey = key;
+    b.wantN = goal;
+    b.job = 'mining';
+    if (b.tool !== 0) b.held = HELD_PICKAXE;
+    return true;
+  },
+
+  // Does it want more of what it's mining? Salt goes into gunpowder as it's
+  // mined, so it wants salt while it still has coal to go with it.
+  wantsMore(b) {
+    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < STACK;
+    return this.holding(b, b.fetchSet) < b.wantN;
+  },
+
+  // Dig its way to the target and mine it, then the rest of the seam.
+  mine(e, b) {
+    const t = b.target;
+    if (t < 0 || !b.fetchSet[this.type[t]]) {
+      this.release(b);
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    if (!this.walkTo(e, b, t % this.w, (t / this.w) | 0, REACH, WALK_EVERY)) return;
+    this.release(b);
+    if (this.diggable(t, this.digLimit(b)) && this.stow(b, this.type[t])) {
+      this.clearCell(t);
+      if (b.tool !== 0) b.held = HELD_PICKAXE;
+      if (this.wantsMore(b)) {
+        const n = this.findDeposit(e, b.camp, b.fetchSet, this.digLimit(b), SEAM_R);
+        if (n >= 0) {
+          this.claim(b, b.camp, n);
+          return;
+        }
+      }
+    }
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
   // Walk to the target and pick it up; then the nearest more of the same,
   // until its hands are full or there's no more. Stone fetched for the hut
   // then goes to build it.
@@ -1018,6 +1113,7 @@ export const Humans = {
 
   // No closer for GIVE_UP steps: leave that target alone for a while.
   giveUp(e, b) {
+    if (b.job === 'mining') b.skip.set(b.mineKey, this.tick + BAN_FOR);
     if (b.target >= 0) {
       b.banned.set(b.target, this.tick + BAN_FOR);
       this.release(b);

@@ -112,6 +112,14 @@ function wilderness(world) {
   }
   rect(352, ground(352) - 14, 399, ground(352) - 11, ID.COAL);
   rect(300, ground(300), 320, ground(300) + 4, ID.CLAY);
+  // Buried under the dirt: coal, a salt bed and veins of metal, for humans
+  // with a pickaxe.
+  for (const [x0, x1, d0, d1, t] of [
+    [60, 90, 16, 19, ID.COAL], [196, 222, 26, 29, ID.COAL], [118, 140, 18, 21, ID.SALT],
+    [36, 48, 28, 31, ID.METAL], [242, 252, 22, 25, ID.COPPER],
+  ]) {
+    for (let x = x0; x <= x1; x++) for (let y = ground(x) + d0; y <= ground(x) + d1; y++) set(x, y, t);
+  }
   // A pond in a stone basin, with fish: level, just under the lower rim.
   const px0 = 170, px1 = 230, py = Math.max(...Array.from({ length: 61 }, (_, k) => ground(px0 + k)));
   const rim = Math.max(ground(px0 - 3), ground(px1 + 3)) + 1;
