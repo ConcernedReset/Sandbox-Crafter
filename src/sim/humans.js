@@ -8,7 +8,7 @@
 import { DEFS, ID, NUM, State } from './elements.js';
 import { SHAPED, SUFFOCATE_EVERY, BODY } from './creatures.js';
 
-const { SOLID, POWDER, LIQUID, GAS } = State;
+const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const setOf = (keys) => {
   const s = new Uint8Array(NUM);
   for (const k of keys) s[ID[k]] = 1;
@@ -24,7 +24,9 @@ const GIVE_UP = 300; // steps without getting closer before it gives up on a tar
 const BAN_FOR = 1800; // and leaves that target alone
 export const DANGER_R = 16; // it runs from danger this close
 const SAFE_R = 24; // until there's none this close
-const HOT = 80; // °C: anything this hot (but a gas) is danger
+// °C: anything this hot (but a gas) is danger. Its body holds BODY_T, so
+// ground warmed by a fire is safe to walk on.
+const HOT = 150;
 const BLAST_FEAR = 4; // and air pressure this high, from a blast
 export const BREATH = 600; // steps it can hold its breath
 const BODY_T = 37; // it keeps its body at this temperature,
@@ -33,6 +35,16 @@ const SHORE_R = 40; // how far it looks for a shore
 export const FRAME_KNEEL = 2, FRAME_SIT = 3;
 const NEAR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const DANGER = setOf(['LAVA', 'ACID', 'NAPALM', 'GREEK_FIRE', 'GREY_GOO', 'VIRUS', 'ANTIMATTER', 'BLACK_HOLE']);
+const CAMP_JOIN = 60; // it joins a camp this close
+const FUEL_R = 60; // and fetches fuel this far from it
+const PILE_LIGHT = 6; // fuel in the pile before it's lit
+const PILE_LOW = 4; // a burning pile with less is topped up
+const RUB_FOR = 180; // steps rubbing sticks before the pile catches
+const LIGHT_U = 4; // where it kneels to light the pile (across from its middle)
+const REST_U = 5; // and sits by it
+const REACH = 3; // how far across it reaches to pick something up
+const FUEL = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST']);
+const FIRE_SET = setOf(['FIRE']);
 
 export function newBrain() {
   return {
@@ -212,7 +224,7 @@ export const Humans = {
         const i = y * w + x, t = type[i];
         if (t === 0 || t === e.kind) continue;
         if (!DANGER[t] && (temp[i] <= HOT || DEFS[t].state === GAS)) continue;
-        if (camp !== null && this.inCampFire(camp, x, y)) continue;
+        if (camp !== null && this.inCampFire(camp, x, y, DEFS[t].state === ENERGY)) continue;
         const d = (x - e.x) ** 2 + (y - e.y) ** 2;
         if (d < bd) {
           bd = d;
@@ -227,11 +239,13 @@ export const Humans = {
     return best;
   },
 
-  // Is (x, y) its camp's fire, or the hot air and ground round it?
-  inCampFire(camp, x, y) {
+  // Is (x, y) part of its camp's fire: flames (`flame`) right over the
+  // pile, or anything else hot round it (the ground it has warmed)?
+  inCampFire(camp, x, y, flame) {
     const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
     const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
-    return u >= -4 && u <= 4 && v >= -20 && v <= 3;
+    const r = flame ? 2 : 6;
+    return u >= -r && u <= r && v >= -20 && v <= 4;
   },
 
   think(e, b) {
@@ -246,9 +260,48 @@ export const Humans = {
     this.chooseWork(e, b);
   },
 
-  // What to do when nothing's wrong.
+  // Its camp's needs, in order: light a pile that's ready, keep the pile
+  // fed, build the hut, then rest by the fire (or wander, before it's lit).
+  // A job under way carries on.
   chooseWork(e, b) {
-    b.job = 'wandering';
+    if (b.camp === null) b.camp = this.joinOrMakeCamp(e);
+    const camp = b.camp;
+    if (camp === null) {
+      b.job = 'wandering';
+      return;
+    }
+    if (b.carry !== 0) {
+      b.job = b.carryJob;
+      return;
+    }
+    if ((b.job === 'gathering wood' && b.target >= 0 && FUEL[this.type[b.target]])
+      || (b.job === 'fetching stone' && b.target >= 0 && SHAPED[this.type[b.target]] === 0 && this.type[b.target] !== 0)
+      || (b.job === 'lighting the fire' && camp.lighter === e.id)) return;
+    this.release(b);
+    const fuel = this.pileCount(camp, FUEL), burning = this.pileCount(camp, FIRE_SET) > 0;
+    if (burning) camp.lit = true;
+    if (camp.lighter !== 0 && this.creatureById[camp.lighter]?.brain?.job !== 'lighting the fire') camp.lighter = 0;
+    if (!burning && fuel >= PILE_LIGHT && camp.lighter === 0) {
+      camp.lighter = e.id;
+      b.rub = 0;
+      b.job = 'lighting the fire';
+      return;
+    }
+    if (fuel < (burning ? PILE_LOW : PILE_LIGHT)) {
+      const t = this.findWanted(e, camp, FUEL, FUEL_R);
+      if (t >= 0) {
+        this.claim(b, camp, t);
+        b.job = 'gathering wood';
+        return;
+      }
+    }
+    if (this.hutWork(e, b, camp)) return;
+    b.job = camp.lit ? 'resting by the fire' : 'wandering';
+  },
+
+  // The hut.
+  hutWork(e, b, camp) {
+    return false;
   },
 
   act(e, b) {
@@ -259,9 +312,215 @@ export const Humans = {
           this.stepAcross(e, b.fleeDir, CLIMB, true);
         }
         break;
-      default:
-        this.wander(e, b);
+      case 'gathering wood':
+      case 'fetching stone': this.fetch(e, b); break;
+      case 'carrying wood': this.carryToPile(e, b); break;
+      case 'lighting the fire': this.lightFire(e, b); break;
+      case 'resting by the fire': this.restByFire(e, b); break;
+      default: this.wander(e, b);
     }
+  },
+
+  makeCamp(x, y, gx = this.gravity.downX, gy = this.gravity.downY) {
+    const camp = {
+      x, y, gx, gy, // the pile's middle (on the ground), and the way down there
+      lit: false, // its fire has been lit (it may have burned out since)
+      hut: null, hutRetry: 0, // the hut's blueprint
+      members: new Set(), // the humans' ids
+      claims: new Set(), // cells someone is on their way to fetch
+      lighter: 0, // who is lighting the fire
+    };
+    this.camps.push(camp);
+    return camp;
+  },
+
+  // The camp within CAMP_JOIN, or a new one on flat dry ground a few cells
+  // beside e. null if there's nowhere for one.
+  joinOrMakeCamp(e) {
+    let camp = this.camps.find((c) => Math.max(Math.abs(c.x - e.x), Math.abs(c.y - e.y)) <= CAMP_JOIN) ?? null;
+    if (camp === null) {
+      for (const u of [3, -3, 4, -4, 5, -5, 6, -6]) {
+        const x = e.x + u * e.gy, y = e.y - u * e.gx;
+        if (this.campSpot(x, y, e.gx, e.gy)) {
+          camp = this.makeCamp(x, y, e.gx, e.gy);
+          break;
+        }
+      }
+    }
+    if (camp !== null) camp.members.add(e.id);
+    return camp;
+  },
+
+  // Flat dry ground for a pile at (x, y): it and the cells either side
+  // empty with solid ground (or powder) under them, and no liquid beside.
+  campSpot(x, y, gx, gy) {
+    for (let u = -1; u <= 1; u++) {
+      const cx = x + u * gy, cy = y - u * gx;
+      if (!this.inBounds(cx, cy) || !this.inBounds(cx + gx, cy + gy)) return false;
+      if (this.type[cy * this.w + cx] !== 0) return false;
+      const g = this.type[(cy + gy) * this.w + cx + gx], s = DEFS[g].state;
+      if (g === 0 || SHAPED[g] || (s !== SOLID && s !== POWDER)) return false;
+      for (const [dx, dy] of [[gy, -gx], [-gy, gx], [-gx, -gy]]) {
+        if (this.inBounds(cx + dx, cy + dy) && DEFS[this.type[(cy + dy) * this.w + cx + dx]].state === LIQUID) return false;
+      }
+    }
+    return true;
+  },
+
+  // The cell u across and v down from the camp's spot, in its frame; -1
+  // outside the world.
+  campCell(camp, u, v) {
+    const x = camp.x + u * camp.gy + v * camp.gx, y = camp.y - u * camp.gx + v * camp.gy;
+    return this.inBounds(x, y) ? y * this.w + x : -1;
+  },
+
+  // The pile and the flames over it.
+  inPile(camp, x, y) {
+    const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
+    const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
+    return u >= -2 && u <= 2 && v >= -4 && v <= 0;
+  },
+
+  pileCount(camp, set) {
+    let n = 0;
+    for (let v = -4; v <= 0; v++) {
+      for (let u = -2; u <= 2; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && set[this.type[c]]) n++;
+      }
+    }
+    return n;
+  },
+
+  // Where the next piece of fuel goes: the lowest empty cell of the pile.
+  pileSpace(camp) {
+    for (let v = 0; v >= -2; v--) {
+      for (const u of [0, -1, 1]) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && this.type[c] === 0) return c;
+      }
+    }
+    return -1;
+  },
+
+  // The nearest cell to e within `radius` of the camp holding something in
+  // `set`, open to the air, within reach of ground a human stands on, and
+  // not in the pile or the hut, nor claimed or given up on. -1 if none.
+  findWanted(e, camp, set, radius) {
+    const { w, h, type } = this;
+    const b = e.brain, hut = camp.hut;
+    let best = -1, bd = Infinity;
+    for (let y = Math.max(0, camp.y - radius); y <= Math.min(h - 1, camp.y + radius); y++) {
+      for (let x = Math.max(0, camp.x - radius); x <= Math.min(w - 1, camp.x + radius); x++) {
+        const i = y * w + x;
+        if (!set[type[i]]) continue;
+        const d = Math.abs(x - e.x) + Math.abs(y - e.y);
+        if (d >= bd || camp.claims.has(i) || this.isBanned(b, i) || this.inPile(camp, x, y)) continue;
+        if (hut !== null && hut.set.has(i)) continue;
+        if (!this.openAt(x, y) || !this.nearGround(x, y, e.gx, e.gy)) continue;
+        best = i;
+        bd = d;
+      }
+    }
+    return best;
+  },
+
+  openAt(x, y) {
+    const { w, h, type } = this;
+    const i = y * w + x;
+    return (x + 1 < w && type[i + 1] === 0) || (x > 0 && type[i - 1] === 0)
+      || (y + 1 < h && type[i + w] === 0) || (y > 0 && type[i - w] === 0);
+  },
+
+  // Is there a place within 3 cells of (x, y) a human could stand: empty,
+  // with solid ground or powder under it?
+  nearGround(x, y, gx, gy) {
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (!this.inBounds(nx, ny) || !this.inBounds(nx + gx, ny + gy)) continue;
+        if (this.type[ny * this.w + nx] !== 0) continue;
+        const g = this.type[(ny + gy) * this.w + nx + gx], s = DEFS[g].state;
+        if (g !== 0 && (s === SOLID || s === POWDER)) return true;
+      }
+    }
+    return false;
+  },
+
+  isBanned(b, i) {
+    const t = b.banned.get(i);
+    return t !== undefined && t > this.tick;
+  },
+
+  // The cell `u` across from the camp's spot on the side e is on.
+  besideCamp(e, camp, u) {
+    const side = (e.x - camp.x) * camp.gy - (e.y - camp.y) * camp.gx >= 0 ? 1 : -1;
+    return this.campCell(camp, side * u, 0);
+  },
+
+  // Walk to the target and pick it up.
+  fetch(e, b) {
+    const t = b.target;
+    if (t < 0 || this.type[t] === 0 || SHAPED[this.type[t]]) {
+      this.release(b);
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    if (!this.walkTo(e, b, t % this.w, (t / this.w) | 0, REACH, WALK_EVERY)) return;
+    b.carry = this.type[t];
+    b.carryJob = b.job === 'gathering wood' ? 'carrying wood' : 'building the hut';
+    b.job = b.carryJob;
+    this.clearCell(t);
+    this.release(b);
+  },
+
+  // Take the fuel to the camp and put it on the pile (or wait by a full one).
+  carryToPile(e, b) {
+    const camp = b.camp;
+    if (camp === null) {
+      b.think = 0;
+      return;
+    }
+    if (!this.walkTo(e, b, camp.x, camp.y, REACH + 1, WALK_EVERY)) return; // not into the flames
+    const c = this.pileSpace(camp);
+    if (c < 0) {
+      this.pose(e, FRAME_SIT);
+      return;
+    }
+    this.spawn(c, b.carry);
+    b.carry = 0;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Kneel beside the pile and rub sticks; after RUB_FOR steps it catches.
+  lightFire(e, b) {
+    const camp = b.camp, s = this.besideCamp(e, camp, LIGHT_U);
+    if (s < 0 || !this.walkTo(e, b, s % this.w, (s / this.w) | 0, 0, WALK_EVERY)) return;
+    this.pose(e, FRAME_KNEEL);
+    if (++b.rub < RUB_FOR) return;
+    b.rub = 0;
+    if (this.lightPile(camp)) camp.lit = true;
+    camp.lighter = 0;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  lightPile(camp) {
+    for (let v = 0; v >= -2; v--) {
+      for (let u = -1; u <= 1; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && FUEL[this.type[c]] && this.ignite(c, c % this.w, (c / this.w) | 0)) return true;
+      }
+    }
+    return false;
+  },
+
+  // Sit a couple of cells from the fire.
+  restByFire(e, b) {
+    const s = this.besideCamp(e, b.camp, REST_U);
+    if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
   },
 
   // Amble about near its camp (or where it is), stopping now and then.

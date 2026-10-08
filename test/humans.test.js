@@ -69,3 +69,28 @@ test('a human held under water drowns slowly', () => {
   assert.ok(!alive(w, e), 'drowned');
   assert.ok(countOf(w, ID.BONE) + countOf(w, ID.MEAT) > 0);
 });
+
+test('a human gathers wood into a pile beside its camp and lights it', () => {
+  const w = makeWorld(140, 50);
+  fillRect(w, 0, 45, 139, 49, ID.STONE);
+  fillRect(w, 30, 42, 37, 44, ID.WOOD);
+  const e = human(w, 70, 38);
+  let frames = 0;
+  while (!w.camps[0]?.lit && frames < 8000) { w.step(); frames++; }
+  assert.ok(w.camps[0]?.lit, `the fire was lit (${frames} frames, job ${e.brain?.job})`);
+  assert.ok(alive(w, e) && e.lost === 0, 'and the human is fine');
+  assert.ok(w.camps[0].members.has(e.id));
+  assert.ok(countOf(w, ID.WOOD) < 24, 'wood was taken from the log');
+});
+
+test('humans near each other share one camp', () => {
+  const w = makeWorld(120, 40);
+  fillRect(w, 0, 35, 119, 39, ID.STONE);
+  w.spawn(30 * 120 + 50, ID.HUMAN);
+  w.spawn(30 * 120 + 62, ID.HUMAN);
+  run(w, 100);
+  const people = w.creatures.filter((c) => c.kind === ID.HUMAN);
+  assert.equal(people.length, 2);
+  assert.equal(w.camps.length, 1);
+  assert.ok(people.every((p) => p.brain.camp === w.camps[0]));
+});
