@@ -49,6 +49,7 @@ export const Behaviors = {
       case 'virus': return this.updateVirus(i, x, y);
       case 'lye': return this.updateLye(i, x, y);
       case 'seed': return this.updateSeed(i, x, y);
+      case 'sapling': return this.updateSapling(i, x, y); // trees.js
       case 'firework': return this.updateFirework(i, x, y);
       case 'glitter': return this.updateGlitter(i, x, y, d);
       case 'neon':

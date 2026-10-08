@@ -275,3 +275,19 @@ test('the inspect line shows a creature\'s health, and a human\'s job', () => {
   assert.ok(notes.includes('health 10 of 10'));
   assert.ok(notes.includes(person.brain.job), notes.join(' · '));
 });
+
+test('fish painted across a pond end up in the water, alive', () => {
+  const w = makeWorld(80, 50);
+  fillRect(w, 0, 45, 79, 49, ID.STONE);
+  fillRect(w, 0, 25, 79, 44, ID.WATER);
+  w.paint(40, 26, 8, ID.FISH); // the brush half in the water, half above it
+  const painted = countOf(w, ID.FISH);
+  assert.ok(painted >= 4, `${painted} seeds`);
+  run(w, 300);
+  const fish = w.creatures.filter((e) => e.kind === ID.FISH);
+  assert.equal(fish.length, painted, 'every one alive');
+  for (const e of fish) {
+    assert.equal(e.lost, 0);
+    for (const c of e.cells) assert.ok(((c / 80) | 0) >= 25, 'all of it under the surface');
+  }
+});

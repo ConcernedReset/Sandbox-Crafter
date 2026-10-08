@@ -462,17 +462,21 @@ export const Creatures = {
   },
 
   // Painting a shaped creature puts down seeds a body apart: each into
-  // empty space with no other creature's seed or body that close.
+  // empty space (or, for a swimmer, water) with no other creature's seed or
+  // body that close.
   paintCreatures(area, t) {
     const { w: sw, h: sh } = DEFS[t].shape;
+    const c = DEFS[t].critter;
+    const into = (u) => u === 0 || (c.moves === 'swim' && c.home[u] === 1);
     area((i, x, y) => {
-      if (this.type[i] !== 0) return;
+      if (!into(this.type[i])) return;
       for (let dy = -sh; dy <= sh; dy++) {
         for (let dx = -sw; dx <= sw; dx++) {
           const nx = x + dx, ny = y + dy;
           if (nx >= 0 && ny >= 0 && nx < this.w && ny < this.h && SHAPED[this.type[ny * this.w + nx]]) return;
         }
       }
+      if (this.type[i] !== 0) this.clearCell(i);
       this.spawn(i, t);
     });
   },
@@ -645,7 +649,8 @@ export const Creatures = {
   },
 
   // Swimmers move only through water. Out of it they fall, and lose a
-  // pixel every SUFFOCATE_EVERY steps until they're back in.
+  // pixel every SUFFOCATE_EVERY steps until they're back in; half out of
+  // it (at the surface), they sink until they're under.
   swimAbout(e, c) {
     if (!this.touches(e, c.home)) {
       if (++e.dry % SUFFOCATE_EVERY === 0) this.hurtRandom(e);
@@ -653,6 +658,7 @@ export const Creatures = {
       return;
     }
     e.dry = 0;
+    if (this.touches(e, AIRY) && this.moveBody(e, e.x + e.gx, e.y + e.gy, e.frame, e.facing, e.gx, e.gy)) return;
     if (this.rand() >= c.speed) return;
     const dir = this.rand() < 0.1 ? -e.facing : e.facing;
     const r = this.rand();

@@ -109,6 +109,10 @@ function setUp(rule) {
         // Plant growing thick: a seed of plant at the bottom of a pool.
         fillRect(w, midX - 1, box.y1 - 1, midX + 1, box.y1, a);
         fillRect(w, box.x0, box.y0 + 10, box.x1, box.y1, ID.WATER);
+      } else if (a === ID.SAPLING) {
+        // A tree growing: a sapling on a dirt floor.
+        fillRect(w, box.x0, box.y1 - 2, box.x1, box.y1, ID.DIRT);
+        w.spawn((box.y1 - 3) * w.w + midX, a);
       } else if (isParticle(a)) {
         // Particles left hanging in place until they decay.
         for (let k = 0; k < 40; k++) w.spawnProjectile(a, midX + (k % 8), midY + (k >> 3), 0, 0);

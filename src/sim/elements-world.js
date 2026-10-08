@@ -437,6 +437,16 @@ export const WORLD_ELEMENTS = [
   },
 
   // ---- plants and fungi ----------------------------------------------------------
+  life('SAPLING', 'Sapling', 'Spl', POWDER, ['#6a8a3a', '#5e7e32', '#8a6a3a'], {
+    density: 1.1, behavior: 'sapling', flammable: 0.05, ignite: 250, burn: { ash: 0.5 },
+    desc: 'Plant it on Dirt, Mud, Grass or Sand and it grows into a tree of its own: a round oak, a pointed pine or a wide flat acacia, tall or short, green, autumn-coloured or in blossom.',
+    hint: 'Give a Seed some Fertilizer.',
+  }),
+  life('LEAVES', 'Leaves', 'Lvs', SOLID, ['#4caf50', '#3d9b40', '#2e6b3a', '#275c32', '#e08a2a', '#c84a2a', '#f0a8c8', '#f8d8e8'], {
+    density: 0.5, conduct: 0.05, strength: 2, flammable: 0.2, ignite: 200, burn: { ash: 0.3, smoke: 0.3 },
+    desc: 'A tree\'s crown, green, dark, autumn-coloured or in blossom. Dry leaves catch fire easily.',
+    hint: 'Grow a Sapling into a tree.',
+  }),
   life('CACTUS', 'Cactus', 'Cac', SOLID, ['#4a8a3a', '#407e32', '#549644'], {
     strength: 8, density: 0.9, flammable: 0.02, ignite: 300, burn: { ash: 0.4 },
     behavior: 'stalk', stalk: { height: [3, 8], rate: 0.02 },
@@ -1211,6 +1221,7 @@ export const WORLD_REACTIONS = [
   { a: 'LICHEN', b: 'WATER', chance: 0.005, aTo: null, bTo: 'TARDIGRADE' },
   { a: 'BIRD', b: 'FIRE', chance: 0.3, aTo: 'PHOENIX', bTo: null },
   { a: 'CLAY', b: 'LIGHTNING', chance: 0.1, aTo: 'HUMAN', bTo: null },
+  { a: 'SEED', b: 'FERTILIZER', chance: 0.02, aTo: 'SAPLING', bTo: 'EMPTY' },
 
   { a: 'MILK', b: 'SALT', chance: 0.02, aTo: 'TOFU', bTo: 'EMPTY' },
   { a: 'GLUE', b: 'SUGAR', chance: 0.02, aTo: 'JELLY', bTo: 'EMPTY' },
