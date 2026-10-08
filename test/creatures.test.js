@@ -145,3 +145,56 @@ test('clearing the world clears its creatures', () => {
   w.clearAll();
   assert.equal(w.creatures.length, 0);
 });
+
+import { wallBox } from './helpers.js';
+
+test('fish swim about in water and stay in it', () => {
+  const w = makeWorld(60, 40);
+  const box = wallBox(w, 0, 0, 59, 39);
+  fillRect(w, box.x0, 10, box.x1, box.y1, ID.WATER);
+  for (let k = 0; k < 4; k++) w.spawn(25 * 60 + 8 + k * 12, ID.FISH);
+  run(w, 20);
+  const start = w.creatures.map((e) => e.x);
+  run(w, 300);
+  assert.equal(w.creatures.length, 4);
+  assert.ok(w.creatures.some((e, k) => e.x !== start[k]), 'they moved');
+  for (const e of w.creatures) {
+    assert.equal(e.lost, 0);
+    for (const c of e.cells) assert.ok(((c / 60) | 0) >= 10, 'never above the water');
+  }
+});
+
+test('a bird flaps about in the air', () => {
+  const w = floored(60, 40);
+  w.spawn(15 * 60 + 30, ID.BIRD);
+  const frames = new Set();
+  let airborne = 0;
+  run(w, 300, () => {
+    const e = w.creatures[0];
+    if (!e) return;
+    frames.add(e.frame);
+    if (e.y < 36) airborne++;
+  });
+  assert.deepEqual([...frames].sort(), [0, 1], 'wings up and down');
+  assert.ok(airborne > 150, 'mostly off the ground');
+});
+
+test('a snail walks along the ground and climbs a step', () => {
+  const w = floored(60, 30);
+  fillRect(w, 40, 27, 59, 27, ID.STONE); // a step up
+  w.spawn(27 * 60 + 30, ID.SNAIL);
+  run(w, 10);
+  const e = only(w, ID.SNAIL);
+  w.moveBody(e, e.x, e.y, 0, 1, e.gx, e.gy); // facing the step
+  let up = false;
+  run(w, 3000, () => { if (e.y === 26) up = true; });
+  assert.ok(up, 'it got up the step');
+});
+
+test('a fish out of water loses pixels until it dies', () => {
+  const w = floored(40, 20);
+  w.spawn(17 * 40 + 20, ID.FISH);
+  run(w, 400);
+  assert.equal(countOf(w, ID.FISH), 0);
+  assert.ok(countOf(w, ID.BONE) + countOf(w, ID.MEAT) > 0);
+});

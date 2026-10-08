@@ -22,6 +22,8 @@ const { LIQUID } = State;
 const { WALL, ASH } = ID;
 
 export const SHAPED = Uint8Array.from(DEFS, (d) => (d.shape ? 1 : 0));
+// What fliers and walkers move through: empty space, gases and loose flames.
+export const AIRY = Uint8Array.from(DEFS, (d) => (d.id === 0 || (d.displaceable && d.state !== LIQUID) ? 1 : 0));
 export const GROW_EVERY = 2; // steps per ring of a growing body
 export const GROW_GIVE_UP = 120; // steps a seed, or a blocked ring, waits for room
 export const HEAL_AFTER = 150; // steps without harm for each pixel healed
@@ -487,8 +489,106 @@ export const Creatures = {
     this.stepAnimal(e);
   },
 
-  // Replaced in Task 3: for now every animal just falls.
+  // An animal's step: sparks and fire from a pixel (eels, the phoenix),
+  // eating something touching it, then moving the way its kind moves.
   stepAnimal(e) {
-    this.fall(e);
+    const d = DEFS[e.kind], c = d.critter;
+    const i = this.randomCell(e);
+    if (i < 0) return;
+    const x = i % this.w, y = (i / this.w) | 0;
+    if (c.spark && this.rand() < c.spark) for (let n = 0; n < 3; n++) this.emitAt(ID.ELECTRON, x, y);
+    if (c.ignite && this.rand() < 0.2) this.igniteAround(x, y);
+    if (this.rand() < 0.1) {
+      const j = this.randomNeighbor(x, y);
+      const meal = j >= 0 && !this.ownCell(e, j) ? c.food[this.type[j]] : null;
+      if (meal) {
+        this.eat(i, j, x, y, e.kind, d, meal);
+        e.age = Math.max(0, e.age - 300); // well fed
+        return;
+      }
+    }
+    if (d.shape.pulse) {
+      const fr = (this.tick >> 4) & 1;
+      if (fr !== e.frame) this.moveBody(e, e.x, e.y, fr, e.facing, e.gx, e.gy);
+    }
+    if (c.moves === 'swim') this.swimAbout(e, c);
+    else if (c.moves === 'fly') this.flyAbout(e, c);
+    else this.walkAbout(e, c);
+  },
+
+  // Does any pixel of e touch a cell holding something in `set`?
+  touches(e, set) {
+    const { w, h, type } = this;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p], x = c % w, y = (c / w) | 0;
+      if ((x + 1 < w && set[type[c + 1]]) || (x > 0 && set[type[c - 1]])
+        || (y + 1 < h && set[type[c + w]]) || (y > 0 && set[type[c - w]])) return true;
+    }
+    return false;
+  },
+
+  // Would every pixel of e, placed so, be in its own cells or cells holding
+  // something in `set`?
+  fitsIn(e, x, y, fr, facing, set) {
+    const out = this.footB;
+    if (!this.placeCells(e.kind, x, y, fr, facing, e.gx, e.gy, out)) return false;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] === BODY && !set[this.type[out[p]]] && !this.ownCell(e, out[p])) return false;
+    }
+    return true;
+  },
+
+  // One cell across the down arrow (`dir`, 1 or -1, becomes its facing)
+  // and `up` cells against it, into cells holding something in `set`,
+  // flipping to its other frame. A trail (silk, ink) may be left where it
+  // stood. Returns whether it moved.
+  tryMove(e, dir, up, set) {
+    const sh = DEFS[e.kind].shape;
+    const x = e.x + e.gy * dir - up * e.gx, y = e.y - e.gx * dir - up * e.gy;
+    const fr = sh.frames.length === 2 && !sh.pulse ? e.frame ^ 1 : e.frame;
+    if (!this.fitsIn(e, x, y, fr, dir, set)) return false;
+    const was = e.y * this.w + e.x;
+    if (!this.moveBody(e, x, y, fr, dir, e.gx, e.gy)) return false;
+    const c = DEFS[e.kind].critter, tr = c.trail;
+    if (tr !== null && this.rand() < tr.chance && (this.type[was] === 0 || c.home[this.type[was]])) {
+      this.spawn(was, tr.id);
+      this.record(tr.id, tr.rule);
+    }
+    return true;
+  },
+
+  // Swimmers move only through water. Out of it they fall, and lose a
+  // pixel every SUFFOCATE_EVERY steps until they're back in.
+  swimAbout(e, c) {
+    if (!this.touches(e, c.home)) {
+      if (++e.dry % SUFFOCATE_EVERY === 0) this.hurtRandom(e);
+      this.fall(e);
+      return;
+    }
+    e.dry = 0;
+    if (this.rand() >= c.speed) return;
+    const dir = this.rand() < 0.1 ? -e.facing : e.facing;
+    const r = this.rand();
+    const up = c.burst ? (r < 0.5 ? 1 : r < 0.6 ? -1 : 0) : (r < 0.15 ? 1 : r < 0.3 ? -1 : 0);
+    if (!this.tryMove(e, dir, up, c.home)) this.tryMove(e, -dir, 0, c.home);
+  },
+
+  // Fliers flap about through the air.
+  flyAbout(e, c) {
+    if (this.rand() >= c.speed) return;
+    const dir = this.rand() < 0.15 ? -e.facing : e.facing;
+    const r = this.rand();
+    const up = r < 0.25 ? 1 : r < 0.5 ? -1 : 0;
+    if (!this.tryMove(e, dir, up, AIRY)) this.tryMove(e, -dir, 0, AIRY);
+  },
+
+  // Walkers fall with nothing under them; otherwise they walk along the
+  // ground, up steps of up to c.climb cells, and turn round at walls.
+  walkAbout(e, c) {
+    if (this.fall(e)) return;
+    if (this.rand() >= c.speed) return;
+    for (let up = 0; up <= c.climb; up++) if (this.tryMove(e, e.facing, up, AIRY)) return;
+    this.moveBody(e, e.x, e.y, e.frame, -e.facing, e.gx, e.gy);
   },
 };

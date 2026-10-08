@@ -8,6 +8,7 @@ import {
   DEFS, ID, NUM, RULES, REACT, State, STARTERS, COLLECTIBLE, ruleLabel,
 } from '../src/sim/elements.js';
 import { makeWorld, fillRect, wallBox, ageCreatures } from './helpers.js';
+import { SHAPED } from '../src/sim/creatures.js';
 
 const MAX_FRAMES = 4000;
 
@@ -16,7 +17,46 @@ const isParticle = (t) => DEFS[t].projectile;
 
 // Lay out the inputs inside a sealed box and return a per-frame hook that
 // applies whatever the recipe needs (heat, cold, pressure, fresh fire...).
+// Recipes with a shaped creature (one several cells big, creatures.js): a
+// few of them spaced out where they live, just above the other ingredient,
+// a band along the floor (in the water, for swimmers) kept topped up (fruit
+// rots), or, for a gas or a flame, puffs of it among them.
+function creatureLab(rule, kind) {
+  const w = makeWorld(60, 50, 1000 + rule.output);
+  const box = wallBox(w, 5, 5, 54, 44);
+  const c = DEFS[kind].critter;
+  const other = rule.inputs.find((t) => t !== kind) ?? kind;
+  const hooks = [];
+  if (c.moves === 'swim') fillRect(w, box.x0, box.y0 + 10, box.x1, box.y1, ID.WATER);
+  if (other !== kind && !c.home[other]) {
+    if (isGas(other)) {
+      hooks.push((f) => { if (f % 10 === 0) w.paint(30, box.y0 + 14, 4, other); });
+    } else {
+      const band = (f) => {
+        if (f % 300 !== 0) return;
+        for (let y = box.y1 - 2; y <= box.y1; y++) {
+          for (let x = box.x0; x <= box.x1; x++) {
+            const i = y * w.w + x;
+            if (SHAPED[w.type[i]]) continue;
+            w.clearCell(i);
+            w.spawn(i, other);
+          }
+        }
+      };
+      band(0);
+      hooks.push(band);
+    }
+  }
+  const at = other !== kind && !c.home[other] && !isGas(other) ? box.y1 - 7 : box.y0 + 14;
+  for (let k = 0; k < 6; k++) w.spawn(at * w.w + box.x0 + 4 + k * 7, kind);
+  const le = DEFS[kind].lifeEnd; // what it leaves when it dies: age it
+  if (rule.kind === 'time' && le && (rule.output === le.to || rule.output === le.alt)) hooks.push(() => ageCreatures(w, kind, 60));
+  return { w, each: (f) => { for (const h of hooks) h(f); } };
+}
+
 function setUp(rule) {
+  const shaped = rule.inputs.find((t) => SHAPED[t]);
+  if (shaped !== undefined) return creatureLab(rule, shaped);
   const w = makeWorld(60, 50, 1000 + rule.output);
   const box = wallBox(w, 5, 5, 54, 44);
   const [a, b] = rule.inputs;

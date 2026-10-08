@@ -115,16 +115,18 @@ test('fish live in water and die on land', () => {
   const pond = makeWorld(60, 40);
   const box = wallBox(pond, 0, 0, 59, 39);
   fillRect(pond, box.x0, 10, box.x1, box.y1, ID.WATER);
-  for (let k = 0; k < 6; k++) pond.convert((20 + k * 2) * 60 + 10 + k * 7, ID.FISH, false, -1);
+  for (let k = 0; k < 6; k++) pond.convert((20 + k * 2) * 60 + 6 + k * 8, ID.FISH, false, -1);
   run(pond, 400);
-  assert.equal(countOf(pond, ID.FISH), 6, 'every fish still swimming');
+  const fish = pond.creatures.filter((e) => e.kind === ID.FISH);
+  assert.equal(fish.length, 6, 'every fish still swimming');
+  for (const e of fish) assert.equal(e.lost, 0, 'and unhurt');
 
   const beach = makeWorld(60, 40);
   wallBox(beach, 0, 0, 59, 39);
-  for (let k = 0; k < 6; k++) beach.spawn(37 * 60 + 5 + k * 8, ID.FISH);
-  run(beach, 400);
+  for (let k = 0; k < 6; k++) beach.spawn(36 * 60 + 5 + k * 8, ID.FISH);
+  run(beach, 600);
   assert.equal(countOf(beach, ID.FISH), 0);
-  assert.equal(countOf(beach, ID.BONE) + countOf(beach, ID.MEAT), 6, 'each left bones or meat');
+  assert.ok(countOf(beach, ID.BONE) + countOf(beach, ID.MEAT) >= 6, 'each left bones or meat');
 });
 
 test('bees turn flowers into honey, and ants breed on sugar', () => {
