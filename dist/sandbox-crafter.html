@@ -5168,6 +5168,13 @@ const WORLD_ELEMENTS = [
     desc: 'Makes a camp, gathers wood into a pile and lights a campfire by rubbing sticks, builds a little stone hut beside it to shelter from cold and rain, and runs from fire, lava and acid.',
     hint: 'Lightning striking Clay, as in the old stories of people shaped from clay.',
   }),
+  {
+    key: 'CAMPFIRE', name: 'Campfire', sym: 'Cmp', cat: 'energy', state: SOLID, strength: 0,
+    colors: ['#ff8a2a', '#ffb03a', '#ff6a1a', '#ffd05a'], density: 1, temp: 45, holdTemp: true, conduct: 0.05,
+    life: [1500, 2500], behavior: 'campfire', lifeEnd: { to: 'ASH' },
+    desc: 'The gentle fire humans keep: it flickers and smokes a little, never spreads, and stays just warm enough to sit by. Water puts it out.',
+    hint: 'Humans light it, from a pile of Wood.',
+  },
 
   // ---- weather and the Earth ------------------------------------------------------
   {
@@ -6475,6 +6482,7 @@ const REACTIONS = [
 const SPECIAL_RULES = [
   { id: 'plant-wood', kind: 'time', inputs: ['PLANT'], output: 'WOOD' },
   { id: 'sapling-leaves', kind: 'time', inputs: ['SAPLING'], output: 'LEAVES' },
+  { id: 'human-campfire', kind: 'contact', inputs: ['HUMAN', 'WOOD'], output: 'CAMPFIRE' },
   { id: 'battery-spark', kind: 'contact', inputs: ['BATTERY', 'METAL'], output: 'SPARK' },
   { id: 'cloud-snow', kind: 'cool', inputs: ['CLOUD'], output: 'SNOW' },
   { id: 'neutron-proton', kind: 'time', inputs: ['NEUTRON'], output: 'PROTON' },
@@ -7403,7 +7411,7 @@ const { SOLID, POWDER, LIQUID, GAS } = State;
 const {
   WALL, FIRE, SMOKE, WATER, SNOW, PLANT, WOOD, SPARK, LIGHTNING, VOID, DIRT, MUD, GRASS, SEED,
   GLITTER, PHOTON, NEUTRON, ANTIMATTER, BLACK_HOLE, STRANGE_MATTER, DARK_MATTER, GOLD,
-  VIRUS, LYE, ELECTRON, LASER,
+  VIRUS, LYE, ELECTRON, LASER, CAMPFIRE, ASH, COAL, SALT_WATER,
 } = ID;
 
 const SPARK_COOLDOWN = 6;
@@ -7414,6 +7422,12 @@ const LOOSE_FLAME = 0x8000;
 const FIRE_DRAW = 0.04;
 const SNUFF_AT = -3;
 const SNUFF_RATE = 0.15; // chance per frame, per unit of pressure below SNUFF_AT
+// The campfire humans light: it catches fuel touching it this often per
+// step, and puffs smoke this often.
+const CATCH = 0.004;
+const SMOKE_PUFF = 0.003;
+const KINDLING = new Uint8Array(NUM);
+for (const k of ['WOOD', 'COAL', 'PEAT', 'SAWDUST']) KINDLING[ID[k]] = 1;
 
 // Fuels that burn in place as embers rather than being used up as a flame.
 function burnsInPlace(f) {
@@ -7427,6 +7441,7 @@ const Behaviors = {
     switch (name) {
       case 'fire': return this.burnOut(i, x, y, true);
       case 'plasma': return this.burnOut(i, x, y, false);
+      case 'campfire': return this.updateCampfire(i, x, y);
       case 'decay': return this.lifeRunsOut(i, d);
       case 'spark': return this.updateSpark(i, x, y);
       case 'battery': return this.updateBattery(x, y, d);
@@ -7581,6 +7596,38 @@ const Behaviors = {
 
   // Put a flame out. An ember turns back into its fuel, still hot, and
   // catches again once there's air.
+  // A campfire burns gently in place at its own warm temperature: it slowly
+  // catches fuel touching it, puffs a little smoke, goes out in water, and
+  // burns down to ash. It never lights anything else.
+  updateCampfire(i, x, y) {
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k], ny = y + DY4[k];
+      if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
+      const j = ny * this.w + nx, u = this.type[j];
+      if (u === WATER || u === SALT_WATER) {
+        this.convert(i, ASH, false, -1);
+        return true;
+      }
+      if (KINDLING[u] && this.rand() < CATCH) this.kindle(j);
+    }
+    if (this.rand() < SMOKE_PUFF) {
+      const ax = x - this.gravity.downX, ay = y - this.gravity.downY;
+      if (ax >= 0 && ay >= 0 && ax < this.w && ay < this.h && this.type[ay * this.w + ax] === 0) {
+        this.spawn(ay * this.w + ax, SMOKE);
+        this.temp[ay * this.w + ax] = DEFS[CAMPFIRE].temp;
+      }
+    }
+    return this.lifeRunsOut(i, DEFS[CAMPFIRE]);
+  },
+
+  // Fuel set alight as a campfire (by a human, or by the campfire beside
+  // it): coal burns twice as long as wood.
+  kindle(j) {
+    const was = this.type[j];
+    this.convert(j, CAMPFIRE, false, SPECIAL['human-campfire']);
+    if (was === COAL) this.life[j] = Math.min(32000, this.life[j] * 2);
+  },
+
   snuff(i, fuel, loose) {
     if (fuel && !loose && burnsInPlace(DEFS[fuel])) this.convert(i, fuel, true, -1);
     else this.clearCell(i);
@@ -8998,6 +9045,7 @@ function initCreatures(world) {
   world.freeCreatureIds = [];
   world.camps = []; // humans' camps (humans.js)
   world.humanMade = new Map(); // cell -> what a human put there (humans.js)
+  world.shots = []; // pellet tracers, drawn for a few frames (humans.js)
   world.footA = new Int32Array(64); // scratch for working out footprints
   world.footB = new Int32Array(64);
 }
@@ -9030,6 +9078,7 @@ const Creatures = {
       dry: 0, // steps a swimmer has been out of water
       wades: d.critter.wades,
       brain: null, // a human's (humans.js)
+      shot: false, // hit by gunfire (an animal killed so leaves Meat)
       slot: this.creatures.length, // its place in world.creatures
     };
     if (id === this.creatureById.length) this.creatureById.push(e);
@@ -9040,7 +9089,10 @@ const Creatures = {
 
   // Drop e from the lists (its cells are left as they are).
   forgetCreature(e) {
-    if (e.brain !== null) this.leaveCamp(e); // humans.js
+    if (e.brain !== null) { // humans.js
+      this.dropInventory(e);
+      this.leaveCamp(e);
+    }
     const list = this.creatures, last = list.pop();
     if (last !== e) {
       list[e.slot] = last;
@@ -9329,6 +9381,7 @@ const Creatures = {
       if (e.pix[p] !== BODY) continue;
       const c = e.cells[p];
       if (burnt) this.convert(c, ASH, false, -1);
+      else if (e.shot && e.brain === null) this.convert(c, ID.MEAT, false, -1);
       else if (le === null) this.clearCell(c);
       else if (le.alt >= 0 && this.rand() < le.altChance) this.convert(c, le.alt, false, le.altRule);
       else this.convert(c, le.to, false, le.rule);
@@ -9478,6 +9531,10 @@ const Creatures = {
         if (d2 > r2 || this.wallBetween(x, y, cx, cy)) continue;
         hit = true;
         if (this.rand() < Math.min(0.9, strength / (8 * Math.max(1, Math.sqrt(d2))))) {
+          if (e.brain !== null && e.brain.armour > 0 && this.rand() < 0.5) {
+            e.brain.armour--; // its armour took it
+            continue;
+          }
           this.clearCell(c);
           this.hurt(e, p, false);
         }
@@ -9501,6 +9558,7 @@ const Creatures = {
   // After the particle pass: every creature takes its step (more of them
   // in a fast time zone, fewer in a slow one, going by where it stands).
   stepCreatures() {
+    this.stepCamps(); // humans.js
     const list = this.creatures;
     for (let k = list.length - 1; k >= 0; k--) {
       const e = list[k];
@@ -11035,6 +11093,7 @@ const { DEFS, ID, NUM, State } = __modules["src/sim/elements.js"];
 const { SHAPED, SUFFOCATE_EVERY, BODY } = __modules["src/sim/creatures.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
+const { COAL, SALT, GUNPOWDER, WOOD } = ID;
 const setOf = (keys) => {
   const s = new Uint8Array(NUM);
   for (const k of keys) s[ID[k]] = 1;
@@ -11073,7 +11132,8 @@ const SCORCH = 100; // °C: anything this hot (but a gas) within SCORCH_R cells,
 const SCORCH_R = 2; // (flames move a cell a step, and burn in one touch)
 const REACH = 3; // how far across it reaches to pick something up
 const FUEL = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST']);
-const FIRE_SET = setOf(['FIRE']);
+const FIRE_SET = setOf(['FIRE', 'CAMPFIRE']);
+const FLAMES = setOf(['FIRE']); // real fire, which it won't walk through
 const HUT_W = 9; // the hut's width
 const HUT_WALL = 8; // its walls' height
 const DOOR = 6; // the doorway's height
@@ -11082,13 +11142,38 @@ const STONE_R = 120; // how far from the camp it fetches building material
 const COLD_AIR = 10; // °C: air this cold sends it to shelter
 const RAIN_R = 20; // as does rain, snow or hail falling this close
 const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
-const WEAK = 30; // solids no stronger than this (sandstone) it can dig through, and powders
+const HAND_DIG = 30; // the strongest solid it digs by hand (sandstone); powders always
+const TOOL_DIG = 150; // and with a pickaxe (stone, granite, most metals)
 const DIG_EVERY = 8; // steps per cell dug
-// What it digs through: powders, and solids no stronger than WEAK; never a
-// creature, a danger, or anything that can't be broken.
-const DIGGABLE = Uint8Array.from(DEFS, (d) => (!d.shape && !DANGER[d.id] && !d.indestructible
-  && (d.state === POWDER || (d.state === SOLID && d.strength > 0 && d.strength <= WEAK)) ? 1 : 0));
+// How hard each thing is to dig: 1 for powders, a solid's strength, 0 for
+// what it never digs (creatures, dangers, anything that can't be broken).
+const DIG = Uint16Array.from(DEFS, (d) => (d.shape || DANGER[d.id] || d.indestructible ? 0
+  : d.state === POWDER ? 1 : d.state === SOLID ? d.strength : 0));
+const METALS = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.cat === 'metal' || d.cat === 'alloy') ? 1 : 0));
+const RESOURCES = { coal: setOf(['COAL']), salt: setOf(['SALT']), metal: METALS };
+// What it keeps when it digs through it: fuel, salt, metal, building stone.
+const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' ? 1 : 0));
+const MINE_R = 120; // how far from the camp it looks for coal, salt and metal
+const CRAFT_FIRE_TIME = 3000; // steps its camp's fire has burned before it crafts
+const PICK_WOOD = 3; // a pickaxe: 3 Wood
+const GUN_METAL = 5, GUN_WOOD = 1; // a gun: 5 metal and a Wood stock
+const ARMOUR_METAL = 8; // armour: 8 metal
+const ARMOUR_HITS = 10; // hits armour absorbs before it breaks
+const AMMO_LOW = 4; // gunpowder below this, it goes for more
+const PELLETS = 4; // a shot: 4 pellets in a tight spread
+const SPREAD = 0.035; // radians between pellets
+const SHOT_R = 48; // how far a pellet flies
+const FIRE_EVERY = 40; // steps between shots
+const FIGHT_R = 40; // it shoots at threats and rivals this close
+const THREAT = setOf(['SPIDER', 'PHOENIX']);
+const HUNT_EVERY = 2000; // steps between hunts
+const HUNT_FOR = 400; // and the longest a hunt goes on
+const TRACER = 4; // frames a pellet's path is drawn
+const SEAM_R = 8; // and how near the last one it looks for more of the same
 const WOOD_ONLY = setOf(['WOOD']);
+const STACK = 10; // the most of any one element it carries
+const HELD_PICKAXE = -1, HELD_GUN = -2; // what it shows in its hand, besides a pixel
+const FEED = setOf(['WOOD', 'PEAT', 'SAWDUST']); // fuel it feeds the fire before coal
 
 function newBrain() {
   return {
@@ -11100,8 +11185,15 @@ function newBrain() {
     best: Infinity, // its closest yet to the target
     stuck: 0, // steps without getting closer
     banned: new Map(), // cell -> tick until which it's left alone
-    carry: 0, // the element in its hands
-    carryJob: 'wandering', // what it's doing with it
+    items: new Map(), // element -> how many it carries (up to STACK)
+    tool: 0, weapon: 0, // a pickaxe, a gun (1 if it has one)
+    armour: 0, // hits its armour can still take (0: none)
+    held: 0, // what it shows in its hand: an element, HELD_PICKAXE or HELD_GUN
+    fetchSet: null, fetchR: 0, fetchSide: false, // what it's fetching, and where from
+    mineKey: '', wantN: 0, // what it's mining (a RESOURCES key) and how many it wants
+    skip: new Map(), // resource key -> tick until which it doesn't look for it
+    refill: true, // it wants gunpowder (a full stack the first time)
+    reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
     fleeDir: 1,
@@ -11110,6 +11202,13 @@ function newBrain() {
     wasJob: 'wandering', // what it was doing before it fell in
     goalX: -1, goalY: -1, // where it's wandering to
   };
+}
+
+// What a human carries, for the inspect line: "wood 7, coal 3; pickaxe, gun".
+function inventoryNote(b) {
+  const items = [...b.items].map(([t, k]) => `${DEFS[t].name.toLowerCase()} ${k}`).join(', ');
+  const gear = [b.tool && 'pickaxe', b.weapon && 'gun', b.armour > 0 && 'armour'].filter(Boolean).join(', ');
+  return [items, gear].filter(Boolean).join('; ');
 }
 
 const Humans = {
@@ -11343,9 +11442,14 @@ const Humans = {
     if (++b.pace < every) return false;
     b.pace = 0;
     b.heading = a > 0 ? 1 : a < 0 ? -1 : e.facing; // remembered for swimming
-    // Something weak in the way: it digs through it, a cell at a time (up
-    // a step, if the target is above it). Digging counts as getting closer.
-    if (!this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY) && this.digToward(e, b.heading, v < -1)) {
+    // Something in the way it can dig: it digs through it, a cell at a
+    // time (up a step, if the target is above it, or down one). Mining
+    // something deep below, it digs a staircase down rather than walking
+    // over it. Digging counts as getting closer.
+    const vdir = v < -1 ? -1 : v > 4 ? 1 : 0;
+    const deep = b.job === 'mining' && vdir > 0 && Math.abs(a) <= v;
+    if ((deep && this.digToward(e, b, b.heading, 1))
+      || (!this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY) && this.digToward(e, b, b.heading, vdir))) {
       b.stuck = 0;
       b.pace = every - DIG_EVERY;
     }
@@ -11353,32 +11457,39 @@ const Humans = {
   },
 
   // Dig out one cell of what stops e stepping across the way `dir`: level,
-  // or up a step (first, if `upward`), whichever way has only diggable
-  // things in it. Returns whether it dug.
-  digToward(e, dir, upward) {
+  // up a step or down one (first, as `vdir` says: -1 up, 1 down), whichever
+  // has only things it can dig in it. Useful things go into its pockets.
+  // Returns whether it dug.
+  digToward(e, b, dir, vdir) {
     const out = this.footB, rx = e.gy * dir, ry = -e.gx * dir;
-    const fr = e.frame === 0 ? 1 : 0;
-    for (const up of upward ? [1, 0] : [0, 1]) {
+    const fr = e.frame === 0 ? 1 : 0, limit = this.digLimit(b);
+    for (const up of vdir < 0 ? [1, 0] : vdir > 0 ? [-1, 0] : [0, 1]) {
       if (!this.placeCells(e.kind, e.x + rx - up * e.gx, e.y + ry - up * e.gy, fr, dir, e.gx, e.gy, out)) continue;
       let first = -1, ok = true;
       for (let p = 0; p < e.n && ok; p++) {
         if (e.pix[p] !== BODY || this.roomForBody(e, out[p])) continue;
-        if (!this.diggable(out[p])) ok = false;
+        if (!this.diggable(out[p], limit)) ok = false;
         else if (first < 0) first = out[p];
       }
       if (ok && first >= 0) {
+        if (USEFUL[this.type[first]]) this.stow(b, this.type[first]);
         this.clearCell(first);
+        if (b.tool !== 0) b.held = HELD_PICKAXE;
         return true;
       }
     }
     return false;
   },
 
-  // Can a human dig out cell c: weak (DIGGABLE), not hot, and not something
-  // a human put there?
-  diggable(c) {
-    const t = this.type[c];
-    return DIGGABLE[t] === 1 && this.temp[c] < HOT && !this.madeByHuman(c);
+  // Can a human dig out cell c, digging things up to strength `limit`: not
+  // too hard, not hot, and not something a human put there?
+  diggable(c, limit = HAND_DIG) {
+    const s = DIG[this.type[c]];
+    return s > 0 && s <= limit && this.temp[c] < HOT && !this.madeByHuman(c);
+  },
+
+  digLimit(b) {
+    return b.tool !== 0 ? TOOL_DIG : HAND_DIG;
   },
 
   // Did a human put what's in cell c there (and is it still there)?
@@ -11395,6 +11506,84 @@ const Humans = {
     if (this.type[c] !== 0) this.clearCell(c);
     this.spawn(c, t);
     this.humanMade.set(c, this.type[c]);
+  },
+
+  has(b, t) {
+    return b.items.get(t) ?? 0;
+  },
+
+  // How many it carries of everything in `set`.
+  holding(b, set) {
+    let n = 0;
+    for (const [t, k] of b.items) if (set[t]) n += k;
+    return n;
+  },
+
+  // Put one t in its inventory, if it has room: true if it did.
+  stow(b, t) {
+    const k = this.has(b, t);
+    if (k >= STACK) return false;
+    b.items.set(t, k + 1);
+    b.held = t;
+    this.mixPowder(b);
+    return true;
+  },
+
+  takeOut(b, t) {
+    const k = this.has(b, t);
+    if (k === 0) return false;
+    if (k === 1) b.items.delete(t);
+    else b.items.set(t, k - 1);
+    return true;
+  },
+
+  // Take out one of whatever in `set` it has most of: that element, or 0.
+  takeAny(b, set) {
+    let best = 0, most = 0;
+    for (const [t, k] of b.items) {
+      if (set[t] && k > most) {
+        best = t;
+        most = k;
+      }
+    }
+    if (best !== 0) this.takeOut(b, best);
+    return best;
+  },
+
+  // Coal and Salt carried together make Gunpowder (the game's own Coal +
+  // Salt reaction), two at a time, up to a full stack.
+  mixPowder(b) {
+    while (this.has(b, COAL) > 0 && this.has(b, SALT) > 0 && this.has(b, GUNPOWDER) <= STACK - 2) {
+      this.takeOut(b, COAL);
+      this.takeOut(b, SALT);
+      b.items.set(GUNPOWDER, this.has(b, GUNPOWDER) + 2);
+    }
+  },
+
+  // Set off to fetch the nearest thing in `set` (within `radius` of the camp,
+  // open to one side if `side`): true if there was one.
+  gather(e, b, camp, set, radius, job, side = false) {
+    const t = this.findWanted(e, camp, set, radius, side);
+    if (t < 0) return false;
+    this.claim(b, camp, t);
+    b.fetchSet = set;
+    b.fetchR = radius;
+    b.fetchSide = side;
+    b.job = job;
+    return true;
+  },
+
+  // A human that dies drops the pixels it carried round where it lay; its
+  // tool, weapon and armour are lost.
+  dropInventory(e) {
+    const b = e.brain;
+    for (const [t, k] of b.items) {
+      for (let n = 0; n < k; n++) {
+        const c = this.freeSpaceNear(e.y * this.w + e.x);
+        if (c >= 0) this.spawn(c, t);
+      }
+    }
+    b.items.clear();
   },
 
   pose(e, fr) {
@@ -11419,6 +11608,19 @@ const Humans = {
         if (d < bd) {
           bd = d;
           best = i;
+        }
+      }
+    }
+    // Unarmed (or out of gunpowder), it fears armed humans of other camps
+    // within shot.
+    if (!this.armed(e.brain)) {
+      for (const o of this.creatures) {
+        if (o.brain === null || o === e || !this.rival(e.brain, o.brain) || !this.armed(o.brain)) continue;
+        if (Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y)) > SHOT_R) continue;
+        const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = o.y * w + o.x;
         }
       }
     }
@@ -11447,6 +11649,16 @@ const Humans = {
       return;
     }
     if (b.job === 'fleeing') b.job = 'wandering';
+    if (this.armed(b)) {
+      const foe = this.findFoe(e, b);
+      if (foe !== null) {
+        if (b.foe !== foe.id) b.reload = FIRE_EVERY - 8; // a gun at the ready
+        b.foe = foe.id;
+        b.job = 'shooting';
+        return;
+      }
+    }
+    if (b.job === 'shooting') b.job = 'wandering';
     this.chooseWork(e, b);
   },
 
@@ -11464,13 +11676,7 @@ const Humans = {
       b.job = 'sheltering';
       return;
     }
-    if (b.carry !== 0) {
-      b.job = b.carryJob;
-      return;
-    }
-    if ((b.job === 'gathering wood' && b.target >= 0 && FUEL[this.type[b.target]])
-      || (b.job === 'fetching stone' && b.target >= 0 && SHAPED[this.type[b.target]] === 0 && this.type[b.target] !== 0)
-      || (b.job === 'lighting the fire' && camp.lighter === e.id)) return;
+    if (this.carryingOn(e, b, camp)) return;
     this.release(b);
     const fuel = this.pileCount(camp, FUEL), burning = this.pileCount(camp, FIRE_SET) > 0;
     if (burning) camp.lit = true;
@@ -11482,17 +11688,264 @@ const Humans = {
       return;
     }
     // Everyone helps build the first pile. After that the hut comes first,
-    // and then one human is enough to keep the fire going.
+    // and then one human is enough to keep the fire going, from its stock.
     if (camp.lit && this.hutWork(e, b, camp)) return;
     if (fuel < (burning ? PILE_LOW : PILE_LIGHT) && !(camp.lit && this.tending(e, camp))) {
-      const t = this.findWanted(e, camp, FUEL, FUEL_R);
-      if (t >= 0) {
-        this.claim(b, camp, t);
-        b.job = 'gathering wood';
+      if (this.holding(b, FUEL) > 0) {
+        b.job = 'carrying wood';
+        return;
+      }
+      if (this.gather(e, b, camp, FUEL, FUEL_R, 'gathering wood')) return;
+    }
+    if (this.craftWork(e, b, camp)) return;
+    // With nothing else to do, now and then it goes hunting.
+    if (camp.lit && this.armed(b) && this.has(b, GUNPOWDER) >= AMMO_LOW && this.tick >= b.huntAt) {
+      const prey = this.findPrey(e);
+      if (prey !== null) {
+        b.foe = prey.id;
+        b.huntAt = this.tick + HUNT_EVERY;
+        b.huntUntil = this.tick + HUNT_FOR;
+        b.reload = FIRE_EVERY - 8;
+        b.job = 'hunting';
         return;
       }
     }
     b.job = camp.lit ? 'resting by the fire' : 'wandering';
+  },
+
+  // Make a pickaxe, a gun or armour from what it carries: true if it could.
+  craft(b, what) {
+    if (what === 'pickaxe') {
+      if (b.tool !== 0 || this.has(b, WOOD) < PICK_WOOD) return false;
+      for (let k = 0; k < PICK_WOOD; k++) this.takeOut(b, WOOD);
+      b.tool = 1;
+      b.held = HELD_PICKAXE;
+      return true;
+    }
+    if (what === 'gun') {
+      if (b.weapon !== 0 || this.holding(b, METALS) < GUN_METAL || this.has(b, WOOD) < GUN_WOOD) return false;
+      for (let k = 0; k < GUN_METAL; k++) this.takeAny(b, METALS);
+      for (let k = 0; k < GUN_WOOD; k++) this.takeOut(b, WOOD);
+      b.weapon = 1;
+      b.held = HELD_GUN;
+      return true;
+    }
+    if (what === 'armour') {
+      if (b.armour > 0 || this.holding(b, METALS) < ARMOUR_METAL) return false;
+      for (let k = 0; k < ARMOUR_METAL; k++) this.takeAny(b, METALS);
+      b.armour = ARMOUR_HITS;
+      return true;
+    }
+    return false;
+  },
+
+  // Crafting starts once the camp is settled: its hut built and its fire
+  // burned for a while.
+  canCraft(camp) {
+    return camp.hut !== null && camp.hut.done === true && camp.burned >= CRAFT_FIRE_TIME;
+  },
+
+  // Gunpowder wanted: a full stack the first time, and again once it's low.
+  wantsPowder(b) {
+    const gp = this.has(b, GUNPOWDER);
+    if (gp >= STACK) b.refill = false;
+    else if (gp < AMMO_LOW) b.refill = true;
+    return b.refill;
+  },
+
+  // Its next crafting step, in order: a pickaxe, coal and salt for
+  // gunpowder, metal for a gun, then armour. Crafting is instant once it
+  // has what's needed; otherwise it sets off to get it. True if that gave it
+  // a job. A resource out of reach is skipped for a while (startMining).
+  craftWork(e, b, camp) {
+    if (!this.canCraft(camp)) return false;
+    if (b.tool === 0 && !this.craft(b, 'pickaxe')) {
+      return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
+    }
+    if (this.wantsPowder(b)) {
+      const pairs = Math.ceil((STACK - this.has(b, GUNPOWDER)) / 2);
+      if (this.has(b, COAL) < pairs && this.startMining(e, b, camp, 'coal', pairs)) return true;
+      if (this.has(b, COAL) > 0 && this.startMining(e, b, camp, 'salt', 0)) return true;
+    }
+    if (b.weapon === 0 && !this.craft(b, 'gun')) {
+      if (this.holding(b, METALS) < GUN_METAL) return this.startMining(e, b, camp, 'metal', GUN_METAL);
+      return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
+    }
+    if (b.weapon !== 0 && b.armour === 0 && !this.craft(b, 'armour')) {
+      return this.startMining(e, b, camp, 'metal', ARMOUR_METAL);
+    }
+    return false;
+  },
+
+  // A gun and gunpowder for it.
+  armed(b) {
+    return b.weapon !== 0 && this.has(b, GUNPOWDER) > 0;
+  },
+
+  // Is the human with brain ob of a rival camp?
+  rival(b, ob) {
+    return ob !== null && ob.camp !== null && b.camp !== null && ob.camp !== b.camp;
+  },
+
+  // Where its gun's muzzle is: in front of its chest.
+  muzzle(e) {
+    return [e.x + 2 * e.facing * e.gy - 4 * e.gx, e.y - 2 * e.facing * e.gx - 4 * e.gy];
+  },
+
+  // A cell of o's body to aim at (its first whole pixel), or -1.
+  aimAt(o) {
+    for (let p = 0; p < o.n; p++) if (o.pix[p] === BODY) return o.cells[p];
+    return -1;
+  },
+
+  // Can e see o: is o the first thing on the line from its muzzle?
+  sees(e, o) {
+    const c = this.aimAt(o);
+    if (c < 0) return false;
+    const [mx, my] = this.muzzle(e);
+    return this.lineFirst(e, mx, my, c % this.w, (c / this.w) | 0) === o;
+  },
+
+  // The first creature (not e) on the straight line from (x0, y0) to
+  // (x1, y1), before anything solid: the creature, or null.
+  lineFirst(e, x0, y0, x1, y1) {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let k = 1; k <= n; k++) {
+      const x = Math.round(x0 + ((x1 - x0) * k) / n), y = Math.round(y0 + ((y1 - y0) * k) / n);
+      if (!this.inBounds(x, y)) return null;
+      const c = y * this.w + x, t = this.type[c];
+      if (t === 0 || this.ownCell(e, c)) continue;
+      const o = this.creatureAt(c);
+      if (o !== null) return o;
+      const s = DEFS[t].state;
+      if (s === SOLID || s === POWDER) return null;
+    }
+    return null;
+  },
+
+  // The nearest threat (a Spider or Phoenix) or rival human within FIGHT_R
+  // of e or its camp, that it can see: a creature, or null.
+  findFoe(e, b) {
+    let best = null, bd = Infinity;
+    for (const o of this.creatures) {
+      if (o === e || o.grow >= 0) continue;
+      if (!THREAT[o.kind] && !(o.brain !== null && this.rival(b, o.brain))) continue;
+      const d = Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y));
+      const dc = b.camp === null ? Infinity : Math.max(Math.abs(o.x - b.camp.x), Math.abs(o.y - b.camp.y));
+      if (Math.min(d, dc) > FIGHT_R || d > SHOT_R || d >= bd || !this.sees(e, o)) continue;
+      best = o;
+      bd = d;
+    }
+    return best;
+  },
+
+  // An animal within FIGHT_R that it can see: a creature, or null.
+  findPrey(e) {
+    let best = null, bd = Infinity;
+    for (const o of this.creatures) {
+      if (o === e || o.grow >= 0 || o.brain !== null || THREAT[o.kind]) continue;
+      const d = Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y));
+      if (d > FIGHT_R || d >= bd || !this.sees(e, o)) continue;
+      best = o;
+      bd = d;
+    }
+    return best;
+  },
+
+  // Face the foe and fire every FIRE_EVERY steps, aiming at a random pixel
+  // of it, but only while nothing else is in the way.
+  shootAt(e, b) {
+    const o = b.foe === 0 ? null : this.creatureById[b.foe];
+    if (o == null || o.id !== b.foe || !this.armed(b) || (b.job === 'hunting' && this.tick > b.huntUntil)) {
+      b.foe = 0;
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    b.held = HELD_GUN;
+    const a = (o.x - e.x) * e.gy - (o.y - e.y) * e.gx;
+    const face = a > 0 ? 1 : a < 0 ? -1 : e.facing;
+    if (face !== e.facing || e.frame !== 0) this.moveBody(e, e.x, e.y, 0, face, e.gx, e.gy);
+    if (++b.reload < FIRE_EVERY) return;
+    const aim = this.randomCell(o);
+    if (aim < 0) return;
+    const [mx, my] = this.muzzle(e), ax = aim % this.w, ay = (aim / this.w) | 0;
+    if (this.lineFirst(e, mx, my, ax, ay) !== o) return; // holds its fire
+    b.reload = 0;
+    this.shoot(e, b, mx, my, ax, ay);
+  },
+
+  // Fire one shot from (mx, my) at (ax, ay): PELLETS pellets in a tight
+  // spread, for one gunpowder, and a puff of smoke.
+  shoot(e, b, mx, my, ax, ay) {
+    if (!this.takeOut(b, GUNPOWDER)) return;
+    const base = Math.atan2(ay - my, ax - mx);
+    for (let k = 0; k < PELLETS; k++) {
+      const a = base + (k - (PELLETS - 1) / 2) * SPREAD + (this.rand() - 0.5) * SPREAD;
+      this.pellet(e, mx, my, Math.cos(a), Math.sin(a));
+    }
+    if (this.inBounds(mx, my)) {
+      const s = this.spawnNear(mx, my, ID.SMOKE);
+      if (s >= 0) this.temp[s] = 45;
+    }
+  },
+
+  // A pellet from (x0, y0) along (dx, dy): it flies through air, gases and
+  // liquids, and stops at the first solid, powder or creature (which loses
+  // the pixel it hit). Its path is kept for drawing.
+  pellet(e, x0, y0, dx, dy) {
+    let x = x0 + 0.5, y = y0 + 0.5, cx = x0, cy = y0;
+    for (let k = 0; k < SHOT_R; k++) {
+      const nx = Math.floor(x), ny = Math.floor(y);
+      if (!this.inBounds(nx, ny)) break;
+      cx = nx;
+      cy = ny;
+      const c = cy * this.w + cx, t = this.type[c];
+      if (t !== 0 && !this.ownCell(e, c)) {
+        const o = this.creatureAt(c);
+        if (o !== null) {
+          this.pelletHits(o, c);
+          break;
+        }
+        const s = DEFS[t].state;
+        if (s === SOLID || s === POWDER) break;
+      }
+      x += dx;
+      y += dy;
+    }
+    this.shots.push({ x0, y0, x1: cx, y1: cy, ttl: TRACER });
+  },
+
+  // A pellet hits creature o at cell c: armour takes it half the time;
+  // otherwise that pixel is lost.
+  pelletHits(o, c) {
+    if (o.brain !== null && o.brain.armour > 0 && this.rand() < 0.5) {
+      o.brain.armour--;
+      return;
+    }
+    for (let p = 0; p < o.n; p++) {
+      if (o.cells[p] !== c || o.pix[p] !== BODY) continue;
+      this.clearCell(c);
+      this.hurt(o, p, false);
+      o.shot = true;
+      return;
+    }
+  },
+
+  // A job under way carries on: something still there to fetch, a load
+  // still to deliver, the fire it's lighting.
+  carryingOn(e, b, camp) {
+    switch (b.job) {
+      case 'gathering wood':
+      case 'fetching stone': return b.target >= 0 && b.fetchSet[this.type[b.target]] === 1;
+      case 'carrying wood': return this.holding(b, FUEL) > 0;
+      case 'building the hut': return camp.hut !== null && !camp.hut.done
+        && (this.holding(b, MATERIAL) > 0 || (camp.hut.wood && this.has(b, WOOD) > 0));
+      case 'lighting the fire': return camp.lighter === e.id;
+      case 'mining': return b.target >= 0 && b.fetchSet[this.type[b.target]] === 1;
+      case 'hunting': return b.foe !== 0 && this.creatureById[b.foe] != null && this.tick <= b.huntUntil;
+      default: return false;
+    }
   },
 
   // Is another member of the camp already fetching fuel?
@@ -11522,13 +11975,17 @@ const Humans = {
       hut.done = true;
       return false;
     }
+    if (this.holding(b, MATERIAL) > 0 || (hut.wood && this.has(b, WOOD) > 0 && b.job === 'building the hut')) {
+      b.job = 'building the hut';
+      return true;
+    }
     // From blocks and boulders, not the ground it stands on.
-    let t = this.findWanted(e, camp, MATERIAL, STONE_R, true);
-    if (t < 0) t = this.findWanted(e, camp, WOOD_ONLY, STONE_R, true);
-    if (t < 0) return false;
-    this.claim(b, camp, t);
-    b.job = 'fetching stone';
-    return true;
+    if (this.gather(e, b, camp, MATERIAL, STONE_R, 'fetching stone', true)) return true;
+    if (this.gather(e, b, camp, WOOD_ONLY, STONE_R, 'fetching stone', true)) {
+      hut.wood = true;
+      return true;
+    }
+    return false;
   },
 
   // A site for the hut: HUT_W columns side by side, at least HUT_GAP cells
@@ -11570,7 +12027,7 @@ const Humans = {
     for (let v = floor - DOOR; v > floor - HUT_WALL; v--) order.push([doorU, v]);
     for (let k = 0; k < HUT_W; k++) order.push([farU - side * k, floor - HUT_WALL]);
     const cells = order.map(([u, v]) => this.campCell(camp, u, v));
-    return { cells, us: order.map(([u]) => u), set: new Set(cells), u0, floor, side, done: false };
+    return { cells, us: order.map(([u]) => u), set: new Set(cells), u0, floor, side, done: false, wood: false };
   },
 
   // The ground in column u near the camp: the topmost solid (or powder)
@@ -11602,14 +12059,11 @@ const Humans = {
   // cell, standing inside where it can reach.
   build(e, b) {
     const camp = b.camp, hut = camp === null ? null : camp.hut;
-    if (hut === null) {
-      this.dropCarry(e, b);
-      return;
-    }
-    const k = this.nextHutCell(hut);
+    const k = hut === null ? -1 : this.nextHutCell(hut);
     if (k < 0) {
-      hut.done = true;
-      this.dropCarry(e, b);
+      if (hut !== null) hut.done = true;
+      b.job = 'wandering'; // it keeps what it carries
+      b.think = 0;
       return;
     }
     const u = Math.min(hut.u0 + HUT_W - 3, Math.max(hut.u0 + 2, hut.us[k]));
@@ -11618,32 +12072,13 @@ const Humans = {
     this.pose(e, 0);
     const c = hut.cells[k], t = this.type[c];
     if (t !== 0 && (SHAPED[t] || DEFS[t].state === LIQUID)) return; // wait for it to move
-    this.putDown(c, b.carry);
-    b.carry = 0;
-    b.job = 'wandering';
-    b.think = 0;
-  },
-
-  // Put down what it's carrying beside its feet (or its head). With no room
-  // at either, or only in its hut's doorway, it lets it go.
-  dropCarry(e, b) {
-    let c = this.spawnNear(e.x, e.y, b.carry);
-    if (c < 0) c = this.spawnNear(e.x - 5 * e.gx, e.y - 5 * e.gy, b.carry);
-    if (c >= 0 && b.camp !== null && this.inDoorway(b.camp, c)) this.clearCell(c);
-    else if (c >= 0) this.humanMade.set(c, this.type[c]);
-    b.carry = 0;
-    b.job = 'wandering';
-    b.think = 0;
-  },
-
-  // Is cell c in a doorway of the camp's hut?
-  inDoorway(camp, c) {
-    const hut = camp.hut;
-    if (hut === null) return false;
-    const x = c % this.w, y = (c / this.w) | 0;
-    const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
-    const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
-    return (u === hut.u0 || u === hut.u0 + HUT_W - 1) && v <= hut.floor && v > hut.floor - DOOR;
+    const m = this.takeAny(b, MATERIAL) || (hut.wood && this.takeOut(b, WOOD) ? WOOD : 0);
+    if (m === 0) {
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    this.putDown(c, m); // and on to the next cell, while it has more
   },
 
   // A finished hut to go to, and cold air or rain, snow or hail falling nearby.
@@ -11689,6 +12124,9 @@ const Humans = {
       case 'lighting the fire': this.lightFire(e, b); break;
       case 'resting by the fire': this.restByFire(e, b); break;
       case 'building the hut': this.build(e, b); break;
+      case 'mining': this.mine(e, b); break;
+      case 'shooting':
+      case 'hunting': this.shootAt(e, b); break;
       case 'sheltering': this.shelter(e, b); break;
       default: this.wander(e, b);
     }
@@ -11698,6 +12136,7 @@ const Humans = {
     const camp = {
       x, y, gx, gy, // the pile's middle (on the ground), and the way down there
       lit: false, // its fire has been lit (it may have burned out since)
+      burned: 0, // steps its fire has burned, in all
       hut: null, hutRetry: 0, // the hut's blueprint
       members: new Set(), // the humans' ids
       claims: new Set(), // cells someone is on their way to fetch
@@ -11765,7 +12204,7 @@ const Humans = {
     const u0 = (x0 - camp.x) * camp.gy - (y0 - camp.y) * camp.gx;
     const u1 = (x1 - camp.x) * camp.gy - (y1 - camp.y) * camp.gx;
     if (!((u0 > 2 && u1 < -2) || (u0 < -2 && u1 > 2))) return false;
-    return this.pileCount(camp, FIRE_SET) > 0;
+    return this.pileCount(camp, FLAMES) > 0;
   },
 
   // The pile and the flames over it.
@@ -11868,21 +12307,98 @@ const Humans = {
     return this.campCell(camp, side * u, 0);
   },
 
-  // Walk to the target and pick it up.
-  fetch(e, b) {
+  // The nearest cell of `set` within MINE_R of the camp (and within `near`
+  // of e) that it can dig, buried or not: not something a human put there,
+  // claimed, or given up on. -1 if none.
+  findDeposit(e, camp, set, limit, near = Infinity) {
+    const { w, h, type } = this;
+    const b = e.brain;
+    let best = -1, bd = Infinity;
+    for (let y = Math.max(0, camp.y - MINE_R); y <= Math.min(h - 1, camp.y + MINE_R); y++) {
+      for (let x = Math.max(0, camp.x - MINE_R); x <= Math.min(w - 1, camp.x + MINE_R); x++) {
+        const i = y * w + x;
+        if (!set[type[i]]) continue;
+        const d = Math.abs(x - e.x) + Math.abs(y - e.y);
+        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit)) continue;
+        best = i;
+        bd = d;
+      }
+    }
+    return best;
+  },
+
+  // Set off to mine `key` (a RESOURCES key) until it holds `goal` of it.
+  // False if there's none it can reach (it skips that one for a while).
+  startMining(e, b, camp, key, goal) {
+    if ((b.skip.get(key) ?? 0) > this.tick) return false;
+    const set = RESOURCES[key];
+    const t = this.findDeposit(e, camp, set, this.digLimit(b));
+    if (t < 0) {
+      b.skip.set(key, this.tick + BAN_FOR);
+      return false;
+    }
+    this.claim(b, camp, t);
+    b.fetchSet = set;
+    b.mineKey = key;
+    b.wantN = goal;
+    b.job = 'mining';
+    if (b.tool !== 0) b.held = HELD_PICKAXE;
+    return true;
+  },
+
+  // Does it want more of what it's mining? Salt goes into gunpowder as it's
+  // mined, so it wants salt while it still has coal to go with it.
+  wantsMore(b) {
+    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < STACK;
+    return this.holding(b, b.fetchSet) < b.wantN;
+  },
+
+  // Dig its way to the target and mine it, then the rest of the seam.
+  mine(e, b) {
     const t = b.target;
-    if (t < 0 || this.type[t] === 0 || SHAPED[this.type[t]]) {
+    if (t < 0 || !b.fetchSet[this.type[t]]) {
       this.release(b);
       b.job = 'wandering';
       b.think = 0;
       return;
     }
     if (!this.walkTo(e, b, t % this.w, (t / this.w) | 0, REACH, WALK_EVERY)) return;
-    b.carry = this.type[t];
-    b.carryJob = b.job === 'gathering wood' ? 'carrying wood' : 'building the hut';
-    b.job = b.carryJob;
-    this.clearCell(t);
     this.release(b);
+    if (this.diggable(t, this.digLimit(b)) && this.stow(b, this.type[t])) {
+      this.clearCell(t);
+      if (b.tool !== 0) b.held = HELD_PICKAXE;
+      if (this.wantsMore(b)) {
+        const n = this.findDeposit(e, b.camp, b.fetchSet, this.digLimit(b), SEAM_R);
+        if (n >= 0) {
+          this.claim(b, b.camp, n);
+          return;
+        }
+      }
+    }
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Walk to the target and pick it up; then the nearest more of the same,
+  // until its hands are full or there's no more. Stone fetched for the hut
+  // then goes to build it.
+  fetch(e, b) {
+    const t = b.target;
+    if (t < 0 || !b.fetchSet[this.type[t]]) {
+      this.release(b);
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    if (!this.walkTo(e, b, t % this.w, (t / this.w) | 0, REACH, WALK_EVERY)) return;
+    const u = this.type[t];
+    this.release(b);
+    if (this.stow(b, u)) {
+      this.clearCell(t);
+      if (this.holding(b, b.fetchSet) < STACK && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide)) return;
+    }
+    b.job = b.job === 'fetching stone' ? 'building the hut' : 'wandering';
+    b.think = 0;
   },
 
   // Take the fuel to the camp and put it on the pile (or down beside a
@@ -11894,13 +12410,17 @@ const Humans = {
       return;
     }
     if (!this.walkTo(e, b, camp.x, camp.y, REACH + 1, WALK_EVERY)) return; // not into the flames
+    // A piece a step: up to what lighting needs, or until a burning fire has
+    // enough (coal last; the rest it keeps).
+    const want = this.pileCount(camp, FIRE_SET) > 0 ? PILE_LOW : PILE_LIGHT;
     const c = this.pileSpace(camp);
-    if (c < 0) {
-      this.dropCarry(e, b);
-      return;
+    if (c >= 0 && this.pileCount(camp, FUEL) < want) {
+      const t = this.takeAny(b, FEED) || this.takeAny(b, FUEL);
+      if (t !== 0) {
+        this.putDown(c, t);
+        return;
+      }
     }
-    this.putDown(c, b.carry);
-    b.carry = 0;
     b.job = 'wandering';
     b.think = 0;
   },
@@ -11922,15 +12442,20 @@ const Humans = {
     for (let v = 0; v >= -2; v--) {
       for (let u = -1; u <= 1; u++) {
         const c = this.campCell(camp, u, v);
-        if (c >= 0 && FUEL[this.type[c]] && this.ignite(c, c % this.w, (c / this.w) | 0)) return true;
+        if (c >= 0 && FUEL[this.type[c]]) {
+          this.kindle(c);
+          return true;
+        }
       }
     }
     return false;
   },
 
-  // Sit a couple of cells from the fire.
+  // Sit a few cells from the fire, on the side away from the hut (its
+  // doorway would be in the way).
   restByFire(e, b) {
-    const s = this.besideCamp(e, b.camp, REST_U);
+    const camp = b.camp, hut = camp.hut;
+    const s = hut === null ? this.besideCamp(e, camp, REST_U) : this.campCell(camp, -hut.side * REST_U, 0);
     if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
   },
 
@@ -11950,6 +12475,7 @@ const Humans = {
 
   // No closer for GIVE_UP steps: leave that target alone for a while.
   giveUp(e, b) {
+    if (b.job === 'mining') b.skip.set(b.mineKey, this.tick + BAN_FOR);
     if (b.target >= 0) {
       b.banned.set(b.target, this.tick + BAN_FOR);
       this.release(b);
@@ -11957,7 +12483,7 @@ const Humans = {
     b.goalX = -1;
     b.stuck = 0;
     b.best = Infinity;
-    if (b.carry === 0) b.job = 'wandering';
+    b.job = 'wandering';
     b.think = 0;
   },
 
@@ -11973,6 +12499,14 @@ const Humans = {
     b.target = -1;
   },
 
+  // Once a step: each camp counts the time its fire burns, and shot tracers
+  // fade.
+  stepCamps() {
+    for (const camp of this.camps) if (this.pileCount(camp, FIRE_SET) > 0) camp.burned++;
+    const s = this.shots;
+    for (let k = s.length - 1; k >= 0; k--) if (--s[k].ttl <= 0) s.splice(k, 1);
+  },
+
   // A human that dies leaves its camp; a camp with nobody left is forgotten.
   leaveCamp(e) {
     const b = e.brain, camp = b.camp;
@@ -11985,7 +12519,7 @@ const Humans = {
   },
 };
 
-return { THINK_EVERY, WALK_EVERY, RUN_EVERY, DANGER_R, BREATH, FRAME_KNEEL, HUT_W, HUT_WALL, DOOR, newBrain, Humans };
+return { THINK_EVERY, WALK_EVERY, RUN_EVERY, DANGER_R, BREATH, FRAME_KNEEL, HUT_W, HUT_WALL, DOOR, HAND_DIG, TOOL_DIG, RESOURCES, CRAFT_FIRE_TIME, ARMOUR_HITS, PELLETS, FIRE_EVERY, STACK, HELD_PICKAXE, newBrain, inventoryNote, Humans };
 })();
 
 __modules["src/sim/trees.js"] = (() => {
@@ -13702,7 +14236,8 @@ const { CELL } = __modules["src/sim/air.js"];
 const { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } = __modules["src/sim/world.js"];
 const { PASS } = __modules["src/sim/walls.js"];
 const { portalHues } = __modules["src/sim/portals.js"];
-const { SHAPED } = __modules["src/sim/creatures.js"];
+const { SHAPED, BODY } = __modules["src/sim/creatures.js"];
+const { HELD_PICKAXE, HELD_GUN } = __modules["src/sim/humans.js"];
 const { SHAPE_COLORS } = __modules["src/sim/shapes.js"];
 
 const BG = [10, 12, 16];
@@ -13812,6 +14347,10 @@ const portalRGB = (slot, end) => hsl(portalHues(slot)[end], 0.62);
 // The outline round a sleeping area (Show sleeping areas): blue when fully
 // asleep, green when half asleep (particles frozen, heat and air moving).
 const SLEEP_RGB = [120, 200, 255];
+// Humans' gear (humans.js): pellet tracers, armour, a pickaxe, a gun.
+const TRACER_RGB = [255, 236, 170];
+const ARMOUR_PX = pack(138, 141, 145);
+const PICK_PX = pack(150, 152, 158), HANDLE_PX = pack(122, 84, 46), GUN_PX = pack(58, 60, 66);
 const HALF_SLEEP_RGB = [110, 230, 120];
 // The lighter cells of the mesh a wall that lets things through is drawn as.
 const WALL_LIGHT = [124, 132, 148];
@@ -13888,6 +14427,51 @@ const RENDER = {
   strange: MODE.STRANGE, pulse: MODE.PULSE, blink: MODE.BLINK, plasma: MODE.PLASMA,
   lamp: MODE.LAMP, machine: MODE.MACHINE,
 };
+
+// Humans' gear over the picture: the paths of pellets fired in the last few
+// frames, armour (the shirt turns metal grey), and what each holds at its
+// hands on the side it faces: a pixel, a pickaxe (handle and head) or a gun
+// (a short barrel).
+function paintHumans(world, pixels, palRGB) {
+  const { w, h } = world;
+  for (const s of world.shots) {
+    const n = Math.max(Math.abs(s.x1 - s.x0), Math.abs(s.y1 - s.y0), 1);
+    for (let k = 0; k <= n; k++) {
+      const x = Math.round(s.x0 + ((s.x1 - s.x0) * k) / n), y = Math.round(s.y0 + ((s.y1 - s.y0) * k) / n);
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const i = y * w + x, c = pixels[i];
+      const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+      pixels[i] = pack((r + (TRACER_RGB[0] - r) * 0.6) | 0, (g + (TRACER_RGB[1] - g) * 0.6) | 0, (b + (TRACER_RGB[2] - b) * 0.6) | 0);
+    }
+  }
+  for (const e of world.creatures) {
+    const b = e.brain;
+    if (b === null) continue;
+    if (b.armour > 0) {
+      const sh = DEFS[e.kind].shape, f = sh.frames[e.frame];
+      for (let p = 0; p < e.n; p++) {
+        if (e.pix[p] === BODY && sh.letters[f.letter[p]] === 's') pixels[e.cells[p]] = ARMOUR_PX;
+      }
+    }
+    if (b.held === 0) continue;
+    const up = e.frame >= 2 ? 4 : 5; // kneeling and sitting, its hands are lower
+    const rx = e.facing * e.gy, ry = -e.facing * e.gx;
+    const put = (k, u, px) => {
+      const x = e.x + k * rx - u * e.gx, y = e.y + k * ry - u * e.gy;
+      if (x >= 0 && y >= 0 && x < w && y < h) pixels[y * w + x] = px;
+    };
+    if (b.held === HELD_PICKAXE) {
+      put(1, up - 1, HANDLE_PX);
+      put(1, up, PICK_PX);
+      put(2, up, PICK_PX);
+    } else if (b.held === HELD_GUN) {
+      for (let k = 1; k <= 3; k++) put(k, up - 1, GUN_PX);
+    } else {
+      const q = b.held * SHADES * 3;
+      put(1, up, pack(palRGB[q], palRGB[q + 1], palRGB[q + 2]));
+    }
+  }
+}
 
 class Renderer {
   constructor(canvas, world, camera) {
@@ -13987,6 +14571,7 @@ class Renderer {
       this.mode[d.id] = m;
     }
     this.mode[ID.FIRE] = MODE.FIRE;
+    this.mode[ID.CAMPFIRE] = MODE.FIRE;
     this.mode[ID.PLASMA] = MODE.PLASMA;
     this.mode[ID.SPARK] = MODE.SPARK;
     this.mode[ID.LIGHTNING] = MODE.LIGHTNING;
@@ -14474,16 +15059,7 @@ class Renderer {
         for (let y = y0 + 1; y < y1; y++) { blend(y * w + x0, rgb, 0.35); blend(y * w + x1, rgb, 0.35); }
       }
     }
-    // What a human carries: one pixel above its hands, on the side it faces.
-    for (const e of world.creatures) {
-      const b = e.brain;
-      if (b === null || b.carry === 0) continue;
-      const up = e.frame >= 2 ? 4 : 5; // kneeling and sitting, its hands are lower
-      const x = e.x + e.facing * e.gy - up * e.gx, y = e.y - e.facing * e.gx - up * e.gy;
-      if (x < 0 || y < 0 || x >= w || y >= h) continue;
-      const q = b.carry * SHADES * 3;
-      pixels[y * w + x] = pack(this.palRGB[q], this.palRGB[q + 1], this.palRGB[q + 2]);
-    }
+    paintHumans(world, pixels, this.palRGB);
   }
 
   // Turn the gas layer into an image, blurred (here, unless the canvas blurs
@@ -14565,7 +15141,7 @@ class Renderer {
   }
 }
 
-return { heatRGB, zoneTint, portalRGB, glowBlur, SOFT, Renderer };
+return { heatRGB, zoneTint, portalRGB, glowBlur, SOFT, paintHumans, Renderer };
 })();
 
 __modules["src/game/tree.js"] = (() => {
@@ -15938,6 +16514,14 @@ function wilderness(world) {
   }
   rect(352, ground(352) - 14, 399, ground(352) - 11, ID.COAL);
   rect(300, ground(300), 320, ground(300) + 4, ID.CLAY);
+  // Buried under the dirt: coal, a salt bed and veins of metal, for humans
+  // with a pickaxe.
+  for (const [x0, x1, d0, d1, t] of [
+    [60, 90, 16, 19, ID.COAL], [196, 222, 26, 29, ID.COAL], [118, 140, 18, 21, ID.SALT],
+    [36, 48, 28, 31, ID.METAL], [242, 252, 22, 25, ID.COPPER],
+  ]) {
+    for (let x = x0; x <= x1; x++) for (let y = ground(x) + d0; y <= ground(x) + d1; y++) set(x, y, t);
+  }
   // A pond in a stone basin, with fish: level, just under the lower rim.
   const px0 = 170, px1 = 230, py = Math.max(...Array.from({ length: 61 }, (_, k) => ground(px0 + k)));
   const rim = Math.max(ground(px0 - 3), ground(px1 + 3)) + 1;
@@ -16446,6 +17030,7 @@ __modules["src/game/cell-notes.js"] = (() => {
 // doing).
 
 const { PASS_ORDER } = __modules["src/sim/walls.js"];
+const { inventoryNote } = __modules["src/sim/humans.js"];
 
 const SPEED_NAMES = ['', '¼×', '½×', '2×', '4×'];
 
@@ -16464,7 +17049,11 @@ function cellNotes(world, i) {
   const e = world.creatureAt(i);
   if (e) {
     notes.push(`health ${e.n - e.lost} of ${e.n}`);
-    if (e.brain) notes.push(e.brain.job);
+    if (e.brain) {
+      notes.push(e.brain.job);
+      const inv = inventoryNote(e.brain);
+      if (inv) notes.push(inv);
+    }
   }
   return notes;
 }

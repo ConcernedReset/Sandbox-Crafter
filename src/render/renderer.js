@@ -15,7 +15,8 @@ import { CELL } from '../sim/air.js';
 import { VOID_TOP, VOID_BOTTOM, VOID_LEFT, VOID_RIGHT } from '../sim/world.js';
 import { PASS } from '../sim/walls.js';
 import { portalHues } from '../sim/portals.js';
-import { SHAPED } from '../sim/creatures.js';
+import { SHAPED, BODY } from '../sim/creatures.js';
+import { HELD_PICKAXE, HELD_GUN } from '../sim/humans.js';
 import { SHAPE_COLORS } from '../sim/shapes.js';
 
 const BG = [10, 12, 16];
@@ -125,6 +126,10 @@ export const portalRGB = (slot, end) => hsl(portalHues(slot)[end], 0.62);
 // The outline round a sleeping area (Show sleeping areas): blue when fully
 // asleep, green when half asleep (particles frozen, heat and air moving).
 const SLEEP_RGB = [120, 200, 255];
+// Humans' gear (humans.js): pellet tracers, armour, a pickaxe, a gun.
+const TRACER_RGB = [255, 236, 170];
+const ARMOUR_PX = pack(138, 141, 145);
+const PICK_PX = pack(150, 152, 158), HANDLE_PX = pack(122, 84, 46), GUN_PX = pack(58, 60, 66);
 const HALF_SLEEP_RGB = [110, 230, 120];
 // The lighter cells of the mesh a wall that lets things through is drawn as.
 const WALL_LIGHT = [124, 132, 148];
@@ -201,6 +206,51 @@ const RENDER = {
   strange: MODE.STRANGE, pulse: MODE.PULSE, blink: MODE.BLINK, plasma: MODE.PLASMA,
   lamp: MODE.LAMP, machine: MODE.MACHINE,
 };
+
+// Humans' gear over the picture: the paths of pellets fired in the last few
+// frames, armour (the shirt turns metal grey), and what each holds at its
+// hands on the side it faces: a pixel, a pickaxe (handle and head) or a gun
+// (a short barrel).
+export function paintHumans(world, pixels, palRGB) {
+  const { w, h } = world;
+  for (const s of world.shots) {
+    const n = Math.max(Math.abs(s.x1 - s.x0), Math.abs(s.y1 - s.y0), 1);
+    for (let k = 0; k <= n; k++) {
+      const x = Math.round(s.x0 + ((s.x1 - s.x0) * k) / n), y = Math.round(s.y0 + ((s.y1 - s.y0) * k) / n);
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const i = y * w + x, c = pixels[i];
+      const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+      pixels[i] = pack((r + (TRACER_RGB[0] - r) * 0.6) | 0, (g + (TRACER_RGB[1] - g) * 0.6) | 0, (b + (TRACER_RGB[2] - b) * 0.6) | 0);
+    }
+  }
+  for (const e of world.creatures) {
+    const b = e.brain;
+    if (b === null) continue;
+    if (b.armour > 0) {
+      const sh = DEFS[e.kind].shape, f = sh.frames[e.frame];
+      for (let p = 0; p < e.n; p++) {
+        if (e.pix[p] === BODY && sh.letters[f.letter[p]] === 's') pixels[e.cells[p]] = ARMOUR_PX;
+      }
+    }
+    if (b.held === 0) continue;
+    const up = e.frame >= 2 ? 4 : 5; // kneeling and sitting, its hands are lower
+    const rx = e.facing * e.gy, ry = -e.facing * e.gx;
+    const put = (k, u, px) => {
+      const x = e.x + k * rx - u * e.gx, y = e.y + k * ry - u * e.gy;
+      if (x >= 0 && y >= 0 && x < w && y < h) pixels[y * w + x] = px;
+    };
+    if (b.held === HELD_PICKAXE) {
+      put(1, up - 1, HANDLE_PX);
+      put(1, up, PICK_PX);
+      put(2, up, PICK_PX);
+    } else if (b.held === HELD_GUN) {
+      for (let k = 1; k <= 3; k++) put(k, up - 1, GUN_PX);
+    } else {
+      const q = b.held * SHADES * 3;
+      put(1, up, pack(palRGB[q], palRGB[q + 1], palRGB[q + 2]));
+    }
+  }
+}
 
 export class Renderer {
   constructor(canvas, world, camera) {
@@ -788,16 +838,7 @@ export class Renderer {
         for (let y = y0 + 1; y < y1; y++) { blend(y * w + x0, rgb, 0.35); blend(y * w + x1, rgb, 0.35); }
       }
     }
-    // What a human carries: one pixel above its hands, on the side it faces.
-    for (const e of world.creatures) {
-      const b = e.brain;
-      if (b === null || b.held <= 0) continue;
-      const up = e.frame >= 2 ? 4 : 5; // kneeling and sitting, its hands are lower
-      const x = e.x + e.facing * e.gy - up * e.gx, y = e.y - e.facing * e.gx - up * e.gy;
-      if (x < 0 || y < 0 || x >= w || y >= h) continue;
-      const q = b.held * SHADES * 3;
-      pixels[y * w + x] = pack(this.palRGB[q], this.palRGB[q + 1], this.palRGB[q + 2]);
-    }
+    paintHumans(world, pixels, this.palRGB);
   }
 
   // Turn the gas layer into an image, blurred (here, unless the canvas blurs

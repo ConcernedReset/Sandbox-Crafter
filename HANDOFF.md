@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,600 tests, all passing, in about a minute (most of it the human situations)
+npm test    # node --test: about 1,650 tests, all passing, in about a minute (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -194,9 +194,33 @@ else; `test/build.test.js` checks the bundle runs.
   cell of whatever stops a level step, or a step up: only if every blocking
   cell is `diggable` (a powder or a solid of strength <= 30, not hot, not
   a danger, and not `madeByHuman`). `world.humanMade` maps cells to what a
-  human put there (`putDown`, `dropCarry`); an entry counts while the cell
+  human put there (`putDown`); an entry counts while the cell
   still holds that element. Weak junk that falls into the fire pile is
-  cleared for fuel (`pileSpace`). `test/humans-situations.test.js` runs humans through many
+  cleared for fuel (`pileSpace`).
+  Inventory: `brain.items` (element -> count, at most `STACK` = 10), `tool`,
+  `weapon`, `armour` (hits left) and `held` (an element, `HELD_PICKAXE` or
+  `HELD_GUN`; the renderer's `paintHumans` draws it). `stow` mixes Coal and
+  Salt into Gunpowder (`mixPowder`); `gather` fills its hands from
+  `findWanted`; jobs under way carry on through `carryingOn`. A dead human
+  drops its items (`dropInventory`). The pile is lit as **Campfire**
+  (`kindle`, `updateCampfire` in behaviors.js); `acrossFire` only cares
+  about real Fire, and `stepCamps` (once a step) counts `camp.burned` and
+  ages `world.shots`. Crafting (`craftWork`) starts when `canCraft`: the
+  hut done and `camp.burned` >= `CRAFT_FIRE_TIME`; order pickaxe,
+  gunpowder (`wantsPowder`), gun, armour (`craft`). Mining:
+  `startMining(e, b, camp, key, goal)` with `RESOURCES` keys, `findDeposit`
+  (buried is fine), `mine`; a resource out of reach is skipped for
+  `BAN_FOR` (`brain.skip`). Dig strength comes from `DIG` (1 for powders,
+  else the solid's strength) against `digLimit` (30 by hand, 150 with the
+  pickaxe); while mining something deep, `walkTo` digs a staircase down.
+  Shooting: `findFoe` (Spiders, Phoenixes, `rival` humans), `findPrey`
+  (hunting, at most every 2,000 steps), `shootAt` holds fire unless the
+  target is first on the line (`lineFirst`), `shoot` fires 4 `pellet`s for
+  1 gunpowder, `pelletHits` lets armour take half; `blastCreatures` does
+  too. Animals killed by gunfire (`e.shot`) leave Meat. Tests:
+  `campfire`, `humans-inventory`, `humans-mining`, `humans-crafting` and
+  `humans-guns` test files. The gun and gunpowder are the game's own: keep
+  them free of real-world detail. `test/humans-situations.test.js` runs humans through many
   situations with several seeds; add a situation there for any new
   behaviour or any reported misbehaviour. The hut has doorways in both
   walls so it doesn't cut the camp off. Keep their behaviour in-game: no

@@ -512,16 +512,33 @@ Each frame (60 per second):
    into a Phoenix, the whole bird.
 
    **Humans** (Lightning striking Clay) have a mind of their own. A human
-   makes a camp on flat ground, scraping the grass off its fire pit, fetches
-   wood (or coal, peat or sawdust) from up to 120 cells away, one piece at a
-   time, and piles it beside the camp; with six pieces on the pile it kneels
-   and rubs sticks until the pile catches. Once the fire has been lit it
+   carries up to 10 of each thing it picks up. It makes a camp on flat
+   ground, scraping the grass off its fire pit, fetches wood (or coal, peat
+   or sawdust) from up to 120 cells away, an armful at a time, and piles it
+   beside the camp; with six pieces on the pile it kneels and rubs sticks
+   until the pile catches as a **Campfire**: a gentle fire that holds 45 °C,
+   never spreads and never scares anyone, burns down to ash, and goes out
+   in water. Once the fire has been lit it
    builds a hut beside it, 9 wide and 9 high, from stone, brick, granite or
    concrete (wood only if there's nothing else, and then it may catch fire),
    taken from blocks and boulders rather than the ground it stands on: two
    short walls over doorways 6 high, and a roof. Then it keeps the fire fed
-   and sits a few cells from it. Everyone helps build the first pile; after
-   that one human keeps the fire going while the others build. It shelters
+   from what it carries and sits a few cells from it, on the side away from
+   the hut. Everyone helps build the first pile; after that one human keeps
+   the fire going while the others build. Once the hut is up and the fire
+   has burned a while, each human crafts for itself, in order: a wooden
+   pickaxe (3 wood; with it, it digs anything up to strength 150: stone,
+   granite and most metals, not steel or diamond); coal and salt, mined
+   from deposits it knows of within 120 cells of camp (digging a staircase
+   down to them), which turn into 10 gunpowder in its pack; metal (any
+   metal or alloy) for a gun (5 metal and a wood stock); then 8 more for
+   armour. A shot is 4 pellets in a tight spread for 1 gunpowder; each
+   pellet takes out the pixel of a creature it hits. Armed humans shoot
+   Spiders and Phoenixes near camp, hunt an animal now and then (it leaves
+   Meat), and fight humans from other camps; an unarmed human flees an
+   armed rival. Armour takes half the hits from pellets and blasts, and
+   breaks after 10. It goes back for coal and salt when its gunpowder runs
+   low. It shelters
    in the hut from cold air and from rain, snow or hail. It runs from lava,
    acid, napalm, flames, anything very hot, grey goo, viruses, antimatter,
    black holes and blasts, and steps straight back from any flame or
@@ -530,12 +547,15 @@ Each frame (60 per second):
    Anything weak in its way (powders, and solids no stronger than
    sandstone: dirt, sand, wood, leaves, ice, glass and the like) it digs
    through a cell at a time, up in steps if where it's going is higher, but
-   never what a human built or put down, nor stone or anything stronger. It
+   never what a human built or put down, nor anything stronger. It
    swims across water to where it was going (or, going nowhere, to the
    nearest shore), coming up for air; held under for more than about 10
-   seconds, it starts to drown. Humans near each other share a camp and split the work. It holds
-   its body at 37 °C, so warm ground near its fire doesn't hurt it. Hover
-   over a creature to see its health, and what a human is doing.
+   seconds, it starts to drown. Humans near each other share a camp and
+   split the work. It holds its body at 37 °C, so warm ground near its fire
+   doesn't hurt it. It shows what it last picked up or is using in its hand
+   (a pickaxe, a gun), and armour turns its shirt grey. Hover over a
+   creature to see its health, and what a human is doing and carrying. The
+   Wilderness has coal, salt and metal buried in it.
 9. **Trees**: a **Sapling** (Seed + Fertilizer) dropped on dirt, mud, grass
    or sand takes root and grows: its trunk climbs to a height of its own (15
    to 45, two cells wide when it's tall), a few branches sprout leaves, and
@@ -876,8 +896,8 @@ every creature, the gallery every element and the machine world every
 machine (with its lamps lit), and that showcases discover nothing until the
 world is cleared.
 The recipe tests run all 1243 production rules in the real simulation.
-About 1,600 tests in all. Most run in a few seconds; the human situations
-take about a minute.
+About 1,650 tests in all. Most run in a few seconds; the human situations
+and crafting runs take about a minute.
 
 Regenerate the table below after changing recipes with
 `node scripts/recipe-table.js`.

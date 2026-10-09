@@ -2,8 +2,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFS, ID, State } from '../src/sim/elements.js';
-import { SOFT, heatRGB, zoneTint, portalRGB } from '../src/render/renderer.js';
+import { DEFS, ID, NUM, State } from '../src/sim/elements.js';
+import { SOFT, heatRGB, zoneTint, portalRGB, paintHumans } from '../src/render/renderer.js';
+import { HELD_GUN, HELD_PICKAXE } from '../src/sim/humans.js';
+import { BODY } from '../src/sim/creatures.js';
+import { makeWorld, fillRect, run } from './helpers.js';
 
 test('the Gas effect blurs gases, flames and plasma, and nothing else', () => {
   const gassy = new Set([ID.FIRE, ID.PLASMA, ID.BALL_LIGHTNING]);
@@ -55,4 +58,30 @@ test('portal ends have their own colours', () => {
   assert.equal(seen.size, 16);
   const [r, , b] = portalRGB(0, 0);
   assert.ok(b > r, 'the first end of the first pair is blue');
+});
+
+test('humans show their gear: a pickaxe or gun at the hand, grey armour, pellet tracers', () => {
+  const w = makeWorld(60, 30, 1);
+  fillRect(w, 0, 25, 59, 29, ID.STONE);
+  w.spawn(10 * 60 + 30, ID.HUMAN);
+  run(w, 30);
+  const e = w.creatures[0];
+  const rgb = (c) => [c & 255, (c >> 8) & 255, (c >> 16) & 255].join();
+  const up = e.frame >= 2 ? 4 : 5, rx = e.facing * e.gy, ry = -e.facing * e.gx;
+  const at = (k, u) => (e.y + k * ry - u * e.gy) * 60 + e.x + k * rx - u * e.gx;
+  e.brain.held = HELD_GUN;
+  e.brain.armour = 10;
+  w.shots.push({ x0: 5, y0: 5, x1: 15, y1: 5, ttl: 4 });
+  let pixels = new Uint32Array(60 * 30);
+  paintHumans(w, pixels, new Uint8Array(NUM * 8 * 3));
+  for (const k of [1, 2, 3]) assert.equal(rgb(pixels[at(k, up - 1)]), '58,60,66', `barrel ${k}`);
+  const f = DEFS[ID.HUMAN].shape.frames[e.frame];
+  const shirt = [...e.pix].findIndex((s, p) => s === BODY && DEFS[ID.HUMAN].shape.letters[f.letter[p]] === 's');
+  assert.equal(rgb(pixels[e.cells[shirt]]), '138,141,145', 'armour grey');
+  assert.ok((pixels[5 * 60 + 10] & 255) > 100, 'the tracer shows');
+  e.brain.held = HELD_PICKAXE;
+  pixels = new Uint32Array(60 * 30);
+  paintHumans(w, pixels, new Uint8Array(NUM * 8 * 3));
+  assert.equal(rgb(pixels[at(1, up)]), '150,152,158', 'pickaxe head');
+  assert.equal(rgb(pixels[at(1, up - 1)]), '122,84,46', 'handle');
 });
