@@ -10,7 +10,9 @@
 
 import { DEFS, ID, State } from './elements.js';
 import { SHAPED } from './creatures.js';
-import { USEFUL, HUT_W } from './humans.js';
+import {
+  USEFUL, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
+} from './humans.js';
 
 const { POWDER } = State;
 const { WOOD } = ID;
@@ -18,6 +20,8 @@ const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
 const BOX_UP = 6; // a spot's box: 3 wide, 6 tall
 const NEW_COST = 4; // digging a new spot of tunnel counts as walking this many
 const SHAFT_COST = 1.5; // and climbing a spot of shaft as this many
+const CLIMB_EVERY = 6; // steps per spot climbed up or down a shaft
+export const TUNNEL_WOOD = 8; // lining wood it gathers before tunnelling, once it has run short
 
 export function initTunnels(world) {
   world.tunnels = {
@@ -75,9 +79,11 @@ export const Tunnels = {
     return out;
   },
 
-  // Swap a loose cell for lining wood from its pack: false if it has none.
+  // Swap a loose cell for lining wood from its pack (keeping what was there,
+  // if it's useful): false if it has no wood.
   lineCell(b, c) {
     if (!this.takeOut(b, WOOD)) return false;
+    if (USEFUL[this.type[c]]) this.stow(b, this.type[c]);
     this.clearCell(c);
     this.spawn(c, WOOD);
     this.humanMade.set(c, WOOD);
@@ -308,21 +314,21 @@ export const Tunnels = {
   },
 
   // A standing spot on the surface for a new entrance: 10 to 40 cells
-  // beside the camp, clear of its hut, the side towards the target first.
-  // { x, y, cost } or null.
+  // beside the camp, 4 or more clear of its hut (and its doorways), not in
+  // a tunnel, the side towards the target first. { x, y, cost } or null.
   entranceSpot(e, camp, tx, ty) {
     const hut = camp.hut, tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
     let best = null;
     for (const s of tu >= 0 ? [1, -1] : [-1, 1]) {
       for (let k = 10; k <= 40; k++) {
         const u = s * k;
-        if (hut !== null && u >= hut.u0 - 1 && u <= hut.u0 + HUT_W) continue;
+        if (hut !== null && u >= hut.u0 - 4 && u < hut.u0 + HUT_W + 4) continue;
         const g = this.groundAt(camp, u);
         if (g === null) continue;
         const c = this.campCell(camp, u, g - 1);
         if (c < 0 || this.type[c] !== 0) continue;
         const x = c % this.w, y = (c / this.w) | 0;
-        if (this.nodeAt(x, y) !== null) continue;
+        if (this.isInside(x, y) || this.nodeAt(x, y) !== null) continue;
         const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * this.octo(x, y, tx, ty, camp.gx, camp.gy);
         if (best === null || cost < best.cost) best = { x, y, cost };
       }
@@ -351,5 +357,250 @@ export const Tunnels = {
     const ent = this.entranceSpot(e, camp, tx, ty);
     if (ent !== null && (best === null || ent.cost < best.cost)) best = { cost: ent.cost, x: ent.x, y: ent.y, entrance: true };
     return best;
+  },
+
+  // Set off to mine `key` (a RESOURCES key) until it holds `goal`: plan a
+  // tunnel to the nearest deposit. Wood to line it with first, if it has
+  // run short before. False if there's no way (it skips that one a while).
+  startMining(e, b, camp, key, goal) {
+    if ((b.skip.get(key) ?? 0) > this.tick) return false;
+    const set = RESOURCES[key];
+    const t = this.findDeposit(e, camp, set, this.digLimit(b));
+    const plan = t < 0 ? null : this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
+    if (plan === null) {
+      b.skip.set(key, this.tick + BAN_FOR);
+      return false;
+    }
+    if (b.tunnelWood && this.has(b, WOOD) < TUNNEL_WOOD) {
+      if (this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood')) return true;
+      if (this.has(b, WOOD) === 0) {
+        b.skip.set(key, this.tick + BAN_FOR);
+        return false;
+      }
+    }
+    this.claim(b, camp, t);
+    b.fetchSet = set;
+    b.mineKey = key;
+    b.wantN = goal;
+    b.job = 'mining';
+    b.tun = { tx: t % this.w, ty: (t / this.w) | 0, x: plan.x, y: plan.y, entrance: plan.entrance, route: null, legs: null, node: null };
+    if (b.tool !== 0) b.held = HELD_PICKAXE;
+    return true;
+  },
+
+  // Stop mining (done, or it can't go on).
+  endTunnel(b) {
+    this.release(b);
+    b.tun = null;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Travel to the plan's start, then dig to the target, then on along the
+  // seam.
+  mine(e, b) {
+    const t = b.tun;
+    if (t === null) this.endTunnel(b);
+    else if (t.legs === null) this.tunnelGo(e, b, t);
+    else this.tunnelDig(e, b, t);
+  },
+
+  // Exactly onto the spot (x, y) (walking only gets it close).
+  snapTo(e, x, y) {
+    return (e.x === x && e.y === y) || this.moveBody(e, x, y, 0, e.facing, e.gx, e.gy);
+  },
+
+  // On to the plan's start: a new entrance overland, or through the network.
+  tunnelGo(e, b, t) {
+    if (t.entrance) {
+      if (!this.walkTo(e, b, t.x, t.y, 0, WALK_EVERY)) return;
+      if (!this.snapTo(e, t.x, t.y)) {
+        this.giveUp(e, b);
+        return;
+      }
+      const net = this.tunnels;
+      if (net.nodes.size === 0) {
+        net.gx = e.gx;
+        net.gy = e.gy;
+      }
+      t.node = this.nodeAt(e.x, e.y) ?? this.addNode(e.x, e.y, true);
+      t.legs = this.legsTo(e.x, e.y, t.tx, t.ty, e.gx, e.gy);
+      return;
+    }
+    if (t.route === null) t.route = this.netRoute(e, t.x, t.y);
+    const r = t.route;
+    if (r === null) {
+      this.endTunnel(b);
+      return;
+    }
+    if (r.outside) {
+      const n = r.wps[0];
+      if (!this.walkTo(e, b, n.x, n.y, 0, WALK_EVERY)) return;
+      if (!this.snapTo(e, n.x, n.y)) {
+        this.giveUp(e, b);
+        return;
+      }
+      r.outside = false;
+    }
+    while (r.wps.length > 0 && r.wps[0].x === e.x && r.wps[0].y === e.y) r.wps.shift();
+    if (r.wps.length > 0) {
+      this.tunnelTravel(e, b, r.wps[0].x, r.wps[0].y);
+      return;
+    }
+    // At the plan's start: a node there (splitting a run if need be), then dig.
+    b.hold = true;
+    const at = this.onNet(e.x, e.y);
+    if (at === null) {
+      this.endTunnel(b);
+      return;
+    }
+    t.node = at.node ?? this.splitEdge(at.edge, at.k);
+    t.legs = this.legsTo(e.x, e.y, t.tx, t.ty, e.gx, e.gy);
+  },
+
+  // A step along the network, ending the plan if it can't go on.
+  tunnelTravel(e, b, wx, wy) {
+    const r = this.stepAlong(e, b, wx, wy);
+    if (r === 'blocked') {
+      this.dropStretch(e.x, e.y, e.x + Math.sign(wx - e.x), e.y + Math.sign(wy - e.y));
+      this.endTunnel(b);
+    } else if (r === 'wood') {
+      b.tunnelWood = true;
+      this.endTunnel(b);
+    } else if (r === 'wait' && ++b.stuck > GIVE_UP) this.giveUp(e, b);
+  },
+
+  // One step along the network towards waypoint (wx, wy): a spot every
+  // WALK_EVERY steps (CLIMB_EVERY up or down a shaft), holding on so it
+  // doesn't fall. Missing lining beside it is put back (if it has wood);
+  // something in the way is dug out and lined. 'moved', 'busy', or what
+  // workSpot found ('wood', 'blocked', 'wait').
+  stepAlong(e, b, wx, wy) {
+    b.hold = true;
+    const dx = Math.sign(wx - e.x), dy = Math.sign(wy - e.y);
+    const a = dx * e.gy - dy * e.gx;
+    if (++b.pace < (a === 0 ? CLIMB_EVERY : WALK_EVERY)) return 'busy';
+    b.pace = 0;
+    const face = a > 0 ? 1 : a < 0 ? -1 : e.facing;
+    if (this.moveBody(e, e.x + dx, e.y + dy, e.frame === 0 ? 1 : 0, face, e.gx, e.gy)) {
+      b.stuck = 0;
+      if (this.has(b, WOOD) > 0) {
+        const loose = this.looseRound(e.x, e.y);
+        if (loose.length > 0) this.lineCell(b, loose[0]);
+      }
+      return 'moved';
+    }
+    const r = this.workSpot(e, b, e.x + dx, e.y + dy);
+    if (r === 'work') return 'busy';
+    return r === 'clear' ? 'wait' : r;
+  },
+
+  // Dig the plan's legs a spot at a time from where it stands, growing the
+  // network as it goes; at the target, on along the seam while it wants
+  // more.
+  tunnelDig(e, b, t) {
+    b.hold = true;
+    if (t.legs.length === 0 || !b.fetchSet[this.type[t.ty * this.w + t.tx]]) {
+      const n = this.wantsMore(b) ? this.findDeposit(e, b.camp, b.fetchSet, this.digLimit(b), SEAM_R) : -1;
+      if (n < 0) {
+        this.endTunnel(b);
+        return;
+      }
+      this.release(b);
+      this.claim(b, b.camp, n);
+      t.tx = n % this.w;
+      t.ty = (n / this.w) | 0;
+      t.legs = this.legsTo(e.x, e.y, t.tx, t.ty, e.gx, e.gy);
+      if (t.legs.length === 0) {
+        this.endTunnel(b);
+        return;
+      }
+    }
+    if (++b.pace < DIG_EVERY) return;
+    b.pace = 0;
+    const leg = t.legs[0], x = e.x + leg.dx, y = e.y + leg.dy;
+    const r = this.workSpot(e, b, x, y);
+    if (r === 'work') {
+      b.stuck = 0;
+      return;
+    }
+    if (r === 'wood') {
+      b.tunnelWood = true;
+      this.endTunnel(b);
+      return;
+    }
+    if (r === 'blocked') {
+      b.skip.set(b.mineKey, this.tick + BAN_FOR);
+      this.endTunnel(b);
+      return;
+    }
+    const a = leg.dx * e.gy - leg.dy * e.gx, face = a > 0 ? 1 : a < 0 ? -1 : e.facing;
+    if (r === 'wait' || !this.moveBody(e, x, y, e.frame === 0 ? 1 : 0, face, e.gx, e.gy)) {
+      if (++b.stuck > GIVE_UP) this.giveUp(e, b);
+      return;
+    }
+    b.stuck = 0;
+    this.growTunnel(t, x, y, leg.dx, leg.dy);
+    if (--leg.n === 0) t.legs.shift();
+  },
+
+  // The tunnel reached (x, y), a step (dx, dy) on from node t.node: that
+  // node moves on if it's the dead end of a run going this way, else a new
+  // run starts from it.
+  growTunnel(t, x, y, dx, dy) {
+    const net = this.tunnels, n = t.node;
+    if (!n.entrance && n.edges.size === 1) {
+      const ed = net.edges.get([...n.edges][0]);
+      if (ed.b === n.id && ed.dx === dx && ed.dy === dy) {
+        n.x = x;
+        n.y = y;
+        ed.len++;
+        return;
+      }
+    }
+    const m = this.addNode(x, y);
+    this.addEdge(n, m);
+    t.node = m;
+  },
+
+  // Is there tunnel right under e's feet, and e on the surface (not in the
+  // network, or at an entrance)? Walking overland, it crosses a tunnel's
+  // mouth rather than dropping in.
+  overTunnel(e) {
+    if (this.tunnels.edges.size === 0) return false;
+    const at = this.onNet(e.x, e.y);
+    if (at !== null && !(at.node !== null && at.node.entrance)) return false;
+    for (let k = -1; k <= 1; k++) {
+      const x = e.x + k * e.gy + e.gx, y = e.y - k * e.gx + e.gy;
+      if (this.isInside(x, y) && this.type[y * this.w + x] === 0) return true;
+    }
+    return false;
+  },
+
+  // In the network but going somewhere else: out through the nearest
+  // entrance first. True while it's doing that.
+  leaveTunnel(e, b) {
+    const net = this.tunnels;
+    if (net.edges.size === 0 || net.gx !== e.gx || net.gy !== e.gy) return false;
+    const at = this.onNet(e.x, e.y);
+    if (at === null || (at.node !== null && at.node.entrance)) return false;
+    const { dist, prev } = this.netDistances(this.netSources(e).src);
+    let best = -1, bd = Infinity;
+    for (const n of net.nodes.values()) {
+      if (n.entrance && (dist.get(n.id) ?? Infinity) < bd) {
+        best = n.id;
+        bd = dist.get(n.id);
+      }
+    }
+    if (best < 0) return false;
+    let next = best; // the first node on the way there
+    while (prev.has(next) && !(at.node !== null && prev.get(next) === at.node.id)) next = prev.get(next);
+    const n = net.nodes.get(next);
+    const r = this.stepAlong(e, b, n.x, n.y);
+    if (r === 'blocked') {
+      this.dropStretch(e.x, e.y, e.x + Math.sign(n.x - e.x), e.y + Math.sign(n.y - e.y));
+      return false;
+    }
+    return r !== 'wood';
   },
 };

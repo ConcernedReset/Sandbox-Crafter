@@ -54,6 +54,8 @@ function settled(seed) {
   fillRect(w, 0, 80, 239, 89, ID.STONE);
   fillRect(w, 0, 50, 239, 79, ID.DIRT);
   fillRect(w, 30, 45, 41, 49, ID.WOOD);
+  fillRect(w, 8, 40, 19, 49, ID.WOOD); // more, for lining tunnels
+  fillRect(w, 210, 40, 225, 49, ID.WOOD);
   fillRect(w, 190, 41, 199, 49, ID.STONE);
   put(w, 60, 64, 75, 66, ID.COAL);
   put(w, 150, 62, 165, 64, ID.SALT);
@@ -67,7 +69,7 @@ for (const seed of [1, 2]) {
     const w = settled(seed);
     let f = 0, done = false;
     const people = new Map();
-    for (; f < 20000 && !done; f++) {
+    for (; f < 30000 && !done; f++) {
       w.step();
       for (const e of w.creatures) if (e.brain) people.set(e.id, e);
       done = [...people.values()].some((e) => e.brain.armour > 0);

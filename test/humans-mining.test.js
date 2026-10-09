@@ -31,12 +31,15 @@ test('a pickaxe digs stone and metal, but not steel', () => {
   assert.equal(w.diggable(8, HAND_DIG), true);
 });
 
-// A human on the ground with a coal seam buried under it, 22 cells down.
+// A human on the ground with a coal seam buried under it, 22 cells down,
+// and a log on the surface for lining tunnels with. (Tunnelling itself is
+// tested in tunnels.test.js.)
 function seam(seed, under = ID.DIRT) {
   const w = makeWorld(160, 90, seed);
   fillRect(w, 0, 85, 159, 89, ID.STONE);
   fillRect(w, 0, 40, 159, 84, under);
   put(w, 100, 62, 108, 65, ID.COAL);
+  fillRect(w, 20, 30, 29, 39, ID.WOOD);
   w.spawn(30 * 160 + 60, ID.HUMAN);
   run(w, 80);
   const e = w.creatures[0];
@@ -44,38 +47,43 @@ function seam(seed, under = ID.DIRT) {
   return { w, e };
 }
 
-for (const seed of [1, 2, 3]) {
-  test(`a human digs a staircase down to a buried coal seam (seed ${seed})`, () => {
-    const { w, e } = seam(seed);
-    assert.ok(w.startMining(e, e.brain, e.brain.camp, 'coal', 5), 'it found the seam');
-    let f = 0;
-    for (; f < 6000 && w.has(e.brain, ID.COAL) < 5; f++) w.step();
-    assert.equal(w.creatureById[e.id], e, 'alive');
-    assert.ok(w.has(e.brain, ID.COAL) >= 5, `mined ${w.has(e.brain, ID.COAL)} in ${f} steps (${e.brain.job})`);
-  });
+// Run up to `steps`, sending e back to mining whenever it stops (as its
+// crafting would), until it holds `goal` coal: the steps taken.
+function mineCoal(w, e, goal, steps, also = () => {}) {
+  let f = 0;
+  for (; f < steps && w.has(e.brain, ID.COAL) < goal; f++) {
+    const b = e.brain;
+    if (b.tun === null && b.job !== 'gathering wood') w.startMining(e, b, b.camp, 'coal', goal);
+    also();
+    w.step();
+  }
+  return f;
 }
 
 test('without a pickaxe, a seam under stone is given up on; with one, it is mined', () => {
   const { w, e } = seam(1, ID.STONE);
   assert.ok(w.startMining(e, e.brain, e.brain.camp, 'coal', 5));
-  for (let f = 0; f < 2000 && !(e.brain.skip.get('coal') > w.tick); f++) w.step();
+  for (let f = 0; f < 3000 && !(e.brain.skip.get('coal') > w.tick); f++) w.step();
   assert.ok(e.brain.skip.get('coal') > w.tick, `skipped for a while (${e.brain.job})`);
   assert.equal(w.has(e.brain, ID.COAL), 0);
   e.brain.tool = 1;
   e.brain.skip.clear();
   e.brain.banned.clear();
-  assert.ok(w.startMining(e, e.brain, e.brain.camp, 'coal', 5));
-  let f = 0;
-  for (; f < 8000 && w.has(e.brain, ID.COAL) < 5; f++) w.step();
+  const f = mineCoal(w, e, 5, 12000);
   assert.ok(w.has(e.brain, ID.COAL) >= 5, `mined ${w.has(e.brain, ID.COAL)} in ${f} steps (${e.brain.job})`);
 });
 
-test('useful things dug through on the way go into its pockets', () => {
+test('useful things dug through go into its pockets', () => {
   const { w, e } = seam(2);
   put(w, 60, 40, 108, 61, ID.WOOD); // a buried timber layer over the seam
-  w.startMining(e, e.brain, e.brain.camp, 'coal', 5);
-  for (let f = 0; f < 6000 && w.has(e.brain, ID.COAL) < 5; f++) w.step();
-  assert.ok(w.has(e.brain, ID.WOOD) > 0, 'it kept some wood');
+  let pocketed = false, last = 0;
+  const f = mineCoal(w, e, 5, 12000, () => {
+    const wood = w.has(e.brain, ID.WOOD);
+    if (e.brain.job === 'mining' && wood > last) pocketed = true;
+    last = wood;
+  });
+  assert.ok(w.has(e.brain, ID.COAL) >= 5, `mined ${w.has(e.brain, ID.COAL)} in ${f} steps (${e.brain.job})`);
+  assert.ok(pocketed, 'timber dug through while mining went into its pack');
 });
 
 test('the Wilderness has coal, salt and metal buried in it', () => {

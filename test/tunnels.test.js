@@ -120,3 +120,131 @@ test('a plan starts from the network when that is cheaper, else from a new entra
   assert.deepEqual(w.legsTo(0, 0, 5, 2, 0, 1), [{ dx: 1, dy: 1, n: 2 }, { dx: 1, dy: 0, n: 3 }]);
   assert.deepEqual(w.legsTo(0, 0, 0, -4, 0, 1), [{ dx: 0, dy: -1, n: 4 }]);
 });
+
+// Fill a rectangle with t, whatever was there.
+function put(w, x0, y0, x1, y1, t) {
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { w.clearCell(y * w.w + x); w.spawn(y * w.w + x, t); }
+}
+
+// Dirt ground at y 40, a coal seam 22 down, a log to line tunnels with, and
+// a human with 10 wood.
+function mineWorld(seed) {
+  const w = makeWorld(160, 90, seed);
+  fillRect(w, 0, 85, 159, 89, ID.STONE);
+  fillRect(w, 0, 40, 159, 84, ID.DIRT);
+  put(w, 100, 62, 108, 65, ID.COAL);
+  fillRect(w, 20, 30, 29, 39, ID.WOOD);
+  w.spawn(30 * 160 + 60, ID.HUMAN);
+  run(w, 80);
+  const e = w.creatures[0];
+  e.brain.camp = w.joinOrMakeCamp(e);
+  for (let k = 0; k < 10; k++) w.stow(e.brain, ID.WOOD);
+  return { w, e };
+}
+
+// Run until `done`, sending e back to mining whenever it stops (as its
+// crafting would): the steps taken.
+function mineUntil(w, e, key, goal, steps, done) {
+  let f = 0;
+  for (; f < steps && !done(); f++) {
+    const b = e.brain;
+    if (b.tun === null && b.job !== 'gathering wood' && w.creatureById[e.id] === e) w.startMining(e, b, b.camp, key, goal);
+    w.step();
+  }
+  return f;
+}
+const kinds = (w) => [...w.tunnels.nodes.values()].map((n) => w.nodeKind(n)).sort().join(',');
+const offNet = (w, e) => { const at = w.onNet(e.x, e.y); return at === null || (at.node !== null && at.node.entrance); };
+
+for (const seed of [1, 2, 3]) {
+  test(`a human tunnels to a buried seam without wrecking the ground (seed ${seed})`, () => {
+    const { w, e } = mineWorld(seed);
+    const dirt = countOf(w, ID.DIRT);
+    const f = mineUntil(w, e, 'coal', 5, 12000, () => w.has(e.brain, ID.COAL) >= 5);
+    assert.equal(w.creatureById[e.id], e, 'alive');
+    assert.ok(w.has(e.brain, ID.COAL) >= 5, `${w.has(e.brain, ID.COAL)} coal in ${f} steps (${e.brain.job})`);
+    let inside = 0, lined = 0;
+    for (const m of w.tunnels.mask) { if (m & 1) inside++; if (m & 2) lined++; }
+    const lost = dirt - countOf(w, ID.DIRT);
+    assert.ok(lost <= inside + lined + 40, `${lost} dirt gone, tunnel ${inside} + lining ${lined}`);
+    assert.ok(kinds(w).includes('entrance') && kinds(w).includes('end'), kinds(w));
+  });
+}
+
+test('a second deposit is reached by branching off the first tunnel', () => {
+  const { w, e } = mineWorld(4);
+  mineUntil(w, e, 'coal', 5, 12000, () => w.has(e.brain, ID.COAL) >= 5);
+  assert.ok(w.has(e.brain, ID.COAL) >= 5, 'the first seam');
+  const edges = w.tunnels.edges.size;
+  // Metal under the middle of the tunnel's longest run.
+  const ed = [...w.tunnels.edges.values()].sort((p, q) => q.len - p.len)[0];
+  const a = w.tunnels.nodes.get(ed.a), k = ed.len >> 1;
+  const mx = a.x + k * ed.dx, my = a.y + k * ed.dy;
+  put(w, mx - 2, my + 9, mx + 2, my + 10, ID.METAL);
+  e.brain.tool = 1;
+  for (let i = 0; i < 10; i++) w.stow(e.brain, ID.WOOD);
+  e.brain.skip.clear();
+  const f = mineUntil(w, e, 'metal', 3, 8000, () => w.has(e.brain, ID.METAL) >= 3);
+  assert.ok(w.has(e.brain, ID.METAL) >= 3, `metal ${w.has(e.brain, ID.METAL)} in ${f} (${e.brain.job})`);
+  assert.ok(w.tunnels.edges.size > edges, 'a new run');
+  assert.match(kinds(w), /junction|bend/);
+  assert.equal([...w.tunnels.nodes.values()].filter((n) => n.entrance).length, 1, 'no second entrance');
+});
+
+test('a human climbs up a shaft and out, holding on', () => {
+  const w = makeWorld(80, 80, 1);
+  fillRect(w, 0, 30, 79, 79, ID.DIRT);
+  const b = woody();
+  open(w, b, 20, 29);
+  carve(w, b, 20, 29, 0, 1, 26);
+  carve(w, b, 20, 55, 1, 0, 15);
+  const top = w.addNode(20, 29, true), bottom = w.addNode(20, 55), end = w.addNode(35, 55);
+  w.addEdge(top, bottom);
+  w.addEdge(bottom, end);
+  w.makeCamp(45, 29); // up on the surface: it heads for it
+  w.spawn(55 * 80 + 35, ID.HUMAN);
+  run(w, 40);
+  const e = w.creatures[0];
+  let lowest = 0, f = 0;
+  for (; f < 3000 && e.y > 29; f++) {
+    w.step();
+    lowest = Math.max(lowest, e.y);
+  }
+  assert.ok(e.y <= 29, `out on the surface (at ${e.x}, ${e.y} after ${f}, ${e.brain.job})`);
+  assert.ok(lowest <= 55, 'never fell below the run');
+  assert.equal(w.tunnels.edges.size, 2, 'the tunnel is intact');
+});
+
+test('a human out of lining wood fetches more and carries on', () => {
+  const { w, e } = mineWorld(5);
+  e.brain.items.set(ID.WOOD, 3);
+  let fetched = false;
+  const f = mineUntil(w, e, 'coal', 5, 16000, () => {
+    if (e.brain.job === 'gathering wood') fetched = true;
+    return w.has(e.brain, ID.COAL) >= 5;
+  });
+  assert.ok(fetched, 'it went for wood');
+  assert.ok(w.has(e.brain, ID.COAL) >= 5, `${w.has(e.brain, ID.COAL)} coal in ${f} steps (${e.brain.job})`);
+});
+
+test('a tunnel filled with sand is dug out; one filled with steel is dropped', () => {
+  const { w, e } = mineWorld(6);
+  mineUntil(w, e, 'coal', 5, 12000, () => w.has(e.brain, ID.COAL) >= 5);
+  // Out it comes (its camp is up top).
+  for (let f = 0; f < 4000 && !offNet(w, e); f++) w.step();
+  assert.ok(offNet(w, e), 'it came out');
+  const ed = [...w.tunnels.edges.values()].sort((p, q) => q.len - p.len)[0];
+  const a = w.tunnels.nodes.get(ed.a), k = ed.len >> 1;
+  const box = new Int32Array(18);
+  w.boxCells(a.x + k * ed.dx, a.y + k * ed.dy, 0, 1, box);
+  for (const c of box) if (w.type[c] === 0) w.spawn(c, ID.SAND);
+  e.brain.items.delete(ID.COAL);
+  for (let i = 0; i < 10; i++) w.stow(e.brain, ID.WOOD);
+  mineUntil(w, e, 'coal', 3, 8000, () => w.has(e.brain, ID.COAL) >= 3);
+  assert.ok(w.has(e.brain, ID.COAL) >= 3, 'mined again');
+  for (const c of box) assert.notEqual(w.type[c], ID.SAND, 'the sand was dug out');
+  for (const c of box) if (w.type[c] === 0) w.spawn(c, ID.STEEL);
+  const before = w.tunnels.edges.size;
+  for (let f = 0; f < 4000 && w.tunnels.edges.size >= before; f++) w.step();
+  assert.ok(w.tunnels.edges.size < before, 'the stretch was dropped');
+});

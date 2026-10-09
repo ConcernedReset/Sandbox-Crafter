@@ -146,7 +146,11 @@ export const Humans = {
       return;
     }
     if (b.job === 'swimming') b.job = b.wasJob;
-    if (this.fall(e)) return;
+    // Holding on in a tunnel (a shaft, stairs), it doesn't fall; nor does it
+    // drop into a tunnel's mouth, crossing it overland as if on boards.
+    const hold = b.hold;
+    b.hold = false;
+    if (!hold && !this.overTunnel(e) && this.fall(e)) return;
     // A reflex: with flames or anything scorching right beside it, it steps
     // back from them at once, whatever it was doing (even by its own fire).
     const away = this.scorched(e);
@@ -331,6 +335,7 @@ export const Humans = {
   // level with its body (from 9 cells above its feet to 4 below). No
   // closer for GIVE_UP steps: it gives up (giveUp).
   walkTo(e, b, tx, ty, near, every) {
+    if (this.leaveTunnel(e, b)) return false; // out of a tunnel first (tunnels.js)
     const a = (tx - e.x) * e.gy - (ty - e.y) * e.gx; // across: + is the way "right" points
     const v = (tx - e.x) * e.gx + (ty - e.y) * e.gy; // along: + is down
     if (Math.abs(a) <= near && v >= -9 && v <= 4) {
@@ -362,13 +367,10 @@ export const Humans = {
     b.pace = 0;
     b.heading = a > 0 ? 1 : a < 0 ? -1 : e.facing; // remembered for swimming
     // Something in the way it can dig: it digs through it, a cell at a
-    // time (up a step, if the target is above it, or down one). Mining
-    // something deep below, it digs a staircase down rather than walking
-    // over it. Digging counts as getting closer.
+    // time (up a step, if the target is above it, or down one). Digging
+    // counts as getting closer.
     const vdir = v < -1 ? -1 : v > 4 ? 1 : 0;
-    const deep = b.job === 'mining' && vdir > 0 && Math.abs(a) <= v;
-    if ((deep && this.digToward(e, b, b.heading, 1))
-      || (!this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY) && this.digToward(e, b, b.heading, vdir))) {
+    if (!this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY) && this.digToward(e, b, b.heading, vdir)) {
       b.stuck = 0;
       b.pace = every - DIG_EVERY;
     }
@@ -861,7 +863,7 @@ export const Humans = {
       case 'building the hut': return camp.hut !== null && !camp.hut.done
         && (this.holding(b, MATERIAL) > 0 || (camp.hut.wood && this.has(b, WOOD) > 0));
       case 'lighting the fire': return camp.lighter === e.id;
-      case 'mining': return b.target >= 0 && b.fetchSet[this.type[b.target]] === 1;
+      case 'mining': return b.tun !== null;
       case 'hunting': return b.foe !== 0 && this.creatureById[b.foe] != null && this.tick <= b.huntUntil;
       default: return false;
     }
@@ -1173,7 +1175,7 @@ export const Humans = {
         if (!set[type[i]]) continue;
         const d = Math.abs(x - e.x) + Math.abs(y - e.y);
         if (d >= bd || camp.claims.has(i) || this.isBanned(b, i) || this.inPile(camp, x, y)) continue;
-        if (hut !== null && hut.set.has(i)) continue;
+        if ((hut !== null && hut.set.has(i)) || this.madeByHuman(i)) continue; // not its hut, nor tunnel lining
         if (!this.openAt(x, y) || !this.nearGround(x, y, e.gx, e.gy)) continue;
         if (side && !this.openSide(x, y, e.gx, e.gy)) continue;
         if (this.acrossFire(camp, e.x, e.y, x, y)) continue;
@@ -1246,56 +1248,11 @@ export const Humans = {
     return best;
   },
 
-  // Set off to mine `key` (a RESOURCES key) until it holds `goal` of it.
-  // False if there's none it can reach (it skips that one for a while).
-  startMining(e, b, camp, key, goal) {
-    if ((b.skip.get(key) ?? 0) > this.tick) return false;
-    const set = RESOURCES[key];
-    const t = this.findDeposit(e, camp, set, this.digLimit(b));
-    if (t < 0) {
-      b.skip.set(key, this.tick + BAN_FOR);
-      return false;
-    }
-    this.claim(b, camp, t);
-    b.fetchSet = set;
-    b.mineKey = key;
-    b.wantN = goal;
-    b.job = 'mining';
-    if (b.tool !== 0) b.held = HELD_PICKAXE;
-    return true;
-  },
-
   // Does it want more of what it's mining? Salt goes into gunpowder as it's
   // mined, so it wants salt while it still has coal to go with it.
   wantsMore(b) {
     if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < STACK;
     return this.holding(b, b.fetchSet) < b.wantN;
-  },
-
-  // Dig its way to the target and mine it, then the rest of the seam.
-  mine(e, b) {
-    const t = b.target;
-    if (t < 0 || !b.fetchSet[this.type[t]]) {
-      this.release(b);
-      b.job = 'wandering';
-      b.think = 0;
-      return;
-    }
-    if (!this.walkTo(e, b, t % this.w, (t / this.w) | 0, REACH, WALK_EVERY)) return;
-    this.release(b);
-    if (this.diggable(t, this.digLimit(b)) && this.stow(b, this.type[t])) {
-      this.clearCell(t);
-      if (b.tool !== 0) b.held = HELD_PICKAXE;
-      if (this.wantsMore(b)) {
-        const n = this.findDeposit(e, b.camp, b.fetchSet, this.digLimit(b), SEAM_R);
-        if (n >= 0) {
-          this.claim(b, b.camp, n);
-          return;
-        }
-      }
-    }
-    b.job = 'wandering';
-    b.think = 0;
   },
 
   // Walk to the target and pick it up; then the nearest more of the same,
@@ -1395,6 +1352,7 @@ export const Humans = {
   // No closer for GIVE_UP steps: leave that target alone for a while.
   giveUp(e, b) {
     if (b.job === 'mining') b.skip.set(b.mineKey, this.tick + BAN_FOR);
+    b.tun = null;
     if (b.target >= 0) {
       b.banned.set(b.target, this.tick + BAN_FOR);
       this.release(b);
