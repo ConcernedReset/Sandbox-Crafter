@@ -71,7 +71,7 @@ const COLD_AIR = 10; // °C: air this cold sends it to shelter
 const RAIN_R = 20; // as does rain, snow or hail falling this close
 const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
 // Growth it clears away for a building site: plants, leaves, flowers, moss.
-const CLEARABLE = Uint8Array.from(DEFS, (d) => (d.state === SOLID && d.cat === 'life' && d.strength > 0 && d.strength <= 6 ? 1 : 0));
+export const CLEARABLE = Uint8Array.from(DEFS, (d) => (d.state === SOLID && d.cat === 'life' && d.strength > 0 && d.strength <= 6 ? 1 : 0));
 export const HAND_DIG = 30; // the strongest solid it digs by hand (sandstone); powders always
 export const TOOL_DIG = 150; // and with a pickaxe (stone, granite, most metals)
 export const DIG_EVERY = 8; // steps per cell dug
@@ -128,6 +128,7 @@ export function newBrain() {
     tun: null, // the tunnel it's travelling or digging (tunnels.js)
     hold: false, // holding on in a tunnel or to a wall (no falling) this step
     climbing: false, // it's climbing a wall
+    path: null, // the way it has planned to where it's walking (paths.js)
     climbTop: -Infinity, // the highest it has climbed on this walk
     awayAt: -1, // when it last went farther than CAMP_AWAY_R from its camp (-1: it's near)
     bailed: 0, // liquid cells bailed out of the spot it's clearing
@@ -354,6 +355,7 @@ export const Humans = {
       b.best = Infinity;
       b.climbing = false;
       b.climbTop = -Infinity;
+      b.path = null;
       return true;
     }
     if (b.climbing) b.hold = true; // clinging on between moves
@@ -367,6 +369,18 @@ export const Humans = {
         b.pace = 0;
         this.stepAcross(e, u > 0 ? 1 : -1, CLIMB, false);
       } else this.pose(e, 0);
+      return false;
+    }
+    // Along the way it has planned (paths.js); with no way there at all, it
+    // gives up at once. With no plan (it gave up looking, couldn't tell, or
+    // the way kept changing under it), it walks straight at it, as below.
+    const way = this.followPath(e, b, tx, ty, near, every, this.digLimit(b));
+    if (way === 'unreachable') {
+      this.giveUp(e, b);
+      return false;
+    }
+    if (way === 'ok') {
+      if (++b.stuck > GIVE_UP) this.giveUp(e, b); // no further along it for a while
       return false;
     }
     const dist = Math.abs(a) + Math.abs(v);
@@ -1595,13 +1609,27 @@ export const Humans = {
     return this.campCell(camp, side * REST_U, 0);
   },
 
+  // Is there liquid at (x, y) or just under it?
+  wetAt(x, y, gx, gy) {
+    for (let k = 0; k <= 1; k++) {
+      const cx = x + k * gx, cy = y + k * gy;
+      if (this.inBounds(cx, cy) && this.type[cy * this.w + cx] !== 0 && DEFS[this.type[cy * this.w + cx]].state === LIQUID) return true;
+    }
+    return false;
+  },
+
   // Amble about near its camp (or where it is), stopping now and then.
   wander(e, b) {
     if (b.goalX < 0) {
+      // Somewhere within 10 cells, not out over water (it would swim back
+      // and forth across a pond for ever).
       const cx = b.camp !== null ? b.camp.x : e.x, cy = b.camp !== null ? b.camp.y : e.y;
-      const d = ((this.rand() * 21) | 0) - 10;
-      b.goalX = Math.min(this.w - 1, Math.max(0, cx + d * e.gy));
-      b.goalY = Math.min(this.h - 1, Math.max(0, cy - d * e.gx));
+      for (let tries = 0; tries < 6; tries++) {
+        const d = ((this.rand() * 21) | 0) - 10;
+        b.goalX = Math.min(this.w - 1, Math.max(0, cx + d * e.gy));
+        b.goalY = Math.min(this.h - 1, Math.max(0, cy - d * e.gx));
+        if (!this.wetAt(b.goalX, b.goalY, e.gx, e.gy)) break;
+      }
     }
     if (this.walkTo(e, b, b.goalX, b.goalY, 1, WALK_EVERY)) {
       this.pose(e, 0);
@@ -1627,6 +1655,7 @@ export const Humans = {
     b.stuck = 0;
     b.best = Infinity;
     b.climbTop = -Infinity;
+    b.path = null;
     b.job = 'wandering';
     b.think = 0;
   },
@@ -1637,6 +1666,7 @@ export const Humans = {
     b.best = Infinity;
     b.stuck = 0;
     b.climbTop = -Infinity;
+    b.path = null;
   },
 
   release(b) {

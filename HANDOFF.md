@@ -45,6 +45,7 @@ else; `test/build.test.js` checks the bundle runs.
 | `src/sim/gravity.js` | Gravity settings and the per-air-block gravity table; the Newtonian solver (`Solver`) |
 | `src/sim/fft.js` | Radix-2 FFT used by the Newtonian solver |
 | `src/render/renderer.js` | Draws the grid, the Gas and Glow effects, particles, minimap; heat and pressure views |
+| `src/sim/paths.js` | Overland route planning for humans: A* over the places a body can stand or hang (`findPath`), following the plan move by move (`followPath`, `planWay`) |
 | `src/render/ai-overlay.js` | Show spheres of influence / Show AI data: camp ranges, huts, lawns, tunnels, claims, members (`drawInfluence`); each human's trail, route, target and goal label (`aiPlan`, `drawAI`, `AITrails`), drawn on the canvas after the picture (`Renderer.showInfluence`, `showAI`) |
 | `src/render/tree-view.js` | Draws the recipe tree under the game; drag, zoom and click handling |
 | `src/game/tree.js` | Recipe tree layout (pure, tested): which elements show, one link into each, columns and rows |
@@ -189,7 +190,11 @@ else; `test/build.test.js` checks the bundle runs.
   (`tending`); building material must be open to one side (`openSide`), so
   they don't dig up the floor. A new camp clears flammable ground from its
   fire pit (`clearFirePit`). Swimmers keep `brain.heading` (the way they
-  last walked) and resume `wasJob` on leaving the water. Walking (`walkTo`) up against a wall
+  last walked) and resume `wasJob` on leaving the water. Walking
+  (`walkTo`) plans the way first (`paths.js`, below) and follows it;
+  only with no plan (the search gave up, couldn't tell, or the way kept
+  changing under it) does it walk straight at the target as follows. Up
+  against a wall
   higher than a step, they first look at it (`cutThrough`): at most
   `THIN_WALL` (4) columns thick at body height, or `SOFT_WALL` (8) if it's
   all wood or growth (a tree trunk), and all diggable, they dig through it.
@@ -218,6 +223,33 @@ else; `test/build.test.js` checks the bundle runs.
   hut done and `camp.burned` >= `CRAFT_FIRE_TIME`; order pickaxe,
   levelling the lawn (`flattenWork`, below), gunpowder (`wantsPowder`),
   gun, armour (`craft`).
+- **Planning the way** (`paths.js`): `walkTo` calls `followPath`. `findPath`
+  is A* over feet positions, in the gravity's frame, using the human's
+  real shape: `bodyOf(kind)` gives the cells any walking pose covers (room
+  is checked against all of them, so any pose fits) and, per pose (2
+  frames x 2 facings), its feet. A place is standing if some pose rests on
+  something (`footInfo`: ground, water to swim in, or tunnel "boards"
+  exactly as `overTunnel` holds a body: open tunnel inside, but not right
+  on a network spot), or hanging if there's a wall to climb (`wallBeside`).
+  Moves: walk a cell (up to a 2 step, else duck a step down; then drop to
+  wherever it lands, `MAX_FALL` 80), dig a cell across (level, up or
+  down a step; only cells it can dig, never anything `madeByHuman`),
+  climb a cell up a wall. Costs in steps: walk 1, step up +0.3, swim 3,
+  boards 2, climb 3, dig 1 + 2 per cell, fall 0.05 a cell. Each place
+  remembers the pose it stands in, and `followPath` moves into exactly
+  that pose (`moveBody` with that frame and facing), so the plan and the
+  game agree. Off the plan (exactly, or 2 cells either way in line with a
+  place it walked to, never one it's yet to climb to) it plans again, up
+  to `MAX_REPLANS` (6), then walks straight at it. Progress (for
+  `GIVE_UP`) is only reaching further along than ever. `findPath`
+  returns null (no way: the target is given up on at once) only when the
+  human's own spot fits the body model; with `PATH_NODES` (8000) places
+  looked at, or in a box `MARGIN` (60) round it and the target, it gives
+  up looking (undefined: walk straight at it). Room and footing are
+  remembered for the length of a search (`pathMemo`). A typical search
+  takes well under a millisecond; the rare biggest ~30-40 ms. Wander goals
+  avoid water (`wetAt`). Tested in `test/paths.test.js`; `world.pathStats`
+  counts the outcomes.
 - **Levelling the camp** (`grounds.js`): the lawn (`lawn(camp)`) is
   `LAWN_R` (20) columns either side of the hut, level with the hut's
   ground row. One human at a time (`camp.flattener`; others carry on

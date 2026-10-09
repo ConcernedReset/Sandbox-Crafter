@@ -47,6 +47,12 @@ test("a human's plan points at what it's after", () => {
   assert.deepEqual(p.target, [e.brain.target % 120, (e.brain.target / 120) | 0]);
   assert.deepEqual(p.path[0], [e.x, e.y]);
   assert.match(p.label, /^gathering wood \d+\/10/);
+  for (let f = 0; f < 20 && !(e.brain.path && e.brain.path.pts); f++) w.step();
+  const way = e.brain.path;
+  if (way && way.pts && way.pts.length > way.i + 1) {
+    const q = aiPlan(w, e);
+    assert.deepEqual(q.path[1], [way.pts[way.i + 1].x, way.pts[way.i + 1].y], 'it shows the way it planned');
+  }
   e.brain.job = 'fleeing';
   e.brain.fleeDir = -1;
   assert.deepEqual(aiPlan(w, e).arrow, [-1, 0], 'fleeing: an arrow the way it runs');

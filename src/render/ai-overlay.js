@@ -129,6 +129,14 @@ export function aiPlan(world, e) {
     default:
       if (b.goalX >= 0) target = [b.goalX, b.goalY];
   }
+  // The way it has planned overland (paths.js), if it's following one to
+  // where it's going now (or, for a miner, to where its tunnelling starts);
+  // a miner's goes on through the tunnels from where that way ends.
+  const p = b.path, to = p?.key ? p.key.split(',').map(Number) : null;
+  const goal = b.tun && b.tun.legs === null ? (b.tun.route?.wps?.[0] ? [b.tun.route.wps[0].x, b.tun.route.wps[0].y] : [b.tun.x, b.tun.y]) : target;
+  const current = to !== null && goal !== null && Math.max(Math.abs(to[0] - goal[0]), Math.abs(to[1] - goal[1])) <= 2;
+  const way = current && !p.greedy && p.pts ? p.pts.slice(p.i + 1).map((q) => [q.x, q.y]) : null;
+  if (way !== null && way.length > 0) path = [[e.x, e.y], ...way, ...(path !== null && b.tun?.legs === null ? path.slice(1) : [])];
   if (path === null && target !== null) path = [[e.x, e.y], target];
   const extra = [];
   if (b.job === 'swimming') extra.push('swimming');

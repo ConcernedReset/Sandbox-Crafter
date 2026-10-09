@@ -41,6 +41,7 @@ import { Humans } from './humans.js';
 import { Trees } from './trees.js';
 import { Tunnels, initTunnels } from './tunnels.js';
 import { Grounds } from './grounds.js';
+import { Paths } from './paths.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -1537,4 +1538,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Trees);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Paths, Trees);

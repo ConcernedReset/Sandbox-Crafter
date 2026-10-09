@@ -75,7 +75,7 @@ test('an armed human shoots a phoenix near its camp', () => {
   const [e] = people(w, [40]);
   arm(w, e);
   w.spawn(30 * 160 + 75, ID.PHOENIX);
-  run(w, 20);
+  for (let f = 0; f < 20 && !w.creatures.some((c) => c.kind === ID.PHOENIX); f++) w.step(); // (once hatched, it may be shot at once)
   assert.ok(w.creatures.some((c) => c.kind === ID.PHOENIX), 'hatched');
   let f = 0;
   for (; f < 3000 && w.creatures.some((c) => c.kind === ID.PHOENIX); f++) w.step();

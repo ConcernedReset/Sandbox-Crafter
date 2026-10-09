@@ -527,6 +527,10 @@ Each frame (60 per second):
    into a Phoenix, the whole bird.
 
    **Humans** (Lightning striking Clay) have a mind of their own. A human
+   plans its way to wherever it's going, over the ground as it is: walking,
+   stepping up, dropping down, climbing and digging, each weighed by how
+   long it takes, so it goes round, over or through, whichever is quicker,
+   and doesn't set off at all for something it can't get to. It
    cuts through a thin wall in its way (a tree trunk or bush up to 8 cells
    thick, anything else it can dig up to 4) and climbs any thicker one,
    slowly, hand over hand, all the way over (digging through only where it
