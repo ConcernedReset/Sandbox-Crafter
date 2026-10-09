@@ -529,7 +529,12 @@ Each frame (60 per second):
    the fire going while the others build. Once the hut is up and the fire
    has burned a while, each human crafts for itself, in order: a wooden
    pickaxe (3 wood; with it, it digs anything up to strength 150: stone,
-   granite and most metals, not steel or diamond); coal and salt, mined
+   granite and most metals, not steel or diamond); then one human at a
+   time **levels the camp**: the 10 cells either side of the hut are
+   brought level with its floor, digging away mounds and boulders and
+   filling dips with scaffolding (a deep pit is bridged over), and nobody
+   opens a mine there or digs for anything just under it (the others carry
+   on crafting meanwhile); coal and salt, mined
    from deposits it knows of within 120 cells of camp, which turn into 10
    gunpowder in its pack; metal (any
    metal or alloy) for a gun (5 metal and a wood stock); then 8 more for

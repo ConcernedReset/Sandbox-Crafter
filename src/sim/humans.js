@@ -6,7 +6,7 @@
 // share it and split the work. Mixed into World.prototype.
 
 import { DEFS, ID, NUM, State } from './elements.js';
-import { SHAPED, SUFFOCATE_EVERY, BODY } from './creatures.js';
+import { SHAPED, SUFFOCATE_EVERY, BODY, SHARED } from './creatures.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { COAL, SALT, GUNPOWDER, WOOD } = ID;
@@ -390,7 +390,7 @@ export const Humans = {
       if (!this.placeCells(e.kind, e.x + rx - up * e.gx, e.y + ry - up * e.gy, fr, dir, e.gx, e.gy, out)) continue;
       let first = -1, ok = true;
       for (let p = 0; p < e.n && ok; p++) {
-        if (e.pix[p] !== BODY || this.roomForBody(e, out[p])) continue;
+        if ((e.pix[p] !== BODY && e.pix[p] !== SHARED) || this.roomForBody(e, out[p])) continue; // shared pixels move too
         if (!this.diggable(out[p], limit)) ok = false;
         else if (first < 0) first = out[p];
       }
@@ -705,8 +705,9 @@ export const Humans = {
     return b.refill;
   },
 
-  // Its next crafting step, in order: a pickaxe, coal and salt for
-  // gunpowder, metal for a gun, then armour. Crafting is instant once it
+  // Its next crafting step, in order: a pickaxe, levelling the ground round
+  // the hut (one human at a time; grounds.js), coal and salt for gunpowder,
+  // metal for a gun, then armour. Crafting is instant once it
   // has what's needed; otherwise it sets off to get it. True if that gave it
   // a job. A resource out of reach is skipped for a while (startMining).
   craftWork(e, b, camp) {
@@ -714,6 +715,7 @@ export const Humans = {
     if (b.tool === 0 && !this.craft(b, 'pickaxe')) {
       return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
     }
+    if (this.flattenWork(e, b, camp)) return true;
     if (this.wantsPowder(b)) {
       const pairs = Math.ceil((GATHER - this.has(b, GUNPOWDER)) / 2);
       if (this.has(b, COAL) < pairs && this.startMining(e, b, camp, 'coal', pairs)) return true;
@@ -895,6 +897,7 @@ export const Humans = {
         && (this.holding(b, MATERIAL) > 0 || (camp.hut.wood && this.has(b, WOOD) > 0));
       case 'lighting the fire': return camp.lighter === e.id;
       case 'mining': return b.tun !== null;
+      case 'flattening the camp': return b.target >= 0 && camp.flattener === e.id;
       case 'hunting': return b.foe !== 0 && this.creatureById[b.foe] != null && this.tick <= b.huntUntil;
       default: return false;
     }
@@ -1127,6 +1130,7 @@ export const Humans = {
       case 'resting by the fire': this.restByFire(e, b); break;
       case 'building the hut': this.build(e, b); break;
       case 'mining': this.mine(e, b); break;
+      case 'flattening the camp': this.flatten(e, b); break;
       case 'shooting':
       case 'hunting': this.shootAt(e, b); break;
       case 'sheltering': this.shelter(e, b); break;
@@ -1141,6 +1145,7 @@ export const Humans = {
       burned: 0, // steps its fire has burned, in all
       hut: null, hutRetry: 0, hutFails: 0, // the hut's blueprint; failed looks for a site
       noHut: false, // nowhere for one, nor anywhere to move to: it does without
+      flat: false, flattener: 0, // the ground round the hut levelled; who's levelling it (grounds.js)
       members: new Set(), // the humans' ids
       claims: new Set(), // cells someone is on their way to fetch
       lighter: 0, // who is lighting the fire
@@ -1361,7 +1366,8 @@ export const Humans = {
 
   // The nearest cell of `set` within MINE_R of the camp (and within `near`
   // of e) that it can dig, buried or not: not something a human put there,
-  // claimed, or given up on. -1 if none.
+  // claimed, given up on, or just under a camp's lawn (grounds.js). -1 if
+  // none.
   findDeposit(e, camp, set, limit, near = Infinity) {
     const { w, h, type } = this;
     const b = e.brain;
@@ -1371,7 +1377,7 @@ export const Humans = {
         const i = y * w + x;
         if (!set[type[i]]) continue;
         const d = Math.abs(x - e.x) + Math.abs(y - e.y);
-        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit)) continue;
+        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit) || this.inLawn(x, y)) continue;
         best = i;
         bd = d;
       }
@@ -1546,6 +1552,7 @@ export const Humans = {
     this.release(b);
     camp.members.delete(e.id);
     if (camp.lighter === e.id) camp.lighter = 0;
+    if (camp.flattener === e.id) camp.flattener = 0;
     if (camp.members.size === 0) this.camps.splice(this.camps.indexOf(camp), 1);
     b.camp = null;
   },

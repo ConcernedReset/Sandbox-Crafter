@@ -304,6 +304,16 @@ test('a human dropped onto another falls through it to the ground', () => {
   assert.ok(people.every((e) => e.y === 34), `both on the floor (${people.map((e) => e.y)})`);
 });
 
+test('a human standing wholly inside another can still dig its way on', () => {
+  const w = makeWorld(60, 40, 2);
+  const [a, inner] = pair(w, 20, 30, 30, 30);
+  assert.ok(w.moveBody(inner, a.x, a.y, a.frame, a.facing, a.gx, a.gy), 'it steps into the other');
+  assert.ok(Array.from(inner.cells.slice(0, inner.n)).every((c) => w.ctype[c] === a.id), 'wholly inside it');
+  fillRect(w, a.x + 2, 20, 59, 34, ID.DIRT); // a bank in its way
+  inner.brain.tool = 1;
+  assert.ok(w.digToward(inner, inner.brain, 1, 0), 'it digs into the bank');
+});
+
 test('a drop of liquid underfoot is not water to swim in', () => {
   const w = makeWorld(40, 30, 1);
   fillRect(w, 0, 25, 39, 29, ID.STONE);

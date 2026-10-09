@@ -205,7 +205,20 @@ else; `test/build.test.js` checks the bundle runs.
   about real Fire, and `stepCamps` (once a step) counts `camp.burned` and
   ages `world.shots`. Crafting (`craftWork`) starts when `canCraft`: the
   hut done and `camp.burned` >= `CRAFT_FIRE_TIME`; order pickaxe,
-  gunpowder (`wantsPowder`), gun, armour (`craft`). Mining:
+  levelling the lawn (`flattenWork`, below), gunpowder (`wantsPowder`),
+  gun, armour (`craft`).
+- **Levelling the camp** (`grounds.js`): the lawn (`lawn(camp)`) is
+  `LAWN_R` (10) columns either side of the hut, level with the hut's
+  ground row. One human at a time (`camp.flattener`; others carry on
+  crafting) with a pickaxe works out from the hut a column at a time
+  (`lawnWork`, `lawnColumn`): solids up to 10 above the level dug away
+  top-down (wood fells its tree), empty cells down to 4 below filled with
+  scaffolding bottom-up (a deeper pit is bridged), skipping the fire pit,
+  ponds, tunnels, human-made cells and banned cells. Job `'flattening the
+  camp'` (`flatten`); wood for scaffolding is gathered when it has none.
+  `camp.flat` once nothing is left. No deposit within `LAWN_DEEP` (8)
+  under any lawn is mined (`inLawn` in `findDeposit`), and entrances keep
+  `ENTRY_GAP` clear of it. Tested in `test/grounds.test.js`. Mining:
   `startMining(e, b, camp, key, goal)` (tunnels.js) with `RESOURCES` keys,
   `findDeposit` (buried is fine), then `mine`; a resource out of reach is
   skipped for `BAN_FOR` (`brain.skip`). Dig strength comes from `DIG` (1
@@ -220,8 +233,8 @@ else; `test/build.test.js` checks the bundle runs.
   45° steps, the way down it was dug with, and a cell `mask` (INSIDE,
   LINED). `planTunnel` picks the cheapest start (network travel, shafts
   1.5x, plus 4x per new spot, two legs diagonal then straight: `legsTo`) or
-  a new entrance (`entranceSpot`: 10-40 cells from camp, clear of the hut
-  and of tunnels). `mine` = `tunnelGo` (`netRoute` waypoints, splitting a
+  a new entrance (`entranceSpot`: 14-70 cells from camp, clear of the hut's
+  lawn and of tunnels). `mine` = `tunnelGo` (`netRoute` waypoints, splitting a
   run into a junction where it starts) then `tunnelDig` (`growTunnel`).
   `stepAlong` moves spot to spot, re-lines, and repairs (`workSpot`);
   undiggable blockage drops the run (`dropStretch`, `prune`). `brain.hold`
@@ -245,7 +258,8 @@ else; `test/build.test.js` checks the bundle runs.
   that lands in a cell another human holds is `SHARED`: part of its body
   but not drawn (the cell stays the other's); `checkBody` gives it the cell
   back once the other has moved off (`sharing`, `THROUGH`).
-  `roomForBody` counts another human's cells as room, `supported` doesn't
+  `roomForBody` counts another human's cells as room (and `digToward`
+  digs for SHARED pixels too), `supported` doesn't
   count them as ground (no standing on heads), and `moveBody`, growth and
   healing handle SHARED pixels. Only whole, hatched human bodies; other
   creatures still block. So humans never get in each other's way, in the

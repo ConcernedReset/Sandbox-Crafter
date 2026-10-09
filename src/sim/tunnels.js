@@ -11,7 +11,7 @@
 import { DEFS, ID, State, SPECIAL } from './elements.js';
 import { SHAPED } from './creatures.js';
 import {
-  USEFUL, DANGER, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
+  USEFUL, DANGER, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
 } from './humans.js';
 
 const { POWDER, LIQUID } = State;
@@ -369,23 +369,24 @@ export const Tunnels = {
     return false;
   },
 
-  // A standing spot on the surface for a new entrance: 14 to 40 cells
+  // A standing spot on the surface for a new entrance: 14 to 70 cells
   // beside the camp (past where humans sit by the fire, who would block its
-  // mouth), 4 or more clear of its hut (and its doorways), not in a tunnel,
-  // the side towards the target first. { x, y, cost } or null.
+  // mouth), ENTRY_GAP or more clear of its hut and the lawn round it
+  // (grounds.js), not in a tunnel nor another camp's lawn, the side towards
+  // the target first. { x, y, cost } or null.
   entranceSpot(e, camp, tx, ty) {
-    const hut = camp.hut, tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
+    const lawn = this.lawn(camp), tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
     let best = null;
     for (const s of tu >= 0 ? [1, -1] : [-1, 1]) {
-      for (let k = 14; k <= 40; k++) {
+      for (let k = 14; k <= 70; k++) {
         const u = s * k;
-        if (hut !== null && u >= hut.u0 - 4 && u < hut.u0 + HUT_W + 4) continue;
+        if (lawn !== null && u >= lawn.u0 - ENTRY_GAP && u <= lawn.u1 + ENTRY_GAP) continue;
         const g = this.groundAt(camp, u);
         if (g === null) continue;
         const c = this.campCell(camp, u, g - 1);
         if (c < 0 || this.type[c] !== 0) continue;
         const x = c % this.w, y = (c / this.w) | 0;
-        if (this.nearTunnel(x, y, ENTRY_GAP) || this.entranceClaimed(e, x, ENTRY_GAP)) continue;
+        if (this.inLawn(x, y, ENTRY_DEPTH + 6) || this.nearTunnel(x, y, ENTRY_GAP) || this.entranceClaimed(e, x, ENTRY_GAP)) continue;
         const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;
         const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * (ENTRY_DEPTH + this.octo(bx, by, tx, ty, camp.gx, camp.gy));
         if (best === null || cost < best.cost) best = { x, y, cost };

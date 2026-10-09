@@ -11172,7 +11172,7 @@ __modules["src/sim/humans.js"] = (() => {
 // share it and split the work. Mixed into World.prototype.
 
 const { DEFS, ID, NUM, State } = __modules["src/sim/elements.js"];
-const { SHAPED, SUFFOCATE_EVERY, BODY } = __modules["src/sim/creatures.js"];
+const { SHAPED, SUFFOCATE_EVERY, BODY, SHARED } = __modules["src/sim/creatures.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { COAL, SALT, GUNPOWDER, WOOD } = ID;
@@ -11556,7 +11556,7 @@ const Humans = {
       if (!this.placeCells(e.kind, e.x + rx - up * e.gx, e.y + ry - up * e.gy, fr, dir, e.gx, e.gy, out)) continue;
       let first = -1, ok = true;
       for (let p = 0; p < e.n && ok; p++) {
-        if (e.pix[p] !== BODY || this.roomForBody(e, out[p])) continue;
+        if ((e.pix[p] !== BODY && e.pix[p] !== SHARED) || this.roomForBody(e, out[p])) continue; // shared pixels move too
         if (!this.diggable(out[p], limit)) ok = false;
         else if (first < 0) first = out[p];
       }
@@ -11871,8 +11871,9 @@ const Humans = {
     return b.refill;
   },
 
-  // Its next crafting step, in order: a pickaxe, coal and salt for
-  // gunpowder, metal for a gun, then armour. Crafting is instant once it
+  // Its next crafting step, in order: a pickaxe, levelling the ground round
+  // the hut (one human at a time; grounds.js), coal and salt for gunpowder,
+  // metal for a gun, then armour. Crafting is instant once it
   // has what's needed; otherwise it sets off to get it. True if that gave it
   // a job. A resource out of reach is skipped for a while (startMining).
   craftWork(e, b, camp) {
@@ -11880,6 +11881,7 @@ const Humans = {
     if (b.tool === 0 && !this.craft(b, 'pickaxe')) {
       return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
     }
+    if (this.flattenWork(e, b, camp)) return true;
     if (this.wantsPowder(b)) {
       const pairs = Math.ceil((GATHER - this.has(b, GUNPOWDER)) / 2);
       if (this.has(b, COAL) < pairs && this.startMining(e, b, camp, 'coal', pairs)) return true;
@@ -12061,6 +12063,7 @@ const Humans = {
         && (this.holding(b, MATERIAL) > 0 || (camp.hut.wood && this.has(b, WOOD) > 0));
       case 'lighting the fire': return camp.lighter === e.id;
       case 'mining': return b.tun !== null;
+      case 'flattening the camp': return b.target >= 0 && camp.flattener === e.id;
       case 'hunting': return b.foe !== 0 && this.creatureById[b.foe] != null && this.tick <= b.huntUntil;
       default: return false;
     }
@@ -12293,6 +12296,7 @@ const Humans = {
       case 'resting by the fire': this.restByFire(e, b); break;
       case 'building the hut': this.build(e, b); break;
       case 'mining': this.mine(e, b); break;
+      case 'flattening the camp': this.flatten(e, b); break;
       case 'shooting':
       case 'hunting': this.shootAt(e, b); break;
       case 'sheltering': this.shelter(e, b); break;
@@ -12307,6 +12311,7 @@ const Humans = {
       burned: 0, // steps its fire has burned, in all
       hut: null, hutRetry: 0, hutFails: 0, // the hut's blueprint; failed looks for a site
       noHut: false, // nowhere for one, nor anywhere to move to: it does without
+      flat: false, flattener: 0, // the ground round the hut levelled; who's levelling it (grounds.js)
       members: new Set(), // the humans' ids
       claims: new Set(), // cells someone is on their way to fetch
       lighter: 0, // who is lighting the fire
@@ -12527,7 +12532,8 @@ const Humans = {
 
   // The nearest cell of `set` within MINE_R of the camp (and within `near`
   // of e) that it can dig, buried or not: not something a human put there,
-  // claimed, or given up on. -1 if none.
+  // claimed, given up on, or just under a camp's lawn (grounds.js). -1 if
+  // none.
   findDeposit(e, camp, set, limit, near = Infinity) {
     const { w, h, type } = this;
     const b = e.brain;
@@ -12537,7 +12543,7 @@ const Humans = {
         const i = y * w + x;
         if (!set[type[i]]) continue;
         const d = Math.abs(x - e.x) + Math.abs(y - e.y);
-        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit)) continue;
+        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit) || this.inLawn(x, y)) continue;
         best = i;
         bd = d;
       }
@@ -12712,6 +12718,7 @@ const Humans = {
     this.release(b);
     camp.members.delete(e.id);
     if (camp.lighter === e.id) camp.lighter = 0;
+    if (camp.flattener === e.id) camp.flattener = 0;
     if (camp.members.size === 0) this.camps.splice(this.camps.indexOf(camp), 1);
     b.camp = null;
   },
@@ -12892,7 +12899,7 @@ __modules["src/sim/tunnels.js"] = (() => {
 
 const { DEFS, ID, State, SPECIAL } = __modules["src/sim/elements.js"];
 const { SHAPED } = __modules["src/sim/creatures.js"];
-const { USEFUL, DANGER, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R } = __modules["src/sim/humans.js"];
+const { USEFUL, DANGER, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R } = __modules["src/sim/humans.js"];
 
 const { POWDER, LIQUID } = State;
 const { WOOD, SCAFFOLDING } = ID;
@@ -13249,23 +13256,24 @@ const Tunnels = {
     return false;
   },
 
-  // A standing spot on the surface for a new entrance: 14 to 40 cells
+  // A standing spot on the surface for a new entrance: 14 to 70 cells
   // beside the camp (past where humans sit by the fire, who would block its
-  // mouth), 4 or more clear of its hut (and its doorways), not in a tunnel,
-  // the side towards the target first. { x, y, cost } or null.
+  // mouth), ENTRY_GAP or more clear of its hut and the lawn round it
+  // (grounds.js), not in a tunnel nor another camp's lawn, the side towards
+  // the target first. { x, y, cost } or null.
   entranceSpot(e, camp, tx, ty) {
-    const hut = camp.hut, tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
+    const lawn = this.lawn(camp), tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
     let best = null;
     for (const s of tu >= 0 ? [1, -1] : [-1, 1]) {
-      for (let k = 14; k <= 40; k++) {
+      for (let k = 14; k <= 70; k++) {
         const u = s * k;
-        if (hut !== null && u >= hut.u0 - 4 && u < hut.u0 + HUT_W + 4) continue;
+        if (lawn !== null && u >= lawn.u0 - ENTRY_GAP && u <= lawn.u1 + ENTRY_GAP) continue;
         const g = this.groundAt(camp, u);
         if (g === null) continue;
         const c = this.campCell(camp, u, g - 1);
         if (c < 0 || this.type[c] !== 0) continue;
         const x = c % this.w, y = (c / this.w) | 0;
-        if (this.nearTunnel(x, y, ENTRY_GAP) || this.entranceClaimed(e, x, ENTRY_GAP)) continue;
+        if (this.inLawn(x, y, ENTRY_DEPTH + 6) || this.nearTunnel(x, y, ENTRY_GAP) || this.entranceClaimed(e, x, ENTRY_GAP)) continue;
         const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;
         const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * (ENTRY_DEPTH + this.octo(bx, by, tx, ty, camp.gx, camp.gy));
         if (best === null || cost < best.cost) best = { x, y, cost };
@@ -13605,6 +13613,179 @@ const Tunnels = {
 return { TUNNEL_LINING, initTunnels, Tunnels };
 })();
 
+__modules["src/sim/grounds.js"] = (() => {
+// Grounds: once its hut is up, a camp levels the ground round it (humans.js).
+// The lawn is the LAWN_R columns either side of the hut; its level is the
+// hut's ground row. One human at a time (camp.flattener), with a pickaxe
+// and before its gun, digs away what rises above the level (up to LAWN_UP
+// high) and fills the dips below it (up to LAWN_DOWN deep) with
+// scaffolding, working out from the hut a column at a time. Nobody opens a
+// mine in the lawn, nor digs for a deposit just under it. Mixed into
+// World.prototype.
+
+const { DEFS, ID, State, SPECIAL } = __modules["src/sim/elements.js"];
+const { SHAPED } = __modules["src/sim/creatures.js"];
+const { USEFUL, HUT_W, WALK_EVERY, DIG_EVERY, HELD_PICKAXE, WOOD_ONLY, FUEL_R } = __modules["src/sim/humans.js"];
+
+const { SOLID, LIQUID, GAS } = State;
+const { WOOD, SCAFFOLDING } = ID;
+const LAWN_R = 10; // columns either side of the hut that are levelled
+const LAWN_UP = 10; // what rises this high above the level is dug away
+const LAWN_DOWN = 4; // and dips are filled this deep (a deeper one is bridged)
+const LAWN_DEEP = 8; // no deposit is mined nearer the lawn's surface than this
+const PIT_U = 3; // the fire pit's columns either side of the pile, left alone
+const LAWN_REACH = 3; // how far across it works from where it stands
+// Growth it clears away at once: plants, leaves, flowers, moss.
+const CLEARABLE = Uint8Array.from(DEFS, (d) => (d.state === SOLID && d.cat === 'life' && d.strength > 0 && d.strength <= 6 ? 1 : 0));
+
+const Grounds = {
+  // The lawn's columns (u0 .. u1, in the camp's frame) and the row of its
+  // ground, once the camp has a hut planned; or null.
+  lawn(camp) {
+    const hut = camp.hut;
+    if (hut === null) return null;
+    return { u0: hut.u0 - LAWN_R, u1: hut.u0 + HUT_W - 1 + LAWN_R, level: hut.floor + 1 };
+  },
+
+  // Is (x, y) in some camp's lawn, no deeper than `deep` under its level?
+  inLawn(x, y, deep = LAWN_DEEP) {
+    for (const camp of this.camps) {
+      const l = this.lawn(camp);
+      if (l === null) continue;
+      const u = (x - camp.x) * camp.gy - (y - camp.y) * camp.gx;
+      const v = (x - camp.x) * camp.gx + (y - camp.y) * camp.gy;
+      if (u >= l.u0 && u <= l.u1 && v < l.level + deep) return true;
+    }
+    return false;
+  },
+
+  // The work left in column u of the lawn, into `out` (cells, in the order
+  // to do them): what rises above the level from the top down, then the
+  // dip below it from the bottom up. Each is [cell, fill].
+  lawnColumn(camp, l, u, limit, b, out) {
+    out.length = 0;
+    for (let v = l.level - LAWN_UP; v < l.level; v++) {
+      const c = this.campCell(camp, u, v);
+      if (c < 0 || !this.builtAt(c) || this.isBanned(b, c)) continue;
+      if (camp.hut.set.has(c) || this.isInside(c % this.w, (c / this.w) | 0)) continue;
+      if (CLEARABLE[this.type[c]] || this.diggable(c, limit)) out.push([c, false]);
+    }
+    // The dip: the open cells from the level down, until the ground.
+    let bottom = l.level;
+    while (bottom < l.level + LAWN_DOWN) {
+      const c = this.campCell(camp, u, bottom);
+      if (c < 0 || this.builtAt(c) || this.isInside(c % this.w, (c / this.w) | 0)) break;
+      const t = this.type[c];
+      if (t !== 0 && DEFS[t].state === LIQUID) return; // a pond: left alone
+      bottom++;
+    }
+    for (let v = bottom - 1; v >= l.level; v--) {
+      const c = this.campCell(camp, u, v), t = this.type[c];
+      if (this.isBanned(b, c)) continue;
+      if (t === 0 || (!SHAPED[t] && DEFS[t].state === GAS)) out.push([c, true]); // not under a creature
+    }
+  },
+
+  // The next cell of the lawn for e to work on: the column nearest the hut
+  // with work left, on e's side first. { c, fill } or null when it's level.
+  lawnWork(e, b, camp) {
+    const l = this.lawn(camp);
+    if (l === null) return null;
+    const hut = camp.hut, out = this.lawnCells ??= [];
+    const eu = (e.x - camp.x) * camp.gy - (e.y - camp.y) * camp.gx;
+    const mid = hut.u0 + (HUT_W >> 1), limit = this.digLimit(b);
+    for (const s of eu >= mid ? [1, -1] : [-1, 1]) {
+      for (let k = 0; k < LAWN_R; k++) {
+        const u = s > 0 ? hut.u0 + HUT_W + k : hut.u0 - 1 - k;
+        if (u >= -PIT_U && u <= PIT_U) break; // the fire pit: no further that way
+        this.lawnColumn(camp, l, u, limit, b, out);
+        if (out.length > 0) return { c: out[0][0], fill: out[0][1] };
+      }
+    }
+    return null;
+  },
+
+  // Levelling the lawn, after a pickaxe and before a gun: one human at a
+  // time. Scaffolding for the dips is cut from wood it fetches. True if
+  // that gave e a job; once there's nothing left to do, the camp is flat.
+  flattenWork(e, b, camp) {
+    if (camp.flat || camp.hut === null || !camp.hut.done || b.tool === 0) return false;
+    if (camp.flattener !== 0 && camp.flattener !== e.id) {
+      const o = this.creatureById[camp.flattener];
+      const job = o?.brain?.job;
+      if (o && o.brain.camp === camp && (job === 'flattening the camp' || job === 'gathering wood')) return false;
+    }
+    const w = this.lawnWork(e, b, camp);
+    if (w === null) {
+      camp.flat = true;
+      camp.flattener = 0;
+      return false;
+    }
+    camp.flattener = e.id;
+    if (w.fill && this.liningInHand(b) === 0) {
+      if (this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood')) return true;
+      camp.flattener = 0; // no wood to be had: later
+      return false;
+    }
+    this.claim(b, camp, w.c);
+    b.job = 'flattening the camp';
+    if (!w.fill) b.held = HELD_PICKAXE;
+    return true;
+  },
+
+  // Walk within reach of the cell, then dig it out or fill it, a cell every
+  // DIG_EVERY steps; then on to the next.
+  flatten(e, b) {
+    const camp = b.camp, c = b.target;
+    if (camp === null || c < 0 || camp.flattener !== e.id) {
+      this.release(b);
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    if (!this.walkTo(e, b, c % this.w, (c / this.w) | 0, LAWN_REACH, WALK_EVERY)) return;
+    if (++b.pace < DIG_EVERY) return;
+    b.pace = 0;
+    this.pose(e, 0);
+    // The lawn may have changed on the way (sand slid in, say): the work
+    // left, first.
+    const w = this.lawnWork(e, b, camp);
+    if (w === null || w.c !== c) {
+      this.release(b);
+      if (w !== null && !(w.fill && this.liningInHand(b) === 0)) this.claim(b, camp, w.c);
+      else {
+        b.job = 'wandering';
+        b.think = 0;
+      }
+      return;
+    }
+    const t = this.type[c];
+    if (w.fill) {
+      if (this.has(b, SCAFFOLDING) === 0) this.cutScaffolding(b);
+      if (this.takeOut(b, SCAFFOLDING)) {
+        this.putDown(c, SCAFFOLDING);
+        this.record(SCAFFOLDING, SPECIAL['human-scaffolding']);
+      }
+    } else if (CLEARABLE[t] || this.diggable(c, this.digLimit(b))) {
+      if (USEFUL[t]) this.stow(b, t);
+      this.clearCell(c);
+      if (t === WOOD) this.fell(c % this.w, (c / this.w) | 0);
+      if (b.tool !== 0) b.held = HELD_PICKAXE;
+    }
+    this.release(b);
+    // The next cell, straight on (or, needing wood, back to choosing).
+    const next = this.lawnWork(e, b, camp);
+    if (next !== null && !(next.fill && this.liningInHand(b) === 0)) this.claim(b, camp, next.c);
+    else {
+      b.job = 'wandering';
+      b.think = 0;
+    }
+  },
+};
+
+return { LAWN_R, LAWN_DEEP, Grounds };
+})();
+
 __modules["src/sim/world.js"] = (() => {
 // The particle simulation. The world is a grid where every cell holds at
 // most one particle; per-cell data lives in parallel typed arrays so the
@@ -13644,6 +13825,7 @@ const { Creatures, initCreatures, SHAPED } = __modules["src/sim/creatures.js"];
 const { Humans } = __modules["src/sim/humans.js"];
 const { Trees } = __modules["src/sim/trees.js"];
 const { Tunnels, initTunnels } = __modules["src/sim/tunnels.js"];
+const { Grounds } = __modules["src/sim/grounds.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -15140,7 +15322,7 @@ class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Trees);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Trees);
 
 return { VOID_TOP, World, MIN_TEMP };
 })();
