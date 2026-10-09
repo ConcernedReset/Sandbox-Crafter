@@ -55,11 +55,12 @@ const FIRE_SET = setOf(['FIRE', 'CAMPFIRE']);
 const FLAMES = setOf(['FIRE']); // real fire, which it won't walk through
 const ON_FIRE = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST', 'CAMPFIRE']); // fuel on a burning pile, alight or not
 export const HUT_W = 9; // the hut's width
-export const HUT_WALL = 8; // its walls' height
-export const DOOR = 6; // the doorway's height
+export const HUT_WALL = 9; // its walls' height
+export const DOOR = 7; // the doorway's height: a cell of headroom (growth, ash or a bump underfoot)
 const HUT_GAP = 4; // the least space between the hut and the pile
 const STONE_R = 120; // how far from the camp it fetches building material
 const HUT_R = 40; // how far from the pile it looks for a site for the hut
+const CAMP_MOVE_R = 120; // and, finding none, how far it looks for a better place to camp
 const COLD_AIR = 10; // °C: air this cold sends it to shelter
 const RAIN_R = 20; // as does rain, snow or hail falling this close
 const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
@@ -325,7 +326,10 @@ export const Humans = {
       }
       return true;
     }
-    return false;
+    // Ducking: a step down, when the level is blocked (under something low);
+    // never down into a tunnel (it goes in by the network).
+    const dx = e.x + rx + e.gx, dy = e.y + ry + e.gy;
+    return !this.isInside(dx, dy) && this.moveBody(e, dx, dy, fr, dir, e.gx, e.gy);
   },
 
   // Walk (a step every `every` steps) towards (tx, ty) across the down
@@ -382,7 +386,7 @@ export const Humans = {
   digToward(e, b, dir, vdir) {
     const out = this.footB, rx = e.gy * dir, ry = -e.gx * dir;
     const fr = e.frame === 0 ? 1 : 0, limit = this.digLimit(b);
-    for (const up of vdir < 0 ? [1, 2, 0] : vdir > 0 ? [-1, 0] : [0, 1, 2]) {
+    for (const up of vdir < 0 ? [1, 2, 0] : vdir > 0 ? [-1, 0] : [0, 1, 2, -1]) {
       if (!this.placeCells(e.kind, e.x + rx - up * e.gx, e.y + ry - up * e.gy, fr, dir, e.gx, e.gy, out)) continue;
       let first = -1, ok = true;
       for (let p = 0; p < e.n && ok; p++) {
@@ -493,8 +497,9 @@ export const Humans = {
   },
 
   // Wood taken from (x, y) with more trunk above it: the tree comes down. Its
-  // wood and leaves (but nothing humans put there) fall loose, like sand,
-  // and pile up where they can be gathered.
+  // wood (but nothing humans put there) falls loose, like sand, and piles up
+  // where it can be gathered; its leaves scatter (a heap of them would bury
+  // the camp).
   fell(x, y) {
     const { gravity: g, w } = this;
     const ax = x - g.downX, ay = y - g.downY;
@@ -502,7 +507,8 @@ export const Humans = {
     const seen = new Set([ay * w + ax]), todo = [ay * w + ax];
     while (todo.length > 0 && seen.size < FELL_MAX) {
       const c = todo.pop();
-      this.loose[c] = 1;
+      if (this.type[c] === ID.LEAVES) this.clearCell(c);
+      else this.loose[c] = 1;
       const cx = c % w, cy = (c / w) | 0;
       for (const [dx, dy] of NEAR4) {
         const nx = cx + dx, ny = cy + dy;
@@ -634,12 +640,14 @@ export const Humans = {
     // Everyone helps build the first pile. After that the hut comes first,
     // and then one human is enough to keep the fire going, from its stock.
     if (camp.lit && this.hutWork(e, b, camp)) return;
-    if (fuel < (burning ? PILE_LOW : PILE_LIGHT) && !(camp.lit && this.tending(e, camp))) {
+    // Fuel in hand goes on a pile that's low, whoever else is at it; going
+    // for more is left to one human.
+    if (fuel < (burning ? PILE_LOW : PILE_LIGHT)) {
       if (this.holding(b, FUEL) > 0) {
         b.job = 'carrying wood';
         return;
       }
-      if (this.gather(e, b, camp, FUEL, FUEL_R, 'gathering wood')) return;
+      if (!(camp.lit && this.tending(e, camp)) && this.gather(e, b, camp, FUEL, FUEL_R, 'gathering wood')) return;
     }
     if (this.craftWork(e, b, camp)) return;
     // With nothing else to do, now and then it goes hunting.
@@ -683,10 +691,10 @@ export const Humans = {
     return false;
   },
 
-  // Crafting starts once the camp is settled: its hut built and its fire
-  // burned for a while.
+  // Crafting starts once the camp is settled: its hut built (or no room
+  // for one anywhere it can get to) and its fire burned for a while.
   canCraft(camp) {
-    return camp.hut !== null && camp.hut.done === true && camp.burned >= CRAFT_FIRE_TIME;
+    return (camp.noHut || (camp.hut !== null && camp.hut.done === true)) && camp.burned >= CRAFT_FIRE_TIME;
   },
 
   // Gunpowder wanted: a full stack the first time, and again once it's low.
@@ -904,12 +912,15 @@ export const Humans = {
   // Once the camp's fire has been lit, a hut beside it: fetch material for
   // it. True if that gave e a job.
   hutWork(e, b, camp) {
-    if (!camp.lit) return false;
+    if (!camp.lit || camp.noHut) return false;
     if (camp.hut === null) {
       if (this.tick < camp.hutRetry) return false;
       camp.hut = this.planHut(camp);
       if (camp.hut === null) {
         camp.hutRetry = this.tick + 600;
+        // Nowhere for a hut here, twice over: the camp moves somewhere with
+        // room it can get to, or (with nowhere) does without one.
+        if (++camp.hutFails >= 2 && !this.moveCamp(camp)) camp.noHut = true;
         return false;
       }
       this.clearSite(camp, camp.hut);
@@ -991,8 +1002,9 @@ export const Humans = {
 
   // Can a human get from column ua to column ub of the camp's frame, on
   // the level of ua's ground: nothing too hard to dig by hand (rock, metal)
-  // in a body's height above that level, all the way? (Dirt, wood and
-  // growth it walks over or digs through.)
+  // in a body's height above that level, and ground to walk on under it
+  // all the way (the first thing below within 12 cells is solid or powder,
+  // not water)? (Dirt, wood and growth it walks over or digs through.)
   walkable(camp, ua, ub) {
     const s = ub >= ua ? 1 : -1, g = this.groundAt(camp, ua);
     if (g === null) return false;
@@ -1001,6 +1013,17 @@ export const Humans = {
         const c = this.campCell(camp, u, v);
         if (c < 0 || (this.groundCell(c) && !this.diggable(c, HAND_DIG))) return false;
       }
+      let floor = false;
+      for (let v = g - 6; v <= g + 12 && !floor; v++) {
+        const c = this.campCell(camp, u, v);
+        if (c < 0) return false;
+        const t = this.type[c];
+        if (t === 0 || SHAPED[t]) continue;
+        const st = DEFS[t].state;
+        if (st === LIQUID) return false;
+        if (st === SOLID || st === POWDER) floor = true;
+      }
+      if (!floor) return false;
     }
     return true;
   },
@@ -1116,13 +1139,48 @@ export const Humans = {
       x, y, gx, gy, // the pile's middle (on the ground), and the way down there
       lit: false, // its fire has been lit (it may have burned out since)
       burned: 0, // steps its fire has burned, in all
-      hut: null, hutRetry: 0, // the hut's blueprint
+      hut: null, hutRetry: 0, hutFails: 0, // the hut's blueprint; failed looks for a site
+      noHut: false, // nowhere for one, nor anywhere to move to: it does without
       members: new Set(), // the humans' ids
       claims: new Set(), // cells someone is on their way to fetch
       lighter: 0, // who is lighting the fire
     };
     this.camps.push(camp);
     return camp;
+  },
+
+  // A camp with no room for a hut moves: to the nearest spot, either side,
+  // within CAMP_MOVE_R, that its humans can get to (no rock in the way),
+  // where a pile fits and a hut would too. Its members go with it (and make
+  // a new fire there). True if it found somewhere.
+  moveCamp(camp) {
+    const { gx, gy } = camp;
+    for (let d = 16; d <= CAMP_MOVE_R; d += 4) {
+      for (const s of [1, -1]) {
+        const x0 = camp.x + s * d * gy, y0 = camp.y - s * d * gx;
+        for (let k = 0; k <= 60; k++) {
+          const v = k & 1 ? (k + 1) >> 1 : -(k >> 1); // 0, 1, -1, 2, -2 ...
+          const x = x0 + v * gx, y = y0 + v * gy;
+          if (!this.inBounds(x, y) || !this.campSpot(x, y, gx, gy)) continue;
+          if (!this.walkable(camp, 0, s * d) || this.planHut({ x, y, gx, gy, hut: null }) === null) continue;
+          const moved = this.makeCamp(x, y, gx, gy);
+          this.clearFirePit(moved);
+          for (const id of camp.members) {
+            const o = this.creatureById[id];
+            if (o && o.brain !== null) {
+              this.release(o.brain);
+              o.brain.camp = moved;
+              o.brain.job = 'wandering';
+              o.brain.think = 0;
+            }
+            moved.members.add(id);
+          }
+          this.camps.splice(this.camps.indexOf(camp), 1);
+          return true;
+        }
+      }
+    }
+    return false;
   },
 
   // The camp within CAMP_JOIN, or a new one on flat dry ground a few cells
@@ -1404,9 +1462,26 @@ export const Humans = {
   // Sit a few cells from the fire, on the side away from the hut (its
   // doorway would be in the way).
   restByFire(e, b) {
-    const camp = b.camp, hut = camp.hut;
-    const s = hut === null ? this.besideCamp(e, camp, REST_U) : this.campCell(camp, -hut.side * REST_U, 0);
+    const s = this.restSpot(e, b.camp);
     if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
+  },
+
+  // Where to sit by the fire: REST_U from it on the side away from the hut
+  // (or the side it's on), or the nearest place there, either side, where
+  // a body can stand (a camp against a boulder has no room on that side).
+  restSpot(e, camp) {
+    const hut = camp.hut;
+    const side = hut !== null ? -hut.side : (e.x - camp.x) * camp.gy - (e.y - camp.y) * camp.gx >= 0 ? 1 : -1;
+    for (const s of [side, -side]) {
+      for (const u of [REST_U, REST_U + 2, REST_U - 2, REST_U + 4]) {
+        if (hut !== null && s * u >= hut.u0 - 1 && s * u <= hut.u0 + HUT_W) continue;
+        const g = this.groundAt(camp, s * u);
+        if (g === null) continue;
+        const c = this.campCell(camp, s * u, g - 1);
+        if (c >= 0 && this.roomToStand(c % this.w, (c / this.w) | 0, camp.gx, camp.gy)) return c;
+      }
+    }
+    return this.campCell(camp, side * REST_U, 0);
   },
 
   // Amble about near its camp (or where it is), stopping now and then.

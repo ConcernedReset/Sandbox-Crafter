@@ -520,10 +520,10 @@ Each frame (60 per second):
    until the pile catches as a **Campfire**: a gentle fire that holds 45 °C,
    never spreads and never scares anyone, burns down to ash, and goes out
    in water. Once the fire has been lit it
-   builds a hut beside it, 9 wide and 9 high, from stone, brick, granite or
+   builds a hut beside it, 9 wide and 10 high, from stone, brick, granite or
    concrete (wood only if there's nothing else, and then it may catch fire),
    taken from blocks and boulders rather than the ground it stands on: two
-   short walls over doorways 6 high, and a roof. Then it keeps the fire fed
+   short walls over doorways 7 high, and a roof. Then it keeps the fire fed
    from what it carries and sits a few cells from it, on the side away from
    the hut. Everyone helps build the first pile; after that one human keeps
    the fire going while the others build. Once the hut is up and the fire
@@ -542,7 +542,9 @@ Each frame (60 per second):
    network the humans share: entrances, junctions, bends and ends, which
    they find their way along, branching off an existing tunnel when that's
    shorter than starting a new one, and digging out or giving up on
-   stretches that get blocked. Cutting a tree at its foot brings it down.
+   stretches that get blocked. Cutting a tree at its foot brings it down
+   (its leaves scatter). A camp with nowhere for a hut moves somewhere
+   that has room, or, with nowhere it can get to, does without one.
    Humans walk right through each other. A shot is 4 pellets in a tight spread for 1 gunpowder; each
    pellet flies up to 80 cells (twice the 40 at which a human picks a
    target) and takes out the pixel of a creature it hits. Armed humans shoot
@@ -560,7 +562,7 @@ Each frame (60 per second):
    sandstone: dirt, sand, wood, leaves, ice, glass and the like) it digs
    through a cell at a time, up in steps if where it's going is higher, but
    never what a human built or put down, nor anything stronger. It
-   swims across water to where it was going (or, going nowhere, to the
+   wades water below its waist, and swims across deeper water to where it was going (or, going nowhere, to the
    nearest shore), coming up for air; held under for more than about 10
    seconds, it starts to drown. Humans near each other share a camp and
    split the work. It holds its body at 37 °C, so warm ground near its fire

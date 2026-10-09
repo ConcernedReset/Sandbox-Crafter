@@ -24,6 +24,7 @@ const SHAFT_COST = 1.5; // and climbing a spot of shaft as this many
 const CLIMB_EVERY = 6; // steps per spot climbed up or down a shaft
 export const TUNNEL_LINING = 24; // lining it wants in hand before it tunnels: scaffolding, and 4 for each wood
 const ENTRY_DEPTH = 7; // a new entrance starts as a shaft this deep: a small mouth, soon underground
+const ENTRY_GAP = 5; // and keeps this far across from other tunnels (side by side, walkers fall in one from the other)
 const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
 const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
 
@@ -55,6 +56,15 @@ export const Tunnels = {
 
   isInside(x, y) {
     return this.inBounds(x, y) && (this.tunnels.mask[y * this.w + x] & INSIDE) !== 0;
+  },
+
+  // Is the whole box of a body standing at (x, y) inside a tunnel (not just
+  // its feet, walking over a tunnel that runs close under the ground)?
+  wholeInside(x, y) {
+    const { gx, gy, mask } = this.tunnels, box = this.tunnelBox;
+    if (!this.boxCells(x, y, gx, gy, box)) return false;
+    for (const c of box) if ((mask[c] & INSIDE) === 0) return false;
+    return true;
   },
 
   // The spot at (x, y) is (to be) part of a tunnel.
@@ -338,6 +348,27 @@ export const Tunnels = {
     return legs;
   },
 
+  // Is there tunnel within `r` cells across of (x, y), from a body's height
+  // above it to a shaft's depth below?
+  nearTunnel(x, y, r) {
+    const { gx, gy } = this.tunnels;
+    for (let k = -r; k <= r; k++) {
+      for (let up = -ENTRY_DEPTH - 1; up < 6; up++) {
+        if (this.isInside(x + k * gy - up * gx, y - k * gx - up * gy)) return true;
+      }
+    }
+    return false;
+  },
+
+  // Has another human set off to open an entrance within `r` cells of x?
+  entranceClaimed(e, x, r) {
+    for (const o of this.creatures) {
+      const t = o !== e && o.brain !== null ? o.brain.tun : null;
+      if (t !== null && t.entrance && Math.abs(t.x - x) <= r) return true;
+    }
+    return false;
+  },
+
   // A standing spot on the surface for a new entrance: 14 to 40 cells
   // beside the camp (past where humans sit by the fire, who would block its
   // mouth), 4 or more clear of its hut (and its doorways), not in a tunnel,
@@ -354,7 +385,7 @@ export const Tunnels = {
         const c = this.campCell(camp, u, g - 1);
         if (c < 0 || this.type[c] !== 0) continue;
         const x = c % this.w, y = (c / this.w) | 0;
-        if (this.isInside(x, y) || this.nodeAt(x, y) !== null) continue;
+        if (this.nearTunnel(x, y, ENTRY_GAP) || this.entranceClaimed(e, x, ENTRY_GAP)) continue;
         const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;
         const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * (ENTRY_DEPTH + this.octo(bx, by, tx, ty, camp.gx, camp.gy));
         if (best === null || cost < best.cost) best = { x, y, cost };
@@ -666,7 +697,7 @@ export const Tunnels = {
     const net = this.tunnels;
     if (net.edges.size === 0 || net.gx !== e.gx || net.gy !== e.gy) return false;
     let at = this.onNet(e.x, e.y);
-    if (at === null && this.isInside(e.x, e.y) && this.backOnNet(e)) at = this.onNet(e.x, e.y);
+    if (at === null && this.wholeInside(e.x, e.y) && this.backOnNet(e)) at = this.onNet(e.x, e.y);
     if (at === null || (at.node !== null && at.node.entrance)) return false;
     const { dist, prev } = this.netDistances(this.netSources(e).src);
     let best = -1, bd = Infinity;

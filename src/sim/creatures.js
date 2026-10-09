@@ -107,13 +107,35 @@ export const Creatures = {
   removeCreature(e, keep = -1) {
     for (let p = 0; p < e.n; p++) {
       const c = e.cells[p];
-      if (c >= 0 && c !== keep && this.ownCell(e, c)) this.clearCell(c);
+      if (c >= 0 && c !== keep && this.ownCell(e, c)) {
+        this.clearCell(c);
+        this.handOver(e, c);
+      }
     }
     this.forgetCreature(e);
   },
 
   ownCell(e, c) {
     return this.type[c] === e.kind && this.ctype[c] === e.id;
+  },
+
+  // e is leaving cell c: if another body shares it (a SHARED pixel there),
+  // that one takes it over at once, so nothing falls into the gap. True if
+  // one did.
+  handOver(e, c) {
+    if (THROUGH[e.kind] === 0) return false;
+    for (const o of this.creatures) {
+      if (o === e || o.kind !== e.kind || Math.abs(o.x - e.x) > 8 || Math.abs(o.y - e.y) > 8) continue;
+      for (let p = 0; p < o.n; p++) {
+        if (o.pix[p] !== SHARED || o.cells[p] !== c) continue;
+        const T = this.bodyTemp(o);
+        this.clearCell(c);
+        this.writePixel(o, p, c, T, o.frame);
+        o.pix[p] = BODY;
+        return true;
+      }
+    }
+    return false;
   },
 
   // Is cell c held by another (whole, hatched) body e passes through?
@@ -299,6 +321,7 @@ export const Creatures = {
       sum += this.temp[c];
       k++;
       this.clearCell(c);
+      this.handOver(e, c);
       e.cells[p] = -1;
     }
     const T = k > 0 ? sum / k : AMBIENT;
@@ -419,6 +442,7 @@ export const Creatures = {
     for (let p = 0; p < e.n; p++) {
       if (e.pix[p] !== BODY) continue;
       const c = e.cells[p];
+      if (this.handOver(e, c)) continue; // another human there keeps the cell
       if (burnt) this.convert(c, ASH, false, -1);
       else if (e.shot && e.brain === null) this.convert(c, ID.MEAT, false, -1);
       else if (le === null) this.clearCell(c);
@@ -458,7 +482,7 @@ export const Creatures = {
   supported(e) {
     const { w, h, type } = this;
     for (let p = 0; p < e.n; p++) {
-      if (e.pix[p] !== BODY) continue;
+      if (e.pix[p] !== BODY && e.pix[p] !== SHARED) continue; // a shared pixel stands too
       const c = e.cells[p];
       const nx = (c % w) + e.gx, ny = ((c / w) | 0) + e.gy;
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) return true;

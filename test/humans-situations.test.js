@@ -342,3 +342,14 @@ test('a human wades through shallow water, and swims in deep water', () => {
   }
   assert.ok(swims(pool(8)) > 0, 'swims a deep one');
 });
+
+test('a human stepping off a shared cell hands it straight to the other (no gap for debris)', () => {
+  const w = makeWorld(60, 40, 3);
+  const [owner, sharer] = pair(w, 20, 30, 40, 30);
+  assert.ok(w.moveBody(sharer, owner.x, owner.y, owner.frame, owner.facing, owner.gx, owner.gy), 'it walks into the other');
+  const shared = (e) => [...e.pix].filter((s) => s === 3).length;
+  assert.ok(shared(sharer) > 0, 'they overlap');
+  assert.ok(w.moveBody(owner, owner.x + 4, owner.y, 0, 1, owner.gx, owner.gy) || w.moveBody(owner, owner.x - 4, owner.y, 0, -1, owner.gx, owner.gy), 'one steps away');
+  for (let p = 0; p < sharer.n; p++) if (sharer.pix[p] === 0) assert.equal(w.ctype[sharer.cells[p]], sharer.id, 'every pixel drawn at once');
+  assert.equal(shared(sharer), 0, 'nothing left shared');
+});

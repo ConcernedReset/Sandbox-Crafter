@@ -249,7 +249,9 @@ else; `test/build.test.js` checks the bundle runs.
   count them as ground (no standing on heads), and `moveBody`, growth and
   healing handle SHARED pixels. Only whole, hatched human bodies; other
   creatures still block. So humans never get in each other's way, in the
-  open or in a 3-wide tunnel, and any number may mine at once.
+  open or in a 3-wide tunnel, and any number may mine at once. A human
+  leaving a cell another shares hands it over at once (`handOver`, also on
+  death and removal), so nothing falls into the gap.
 - **Reliability** (the Wilderness pass): Giving
   up on a target bans everything of its kind within `BAN_R`. Taking wood
   with trunk above fells the tree (`fell`: its wood and leaves fall loose).
@@ -259,11 +261,21 @@ else; `test/build.test.js` checks the bundle runs.
   reach (`roomToStand`). The pile holds two rows; a burning pile's
   Campfire counts as fuel (`ON_FIRE`). A one-cell puddle under its feet
   isn't swimming. Walk-digging also tries a 2-cell step up. Measured over
-  12 Wilderness seeds and 40,000 steps: fire 12, hut and pickaxe 10,
-  armour 8 (from fire 5/6, hut 4/6, armour 0/6), usually by 6,000-12,500
-  steps; `test/humans-wilderness.test.js` runs seed 2 to armour. Still
-  weak: two seeds never build a hut (9, 12), two stall after the pickaxe
-  (1, 8). Probe scripts that measure this (milestones, time per job,
+  12 Wilderness seeds and 40,000 steps: armour on all 12, by 6,000-8,700
+  steps, nobody dead (from fire 5/6, hut 4/6, armour 0/6 at the start);
+  `test/humans-wilderness.test.js` runs seed 2 to armour. Later fixes:
+  humans wade water under their waist (`wadeDepth`, `SWIM_DEPTH`; afloat
+  over 3+ counts as swimming); doorways are 7 high (a cell of headroom for
+  growth or ash underfoot) and a blocked human can duck a step down (never
+  into a tunnel); the rest spot is somewhere a body fits (`restSpot`); a
+  camp with no hut site twice over moves (`moveCamp`, to a reachable spot
+  where a hut fits, `walkable` now also refusing water and drops) or, with
+  nowhere to go, does without (`noHut`: crafting starts without a hut);
+  fuel in hand goes on a low fire whoever is tending; entrances keep
+  `ENTRY_GAP` from tunnels and from entrances others have planned
+  (`entranceClaimed`); a human only snaps back onto the network when its
+  whole box is inside (`wholeInside`); felled trees' leaves scatter.
+  Probe scripts that measure this (milestones, time per job,
   stuck episodes) are worth rewriting when you come back to it.
   Shooting: `findFoe` (Spiders, Phoenixes, `rival` humans), `findPrey`
   (hunting, at most every 2,000 steps), `shootAt` holds fire unless the
