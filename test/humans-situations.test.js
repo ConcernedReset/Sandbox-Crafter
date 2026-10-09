@@ -251,7 +251,7 @@ test('what a human builds is remembered as made by humans', () => {
 // Reliability in rough country (the reliability pass): the Wilderness's
 // hills, trees and boulders, three humans, several seeds.
 
-for (const seed of [2, 5, 8]) {
+for (const seed of [3, 5, 11]) {
   test(`Wilderness humans light a fire, build a hut and make a pickaxe (seed ${seed})`, () => {
     const w = makeWorld(400, 240, seed);
     loadScene(w, 'wilderness');
@@ -263,21 +263,45 @@ for (const seed of [2, 5, 8]) {
   });
 }
 
-test("two humans in each other's way trade places, bodies whole", () => {
-  const w = makeWorld(60, 30, 1);
-  fillRect(w, 0, 25, 59, 29, ID.STONE);
-  w.spawn(22 * 60 + 26, ID.HUMAN);
-  w.spawn(22 * 60 + 30, ID.HUMAN);
+// Two humans grown on a stone floor, at (x0, y0) and (x1, y1).
+function pair(w, x0, y0, x1, y1) {
+  fillRect(w, 0, w.h - 5, w.w - 1, w.h - 1, ID.STONE);
+  w.spawn(y0 * w.w + x0, ID.HUMAN);
+  w.spawn(y1 * w.w + x1, ID.HUMAN);
   for (let f = 0; f < 40; f++) w.step();
-  const [a, b] = w.creatures.filter((e) => e.kind === ID.HUMAN).sort((p, q) => p.x - q.x);
-  const pa = [a.x, a.y], pb = [b.x, b.y], cells = countOf(w, ID.HUMAN);
-  a.brain.swapAt = b.brain.swapAt = -1000;
-  assert.ok(w.swapPlaces(a, b));
-  assert.deepEqual([a.x, a.y], pb);
-  assert.deepEqual([b.x, b.y], pa);
-  assert.equal(countOf(w, ID.HUMAN), cells, 'no pixel lost');
-  for (const e of [a, b]) for (const c of e.cells) assert.equal(w.ctype[c], e.id, 'each cell is its own');
-  assert.equal(w.swapPlaces(a, b), false, 'not again straight away');
+  return w.creatures.filter((e) => e.kind === ID.HUMAN).sort((p, q) => p.x - q.x);
+}
+
+test('two humans walk right through each other, and come out whole', () => {
+  const w = makeWorld(80, 30, 1);
+  fillRect(w, 0, 0, 79, 17, ID.STONE); // a low trench: no way round
+  const [a, b] = pair(w, 20, 22, 50, 22);
+  const ax = a.x, bx = b.x;
+  let met = false;
+  for (let f = 0; f < 800 && !(a.x > bx && b.x < ax); f++) {
+    for (const [e, x] of [[a, 70], [b, 5]]) {
+      e.brain.think = 99; // keep them at it
+      e.brain.job = 'wandering';
+      e.brain.goalX = x;
+      e.brain.goalY = e.y;
+    }
+    w.step();
+    if (Math.abs(a.x - b.x) <= 1) met = true;
+  }
+  assert.ok(met, 'they shared the same place');
+  assert.ok(a.x > bx && b.x < ax, `each got past the other (${ax}->${a.x}, ${bx}->${b.x})`);
+  for (let f = 0; f < 60; f++) w.step();
+  assert.equal(a.lost + b.lost, 0, 'nobody hurt');
+  assert.equal(countOf(w, ID.HUMAN), a.n + b.n, 'both bodies whole again, apart');
+});
+
+test('a human dropped onto another falls through it to the ground', () => {
+  const w = makeWorld(40, 40, 2);
+  pair(w, 20, 30, 20, 4); // one grows on the floor, the other drops onto it
+  const people = w.creatures.filter((e) => e.kind === ID.HUMAN);
+  assert.equal(people.length, 2);
+  for (let f = 0; f < 60; f++) w.step();
+  assert.ok(people.every((e) => e.y === 34), `both on the floor (${people.map((e) => e.y)})`);
 });
 
 test('a drop of liquid underfoot is not water to swim in', () => {

@@ -9044,8 +9044,12 @@ const COLD_HURT = -15; // this, is damaged (unless the creature is tough)
 const NEWBORN_GRACE = 60; // steps after birth before heat can hurt it
 const MAX_FALL = 4; // cells a step
 
-// What each pixel of a body is.
-const BODY = 0, HURT = 1, UNBORN = 2;
+// What each pixel of a body is. SHARED: there, but in a cell another body
+// of its kind holds (humans walk through each other); it isn't drawn, and
+// takes the cell back once the other has moved off.
+const BODY = 0, HURT = 1, UNBORN = 2, SHARED = 3;
+// Kinds whose bodies pass through each other: humans.
+const THROUGH = Uint8Array.from(DEFS, (d) => (d.critter && d.critter.moves === 'human' ? 1 : 0));
 
 function initCreatures(world) {
   world.creatures = []; // every entity, in no particular order
@@ -9123,6 +9127,11 @@ const Creatures = {
     return this.type[c] === e.kind && this.ctype[c] === e.id;
   },
 
+  // Is cell c held by another (whole, hatched) body e passes through?
+  sharing(e, c) {
+    return THROUGH[e.kind] === 1 && this.type[c] === e.kind && this.ctype[c] !== e.id && this.ctype[c] !== 0;
+  },
+
   // The way down at (x, y), as one of the four straight directions: a body
   // stands upright along it. null where nothing pulls.
   downFor(x, y) {
@@ -9160,6 +9169,7 @@ const Creatures = {
     const u = this.type[c];
     if (u === 0) return true;
     if (u === e.kind && this.ctype[c] === e.id) return true;
+    if (this.sharing(e, c)) return true;
     if (u === WALL) return (this.wall[c] & PASS_BIT[e.kind]) !== 0;
     const d = DEFS[u];
     if (!d.displaceable) return false;
@@ -9260,6 +9270,11 @@ const Creatures = {
       if (e.ring[p] > ring) { unborn++; continue; }
       const c = out[p];
       if (!this.roomForBody(e, c)) { unborn++; blocked = true; continue; }
+      if (this.sharing(e, c)) {
+        e.pix[p] = SHARED;
+        e.cells[p] = c;
+        continue;
+      }
       this.makeRoom(c, out, e.n);
       this.writePixel(e, p, c, T, e.frame);
       e.pix[p] = BODY;
@@ -9281,12 +9296,17 @@ const Creatures = {
   moveBody(e, x, y, fr, facing, gx, gy) {
     const out = this.footA, old = this.footB, n = e.n;
     if (!this.placeCells(e.kind, x, y, fr, facing, gx, gy, out)) return false;
-    for (let p = 0; p < n; p++) if (e.pix[p] === BODY && !this.roomForBody(e, out[p])) return false;
+    for (let p = 0; p < n; p++) if ((e.pix[p] === BODY || e.pix[p] === SHARED) && !this.roomForBody(e, out[p])) return false;
     let sum = 0, k = 0;
     for (let p = 0; p < n; p++) {
       const c = e.cells[p];
       old[p] = c;
       if (c < 0) continue;
+      if (!this.ownCell(e, c)) { // a shared cell: the other's
+        old[p] = -1;
+        e.cells[p] = -1;
+        continue;
+      }
       sum += this.temp[c];
       k++;
       this.clearCell(c);
@@ -9295,14 +9315,23 @@ const Creatures = {
     const T = k > 0 ? sum / k : AMBIENT;
     let f = 0;
     for (let p = 0; p < n; p++) {
-      if (e.pix[p] !== BODY) continue;
+      if (e.pix[p] !== BODY && e.pix[p] !== SHARED) continue;
       const c = out[p], u = this.type[c];
-      if (u === 0 || u === WALL) continue;
+      if (u === 0 || u === WALL || this.sharing(e, c)) continue;
       while (f < n && (old[f] < 0 || this.type[old[f]] !== 0 || this.inFootprint(old[f], out, n))) f++;
       if (f < n) this.swap(c, old[f++]);
       else this.makeRoom(c, out, n);
     }
-    for (let p = 0; p < n; p++) if (e.pix[p] === BODY) this.writePixel(e, p, out[p], T, fr);
+    for (let p = 0; p < n; p++) {
+      if (e.pix[p] !== BODY && e.pix[p] !== SHARED) continue;
+      if (this.sharing(e, out[p])) {
+        e.pix[p] = SHARED;
+        e.cells[p] = out[p];
+      } else {
+        e.pix[p] = BODY;
+        this.writePixel(e, p, out[p], T, fr);
+      }
+    }
     e.x = x;
     e.y = y;
     e.frame = fr;
@@ -9352,6 +9381,19 @@ const Creatures = {
     const { type, ctype, temp } = this;
     const feels = !DEFS[e.kind].critter.tough && e.age >= NEWBORN_GRACE;
     for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] === SHARED) {
+        // Still the other's, or free again (it takes the cell back).
+        const c = e.cells[p];
+        if (this.sharing(e, c)) continue;
+        if (type[c] === 0 || this.roomForBody(e, c)) {
+          if (type[c] !== 0 && !this.ownCell(e, c)) this.clearCell(c);
+          this.writePixel(e, p, c, this.bodyTemp(e), e.frame);
+          e.pix[p] = BODY;
+          continue;
+        }
+        this.hurt(e, p, false);
+        continue;
+      }
       if (e.pix[p] !== BODY) continue;
       const c = e.cells[p], u = type[c];
       if (u === e.kind && ctype[c] === e.id) {
@@ -9402,7 +9444,15 @@ const Creatures = {
     const out = this.footA;
     if (!this.placeCells(e.kind, e.x, e.y, e.frame, e.facing, e.gx, e.gy, out)) return;
     for (let p = 0; p < e.n; p++) {
-      if (e.pix[p] !== HURT || this.type[out[p]] !== 0) continue;
+      if (e.pix[p] !== HURT || (this.type[out[p]] !== 0 && !this.sharing(e, out[p]))) continue;
+      if (this.sharing(e, out[p])) {
+        e.pix[p] = SHARED;
+        e.cells[p] = out[p];
+        e.lost--;
+        if (e.burnt > e.lost) e.burnt = e.lost;
+        e.hurtAt = this.tick;
+        return;
+      }
       const T = this.bodyTemp(e);
       this.writePixel(e, p, out[p], T, e.frame);
       e.pix[p] = BODY;
@@ -9424,7 +9474,7 @@ const Creatures = {
       const nx = (c % w) + e.gx, ny = ((c / w) | 0) + e.gy;
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) return true;
       const j = ny * w + nx, u = type[j];
-      if (u === 0 || (u === e.kind && this.ctype[j] === e.id)) continue;
+      if (u === 0 || (u === e.kind && this.ctype[j] === e.id) || this.sharing(e, j)) continue; // not on someone it walks through
       if (u === WALL) {
         if ((this.wall[j] & PASS_BIT[e.kind]) !== 0) continue;
         return true;
@@ -11112,8 +11162,6 @@ const THINK_EVERY = 8;
 const WALK_EVERY = 4; // steps per cell walked
 const RUN_EVERY = 2; // and run
 const CLIMB = 2; // the highest step it climbs
-const PASS_REACH = 14; // how far it squeezes past other humans in its way
-const SWAP_EVERY = 40; // steps between trading places with another human
 const SWIM_CLIMB = 6; // or swims up, getting out of water
 const GIVE_UP = 300; // steps without getting closer before it gives up on a target
 const BAN_FOR = 1800; // and leaves that target alone
@@ -11214,7 +11262,6 @@ function newBrain() {
     tun: null, // the tunnel it's travelling or digging (tunnels.js)
     hold: false, // holding on in a tunnel (no falling) this step
     bailed: 0, // liquid cells bailed out of the spot it's clearing
-    swapAt: -SWAP_EVERY, // when it last traded places with another human
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
@@ -11384,9 +11431,9 @@ const Humans = {
 
   // One step across the down arrow, `dir` (1 or -1) becoming the way it
   // faces: on the level, or up a step of up to `climb` cells. Running
-  // (`leap`), it carries on over a gap of up to 2 cells. Another human in
-  // the way: they squeeze past each other. Returns whether it moved.
-  stepAcross(e, dir, climb, leap, giveWay = true) {
+  // (`leap`), it carries on over a gap of up to 2 cells. (Other humans
+  // aren't in the way: it walks through them.) Returns whether it moved.
+  stepAcross(e, dir, climb, leap) {
     const rx = e.gy * dir, ry = -e.gx * dir;
     const fr = e.frame === 0 ? 1 : 0;
     for (let up = 0; up <= climb; up++) {
@@ -11398,67 +11445,7 @@ const Humans = {
       }
       return true;
     }
-    const other = this.creatureAhead(e, rx, ry);
-    if (other === null || other.kind !== e.kind) return false;
-    if (this.passBy(e, other, rx, ry, dir) || this.swapPlaces(e, other)) return true;
-    // Head to head and no way past: the younger gives way, stepping back.
-    if (giveWay && other.brain !== null && other.brain.heading === -dir && e.id > other.id) this.stepAcross(e, -dir, CLIMB, false, false);
     return false;
-  },
-
-  // Two humans in each other's way trade places: e takes o's exact cells
-  // and pose, and o takes e's. Together they fill the same cells as before,
-  // so it always fits, on a slope or in a tunnel alike. Only whole bodies,
-  // and not too often (so they don't trade back and forth).
-  swapPlaces(e, o) {
-    if (o.brain === null || o.kind !== e.kind || e.grow >= 0 || o.grow >= 0) return false;
-    if (this.tick - e.brain.swapAt < SWAP_EVERY || this.tick - o.brain.swapAt < SWAP_EVERY) return false;
-    for (let p = 0; p < e.n; p++) if (e.pix[p] !== BODY || o.pix[p] !== BODY) return false;
-    const te = this.bodyTemp(e), to = this.bodyTemp(o);
-    const ec = Int32Array.from(e.cells), oc = Int32Array.from(o.cells);
-    const pose = (a) => ({ x: a.x, y: a.y, frame: a.frame, facing: a.facing, gx: a.gx, gy: a.gy, fallV: 0 });
-    const pe = pose(e), po = pose(o);
-    for (let p = 0; p < e.n; p++) this.writePixel(e, p, oc[p], te, po.frame);
-    for (let p = 0; p < o.n; p++) this.writePixel(o, p, ec[p], to, pe.frame);
-    Object.assign(e, po);
-    Object.assign(o, pe);
-    e.brain.swapAt = o.brain.swapAt = this.tick;
-    return true;
-  },
-
-  // Squeeze past the humans ahead of it (rx, ry): to the first place beyond
-  // them where it fits, up to PASS_REACH cells on, as long as nothing but
-  // air and creatures lies between.
-  passBy(e, o, rx, ry, dir) {
-    for (let k = 2; k <= PASS_REACH; k++) {
-      // The column k cells across, from its feet to its head.
-      for (let up = 0; up < 6; up++) {
-        const x = e.x + k * rx - up * e.gx, y = e.y + k * ry - up * e.gy;
-        if (!this.inBounds(x, y)) return false;
-        const t = this.type[y * this.w + x];
-        if (!SHAPED[t] && !this.roomForBody(e, y * this.w + x)) return false;
-      }
-      if (k < 3) continue;
-      for (let up = 0; up <= CLIMB; up++) {
-        if (this.moveBody(e, e.x + k * rx - up * e.gx, e.y + k * ry - up * e.gy, 0, dir, e.gx, e.gy)) return true;
-      }
-    }
-    return false;
-  },
-
-  // The creature in the column just past e's side (rx, ry), from its feet
-  // to its head, or null.
-  creatureAhead(e, rx, ry) {
-    for (let up = 0; up < 6; up++) {
-      const x = e.x + 2 * rx - up * e.gx, y = e.y + 2 * ry - up * e.gy;
-      if (!this.inBounds(x, y)) continue;
-      const a = y * this.w + x;
-      if (SHAPED[this.type[a]] && !this.ownCell(e, a)) {
-        const o = this.creatureById[this.ctype[a]];
-        if (o && o.kind === this.type[a]) return o;
-      }
-    }
-    return null;
   },
 
   // Walk (a step every `every` steps) towards (tx, ty) across the down
@@ -13165,9 +13152,6 @@ const Tunnels = {
   // False if there's no way (it skips that one a while).
   startMining(e, b, camp, key, goal) {
     if ((b.skip.get(key) ?? 0) > this.tick) return false;
-    // One human in the tunnels at a time: two in a tunnel can't pass. The
-    // others wait their turn (doing other things).
-    for (const o of this.creatures) if (o !== e && o.brain !== null && this.inTunnels(o)) return false;
     const set = RESOURCES[key];
     const t = this.findDeposit(e, camp, set, this.digLimit(b));
     const plan = t < 0 ? null : this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
@@ -13220,15 +13204,6 @@ const Tunnels = {
     if (!this.boxCells(x, y, gx, gy, box)) return false;
     for (const c of box) if (this.type[c] !== 0 && DEFS[this.type[c]].state === LIQUID) return true;
     return false;
-  },
-
-  // Is human o using the tunnels: mining, or anywhere in the network but
-  // an entrance?
-  inTunnels(o) {
-    if (o.brain.tun !== null) return true;
-    if (this.tunnels.edges.size === 0 || !this.isInside(o.x, o.y)) return false;
-    const at = this.nearSpot(o.x, o.y);
-    return at !== null && !(at.node !== null && at.node.entrance);
   },
 
   // The nearest spot of the network to (x, y), within 2 cells: { x, y,
@@ -13353,23 +13328,7 @@ const Tunnels = {
     }
     const r = this.workSpot(e, b, e.x + dx, e.y + dy);
     if (r === 'work') return 'busy';
-    // Another human in the way: they trade places.
-    if (r === 'wait' || r === 'clear') {
-      const o = this.humanIn(e, e.x + dx, e.y + dy);
-      if (o !== null && this.swapPlaces(e, o)) return 'moved';
-    }
     return r === 'clear' ? 'wait' : r;
-  },
-
-  // Another human with a cell in the box at spot (x, y), or null.
-  humanIn(e, x, y) {
-    const { gx, gy } = this.tunnels, box = this.tunnelBox;
-    if (!this.boxCells(x, y, gx, gy, box)) return null;
-    for (const c of box) {
-      const o = this.creatureAt(c);
-      if (o !== null && o !== e && o.brain !== null) return o;
-    }
-    return null;
   },
 
   // Dig the plan's legs a spot at a time from where it stands, growing the

@@ -179,8 +179,8 @@ else; `test/build.test.js` checks the bundle runs.
   user-facing name (shown in the inspect line). Camps live in
   `world.camps` with their own frame (`campCell(camp, u, v)`: u across,
   v down from the pile's spot); claims stop two humans fetching the same
-  cell. Humans don't walk across a burning pile (`acrossFire`), squeeze
-  past each other (`passBy`), and treat their own fire's flames over the
+  cell. Humans don't walk across a burning pile (`acrossFire`), walk
+  through each other (SHARED pixels, below), and treat their own fire's flames over the
   pile, and warm ground round it, as safe; but a reflex (`scorched`) steps
   them back from anything over 100 °C within 2 cells, every step, before
   they think (flames cook a pixel in one touch). After the first lighting
@@ -188,9 +188,7 @@ else; `test/build.test.js` checks the bundle runs.
   (`tending`); building material must be open to one side (`openSide`), so
   they don't dig up the floor. A new camp clears flammable ground from its
   fire pit (`clearFirePit`). Swimmers keep `brain.heading` (the way they
-  last walked) and resume `wasJob` on leaving the water. `passBy` squeezes
-  past a whole row of humans (up to 14 cells, never through anything
-  solid). Walking (`walkTo`) and blocked, they dig (`digToward`) one
+  last walked) and resume `wasJob` on leaving the water. Walking (`walkTo`) and blocked, they dig (`digToward`) one
   cell of whatever stops a level step, or a step up: only if every blocking
   cell is `diggable` (a powder or a solid of strength <= 30, not hot, not
   a danger, and not `madeByHuman`). `world.humanMade` maps cells to what a
@@ -238,15 +236,21 @@ else; `test/build.test.js` checks the bundle runs.
   Humans never fetch human-placed wood (`findWanted` skips `madeByHuman`).
   Tested in `test/tunnels.test.js`. A new entrance starts as a shaft
   `ENTRY_DEPTH` (7) deep; entrances keep 14+ cells from the fire (resting
-  humans would sit on the mouth). One human in the tunnels at a time
-  (`inTunnels`: two can't pass in a 3-wide tunnel). `reachSpot` walks to a
+  humans would sit on the mouth). `reachSpot` walks to a
   spot and digs it clear if it has filled; `workSpot` bails out liquid
   (`BAIL` cells, then the spot counts flooded). A human off-spot inside a
   tunnel snaps back on (`backOnNet`, never to an entrance). Tunnel lining
   is protected from gatherers but a walker may dig lining in its way.
-- **Reliability** (the Wilderness pass): humans in each other's way trade
-  places (`swapPlaces`: exact cells and pose, so it always fits; not more
-  often than `SWAP_EVERY`), and head-to-head the younger steps back. Giving
+- **Humans walk through each other** (creatures.js): a pixel of a human
+  that lands in a cell another human holds is `SHARED`: part of its body
+  but not drawn (the cell stays the other's); `checkBody` gives it the cell
+  back once the other has moved off (`sharing`, `THROUGH`).
+  `roomForBody` counts another human's cells as room, `supported` doesn't
+  count them as ground (no standing on heads), and `moveBody`, growth and
+  healing handle SHARED pixels. Only whole, hatched human bodies; other
+  creatures still block. So humans never get in each other's way, in the
+  open or in a 3-wide tunnel, and any number may mine at once.
+- **Reliability** (the Wilderness pass): Giving
   up on a target bans everything of its kind within `BAN_R`. Taking wood
   with trunk above fells the tree (`fell`: its wood and leaves fall loose).
   Hut sites: up to `HUT_R` (40) from the pile, a climbable step of flat,
@@ -255,11 +259,11 @@ else; `test/build.test.js` checks the bundle runs.
   reach (`roomToStand`). The pile holds two rows; a burning pile's
   Campfire counts as fuel (`ON_FIRE`). A one-cell puddle under its feet
   isn't swimming. Walk-digging also tries a 2-cell step up. Measured over
-  12 Wilderness seeds and 40,000 steps: fire 11, hut and pickaxe 9, armour
-  8 (from fire 5/6, hut 4/6, armour 0/6), usually by 9,000-16,000 steps;
-  `test/humans-wilderness.test.js` runs seed 2 to armour. Still weak: two
-  seeds never build a hut, one stalls after the pickaxe, one never lights
-  its fire. Probe scripts that measure this (milestones, time per job,
+  12 Wilderness seeds and 40,000 steps: fire 12, hut and pickaxe 10,
+  armour 8 (from fire 5/6, hut 4/6, armour 0/6), usually by 6,000-12,500
+  steps; `test/humans-wilderness.test.js` runs seed 2 to armour. Still
+  weak: two seeds never build a hut (9, 12), two stall after the pickaxe
+  (1, 8). Probe scripts that measure this (milestones, time per job,
   stuck episodes) are worth rewriting when you come back to it.
   Shooting: `findFoe` (Spiders, Phoenixes, `rival` humans), `findPrey`
   (hunting, at most every 2,000 steps), `shootAt` holds fire unless the

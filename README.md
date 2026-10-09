@@ -543,7 +543,7 @@ Each frame (60 per second):
    they find their way along, branching off an existing tunnel when that's
    shorter than starting a new one, and digging out or giving up on
    stretches that get blocked. Cutting a tree at its foot brings it down.
-   Humans in each other's way trade places. A shot is 4 pellets in a tight spread for 1 gunpowder; each
+   Humans walk right through each other. A shot is 4 pellets in a tight spread for 1 gunpowder; each
    pellet flies up to 80 cells (twice the 40 at which a human picks a
    target) and takes out the pixel of a creature it hits. Armed humans shoot
    Spiders and Phoenixes near camp, hunt an animal now and then (it leaves
@@ -555,7 +555,7 @@ Each frame (60 per second):
    acid, napalm, flames, anything very hot, grey goo, viruses, antimatter,
    black holes and blasts, and steps straight back from any flame or
    scorching thing within two cells of it, its own fire's included; it won't
-   walk through its own fire, and squeezes past other humans in its way.
+   walk through its own fire, and walks straight through other humans.
    Anything weak in its way (powders, and solids no stronger than
    sandstone: dirt, sand, wood, leaves, ice, glass and the like) it digs
    through a cell at a time, up in steps if where it's going is higher, but

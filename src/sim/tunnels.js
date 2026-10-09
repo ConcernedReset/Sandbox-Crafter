@@ -393,9 +393,6 @@ export const Tunnels = {
   // False if there's no way (it skips that one a while).
   startMining(e, b, camp, key, goal) {
     if ((b.skip.get(key) ?? 0) > this.tick) return false;
-    // One human in the tunnels at a time: two in a tunnel can't pass. The
-    // others wait their turn (doing other things).
-    for (const o of this.creatures) if (o !== e && o.brain !== null && this.inTunnels(o)) return false;
     const set = RESOURCES[key];
     const t = this.findDeposit(e, camp, set, this.digLimit(b));
     const plan = t < 0 ? null : this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
@@ -448,15 +445,6 @@ export const Tunnels = {
     if (!this.boxCells(x, y, gx, gy, box)) return false;
     for (const c of box) if (this.type[c] !== 0 && DEFS[this.type[c]].state === LIQUID) return true;
     return false;
-  },
-
-  // Is human o using the tunnels: mining, or anywhere in the network but
-  // an entrance?
-  inTunnels(o) {
-    if (o.brain.tun !== null) return true;
-    if (this.tunnels.edges.size === 0 || !this.isInside(o.x, o.y)) return false;
-    const at = this.nearSpot(o.x, o.y);
-    return at !== null && !(at.node !== null && at.node.entrance);
   },
 
   // The nearest spot of the network to (x, y), within 2 cells: { x, y,
@@ -581,23 +569,7 @@ export const Tunnels = {
     }
     const r = this.workSpot(e, b, e.x + dx, e.y + dy);
     if (r === 'work') return 'busy';
-    // Another human in the way: they trade places.
-    if (r === 'wait' || r === 'clear') {
-      const o = this.humanIn(e, e.x + dx, e.y + dy);
-      if (o !== null && this.swapPlaces(e, o)) return 'moved';
-    }
     return r === 'clear' ? 'wait' : r;
-  },
-
-  // Another human with a cell in the box at spot (x, y), or null.
-  humanIn(e, x, y) {
-    const { gx, gy } = this.tunnels, box = this.tunnelBox;
-    if (!this.boxCells(x, y, gx, gy, box)) return null;
-    for (const c of box) {
-      const o = this.creatureAt(c);
-      if (o !== null && o !== e && o.brain !== null) return o;
-    }
-    return null;
   },
 
   // Dig the plan's legs a spot at a time from where it stands, growing the

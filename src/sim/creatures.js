@@ -33,8 +33,12 @@ export const COLD_HURT = -15; // this, is damaged (unless the creature is tough)
 export const NEWBORN_GRACE = 60; // steps after birth before heat can hurt it
 const MAX_FALL = 4; // cells a step
 
-// What each pixel of a body is.
-export const BODY = 0, HURT = 1, UNBORN = 2;
+// What each pixel of a body is. SHARED: there, but in a cell another body
+// of its kind holds (humans walk through each other); it isn't drawn, and
+// takes the cell back once the other has moved off.
+export const BODY = 0, HURT = 1, UNBORN = 2, SHARED = 3;
+// Kinds whose bodies pass through each other: humans.
+const THROUGH = Uint8Array.from(DEFS, (d) => (d.critter && d.critter.moves === 'human' ? 1 : 0));
 
 export function initCreatures(world) {
   world.creatures = []; // every entity, in no particular order
@@ -112,6 +116,11 @@ export const Creatures = {
     return this.type[c] === e.kind && this.ctype[c] === e.id;
   },
 
+  // Is cell c held by another (whole, hatched) body e passes through?
+  sharing(e, c) {
+    return THROUGH[e.kind] === 1 && this.type[c] === e.kind && this.ctype[c] !== e.id && this.ctype[c] !== 0;
+  },
+
   // The way down at (x, y), as one of the four straight directions: a body
   // stands upright along it. null where nothing pulls.
   downFor(x, y) {
@@ -149,6 +158,7 @@ export const Creatures = {
     const u = this.type[c];
     if (u === 0) return true;
     if (u === e.kind && this.ctype[c] === e.id) return true;
+    if (this.sharing(e, c)) return true;
     if (u === WALL) return (this.wall[c] & PASS_BIT[e.kind]) !== 0;
     const d = DEFS[u];
     if (!d.displaceable) return false;
@@ -249,6 +259,11 @@ export const Creatures = {
       if (e.ring[p] > ring) { unborn++; continue; }
       const c = out[p];
       if (!this.roomForBody(e, c)) { unborn++; blocked = true; continue; }
+      if (this.sharing(e, c)) {
+        e.pix[p] = SHARED;
+        e.cells[p] = c;
+        continue;
+      }
       this.makeRoom(c, out, e.n);
       this.writePixel(e, p, c, T, e.frame);
       e.pix[p] = BODY;
@@ -270,12 +285,17 @@ export const Creatures = {
   moveBody(e, x, y, fr, facing, gx, gy) {
     const out = this.footA, old = this.footB, n = e.n;
     if (!this.placeCells(e.kind, x, y, fr, facing, gx, gy, out)) return false;
-    for (let p = 0; p < n; p++) if (e.pix[p] === BODY && !this.roomForBody(e, out[p])) return false;
+    for (let p = 0; p < n; p++) if ((e.pix[p] === BODY || e.pix[p] === SHARED) && !this.roomForBody(e, out[p])) return false;
     let sum = 0, k = 0;
     for (let p = 0; p < n; p++) {
       const c = e.cells[p];
       old[p] = c;
       if (c < 0) continue;
+      if (!this.ownCell(e, c)) { // a shared cell: the other's
+        old[p] = -1;
+        e.cells[p] = -1;
+        continue;
+      }
       sum += this.temp[c];
       k++;
       this.clearCell(c);
@@ -284,14 +304,23 @@ export const Creatures = {
     const T = k > 0 ? sum / k : AMBIENT;
     let f = 0;
     for (let p = 0; p < n; p++) {
-      if (e.pix[p] !== BODY) continue;
+      if (e.pix[p] !== BODY && e.pix[p] !== SHARED) continue;
       const c = out[p], u = this.type[c];
-      if (u === 0 || u === WALL) continue;
+      if (u === 0 || u === WALL || this.sharing(e, c)) continue;
       while (f < n && (old[f] < 0 || this.type[old[f]] !== 0 || this.inFootprint(old[f], out, n))) f++;
       if (f < n) this.swap(c, old[f++]);
       else this.makeRoom(c, out, n);
     }
-    for (let p = 0; p < n; p++) if (e.pix[p] === BODY) this.writePixel(e, p, out[p], T, fr);
+    for (let p = 0; p < n; p++) {
+      if (e.pix[p] !== BODY && e.pix[p] !== SHARED) continue;
+      if (this.sharing(e, out[p])) {
+        e.pix[p] = SHARED;
+        e.cells[p] = out[p];
+      } else {
+        e.pix[p] = BODY;
+        this.writePixel(e, p, out[p], T, fr);
+      }
+    }
     e.x = x;
     e.y = y;
     e.frame = fr;
@@ -341,6 +370,19 @@ export const Creatures = {
     const { type, ctype, temp } = this;
     const feels = !DEFS[e.kind].critter.tough && e.age >= NEWBORN_GRACE;
     for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] === SHARED) {
+        // Still the other's, or free again (it takes the cell back).
+        const c = e.cells[p];
+        if (this.sharing(e, c)) continue;
+        if (type[c] === 0 || this.roomForBody(e, c)) {
+          if (type[c] !== 0 && !this.ownCell(e, c)) this.clearCell(c);
+          this.writePixel(e, p, c, this.bodyTemp(e), e.frame);
+          e.pix[p] = BODY;
+          continue;
+        }
+        this.hurt(e, p, false);
+        continue;
+      }
       if (e.pix[p] !== BODY) continue;
       const c = e.cells[p], u = type[c];
       if (u === e.kind && ctype[c] === e.id) {
@@ -391,7 +433,15 @@ export const Creatures = {
     const out = this.footA;
     if (!this.placeCells(e.kind, e.x, e.y, e.frame, e.facing, e.gx, e.gy, out)) return;
     for (let p = 0; p < e.n; p++) {
-      if (e.pix[p] !== HURT || this.type[out[p]] !== 0) continue;
+      if (e.pix[p] !== HURT || (this.type[out[p]] !== 0 && !this.sharing(e, out[p]))) continue;
+      if (this.sharing(e, out[p])) {
+        e.pix[p] = SHARED;
+        e.cells[p] = out[p];
+        e.lost--;
+        if (e.burnt > e.lost) e.burnt = e.lost;
+        e.hurtAt = this.tick;
+        return;
+      }
       const T = this.bodyTemp(e);
       this.writePixel(e, p, out[p], T, e.frame);
       e.pix[p] = BODY;
@@ -413,7 +463,7 @@ export const Creatures = {
       const nx = (c % w) + e.gx, ny = ((c / w) | 0) + e.gy;
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) return true;
       const j = ny * w + nx, u = type[j];
-      if (u === 0 || (u === e.kind && this.ctype[j] === e.id)) continue;
+      if (u === 0 || (u === e.kind && this.ctype[j] === e.id) || this.sharing(e, j)) continue; // not on someone it walks through
       if (u === WALL) {
         if ((this.wall[j] & PASS_BIT[e.kind]) !== 0) continue;
         return true;

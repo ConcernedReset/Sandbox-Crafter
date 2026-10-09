@@ -20,8 +20,6 @@ export const THINK_EVERY = 8;
 export const WALK_EVERY = 4; // steps per cell walked
 export const RUN_EVERY = 2; // and run
 const CLIMB = 2; // the highest step it climbs
-const PASS_REACH = 14; // how far it squeezes past other humans in its way
-const SWAP_EVERY = 40; // steps between trading places with another human
 const SWIM_CLIMB = 6; // or swims up, getting out of water
 export const GIVE_UP = 300; // steps without getting closer before it gives up on a target
 export const BAN_FOR = 1800; // and leaves that target alone
@@ -122,7 +120,6 @@ export function newBrain() {
     tun: null, // the tunnel it's travelling or digging (tunnels.js)
     hold: false, // holding on in a tunnel (no falling) this step
     bailed: 0, // liquid cells bailed out of the spot it's clearing
-    swapAt: -SWAP_EVERY, // when it last traded places with another human
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
@@ -292,9 +289,9 @@ export const Humans = {
 
   // One step across the down arrow, `dir` (1 or -1) becoming the way it
   // faces: on the level, or up a step of up to `climb` cells. Running
-  // (`leap`), it carries on over a gap of up to 2 cells. Another human in
-  // the way: they squeeze past each other. Returns whether it moved.
-  stepAcross(e, dir, climb, leap, giveWay = true) {
+  // (`leap`), it carries on over a gap of up to 2 cells. (Other humans
+  // aren't in the way: it walks through them.) Returns whether it moved.
+  stepAcross(e, dir, climb, leap) {
     const rx = e.gy * dir, ry = -e.gx * dir;
     const fr = e.frame === 0 ? 1 : 0;
     for (let up = 0; up <= climb; up++) {
@@ -306,67 +303,7 @@ export const Humans = {
       }
       return true;
     }
-    const other = this.creatureAhead(e, rx, ry);
-    if (other === null || other.kind !== e.kind) return false;
-    if (this.passBy(e, other, rx, ry, dir) || this.swapPlaces(e, other)) return true;
-    // Head to head and no way past: the younger gives way, stepping back.
-    if (giveWay && other.brain !== null && other.brain.heading === -dir && e.id > other.id) this.stepAcross(e, -dir, CLIMB, false, false);
     return false;
-  },
-
-  // Two humans in each other's way trade places: e takes o's exact cells
-  // and pose, and o takes e's. Together they fill the same cells as before,
-  // so it always fits, on a slope or in a tunnel alike. Only whole bodies,
-  // and not too often (so they don't trade back and forth).
-  swapPlaces(e, o) {
-    if (o.brain === null || o.kind !== e.kind || e.grow >= 0 || o.grow >= 0) return false;
-    if (this.tick - e.brain.swapAt < SWAP_EVERY || this.tick - o.brain.swapAt < SWAP_EVERY) return false;
-    for (let p = 0; p < e.n; p++) if (e.pix[p] !== BODY || o.pix[p] !== BODY) return false;
-    const te = this.bodyTemp(e), to = this.bodyTemp(o);
-    const ec = Int32Array.from(e.cells), oc = Int32Array.from(o.cells);
-    const pose = (a) => ({ x: a.x, y: a.y, frame: a.frame, facing: a.facing, gx: a.gx, gy: a.gy, fallV: 0 });
-    const pe = pose(e), po = pose(o);
-    for (let p = 0; p < e.n; p++) this.writePixel(e, p, oc[p], te, po.frame);
-    for (let p = 0; p < o.n; p++) this.writePixel(o, p, ec[p], to, pe.frame);
-    Object.assign(e, po);
-    Object.assign(o, pe);
-    e.brain.swapAt = o.brain.swapAt = this.tick;
-    return true;
-  },
-
-  // Squeeze past the humans ahead of it (rx, ry): to the first place beyond
-  // them where it fits, up to PASS_REACH cells on, as long as nothing but
-  // air and creatures lies between.
-  passBy(e, o, rx, ry, dir) {
-    for (let k = 2; k <= PASS_REACH; k++) {
-      // The column k cells across, from its feet to its head.
-      for (let up = 0; up < 6; up++) {
-        const x = e.x + k * rx - up * e.gx, y = e.y + k * ry - up * e.gy;
-        if (!this.inBounds(x, y)) return false;
-        const t = this.type[y * this.w + x];
-        if (!SHAPED[t] && !this.roomForBody(e, y * this.w + x)) return false;
-      }
-      if (k < 3) continue;
-      for (let up = 0; up <= CLIMB; up++) {
-        if (this.moveBody(e, e.x + k * rx - up * e.gx, e.y + k * ry - up * e.gy, 0, dir, e.gx, e.gy)) return true;
-      }
-    }
-    return false;
-  },
-
-  // The creature in the column just past e's side (rx, ry), from its feet
-  // to its head, or null.
-  creatureAhead(e, rx, ry) {
-    for (let up = 0; up < 6; up++) {
-      const x = e.x + 2 * rx - up * e.gx, y = e.y + 2 * ry - up * e.gy;
-      if (!this.inBounds(x, y)) continue;
-      const a = y * this.w + x;
-      if (SHAPED[this.type[a]] && !this.ownCell(e, a)) {
-        const o = this.creatureById[this.ctype[a]];
-        if (o && o.kind === this.type[a]) return o;
-      }
-    }
-    return null;
   },
 
   // Walk (a step every `every` steps) towards (tx, ty) across the down
