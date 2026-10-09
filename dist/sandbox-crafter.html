@@ -11189,6 +11189,9 @@ const WALK_EVERY = 4; // steps per cell walked
 const RUN_EVERY = 2; // and run
 const CLIMB = 2; // the highest step it climbs
 const WALL_EVERY = 12; // steps per cell climbing a wall higher than that (twice a tunnel shaft's)
+const THIN_WALL = 4; // a wall this thin (or less) it can dig through, it digs through rather than climb
+const SOFT_WALL = 8; // and this thin, if it's all wood or growth (a tree trunk, a bush)
+const SOFT = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.key === 'WOOD' || d.cat === 'life') ? 1 : 0));
 const SWIM_CLIMB = 6; // or swims up, getting out of water
 const SWIM_DEPTH = 4; // liquid this deep beside it (above its waist), it swims; shallower, it wades
 const GIVE_UP = 300; // steps without getting closer before it gives up on a target
@@ -11557,7 +11560,14 @@ const Humans = {
     // count as getting closer (climbing, only higher than it has climbed on
     // the way yet: under an overhang it would climb a cell, drop back and
     // climb again for ever).
+    // But a thin wall it can dig (a tree trunk, a bank a few cells thick) it
+    // cuts straight through: quicker, and it isn't left up a tree.
     const vdir = v < -1 ? -1 : v > 4 ? 1 : 0;
+    if (!b.climbing && this.cutThrough(e, b.heading, this.digLimit(b)) && this.digToward(e, b, b.heading, vdir)) {
+      b.stuck = 0;
+      b.pace = every - DIG_EVERY;
+      return false;
+    }
     const inWall = Math.abs(a) <= 6 && v >= -6 && this.inBounds(tx, ty) && this.builtAt(ty * this.w + tx);
     if (!inWall && this.climbWall(e, b.heading)) {
       b.climbing = true;
@@ -11573,6 +11583,30 @@ const Humans = {
     if (this.digToward(e, b, b.heading, vdir)) {
       b.stuck = 0;
       b.pace = every - DIG_EVERY;
+    }
+    return false;
+  },
+
+  // Is the wall ahead (the way `dir`) one to dig through rather than climb:
+  // at most THIN_WALL columns thick at body height above a climbable step
+  // (SOFT_WALL if it's all wood or growth), with everything there at body
+  // height diggable (to strength `limit`)?
+  cutThrough(e, dir, limit) {
+    const rx = e.gy * dir, ry = -e.gx * dir;
+    let soft = true;
+    for (let k = 2; k < 2 + SOFT_WALL + 1; k++) {
+      let wall = false;
+      for (let up = 0; up < 6; up++) {
+        const x = e.x + k * rx - up * e.gx, y = e.y + k * ry - up * e.gy;
+        if (!this.inBounds(x, y)) return false;
+        const c = y * this.w + x;
+        if (!this.builtAt(c)) continue;
+        if (!this.diggable(c, limit) && !CLEARABLE[this.type[c]]) return false;
+        if (!SOFT[this.type[c]]) soft = false;
+        if (up > CLIMB) wall = true; // higher than a step
+      }
+      if (!wall) return k - 2 <= (soft ? SOFT_WALL : THIN_WALL); // through: that thick
+      if (!soft && k - 1 > THIN_WALL) return false;
     }
     return false;
   },

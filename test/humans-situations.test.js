@@ -336,6 +336,27 @@ test('a human climbs a sheer wall, slowly, without digging into it', () => {
   assert.ok(climbing >= 12 * 12, `climbing slowly (${climbing} steps on the wall)`);
 });
 
+test('a human cuts through a tree trunk in its way rather than climbing the tree', () => {
+  const w = makeWorld(160, 60, 2);
+  fillRect(w, 0, 55, 159, 59, ID.STONE);
+  fillRect(w, 70, 30, 71, 54, ID.WOOD); // a trunk 2 wide
+  fillRect(w, 62, 24, 79, 31, ID.LEAVES); // under its crown
+  w.spawn(50 * 160 + 40, ID.HUMAN);
+  for (let f = 0; f < 40; f++) w.step();
+  const e = w.creatures.find((c) => c.kind === ID.HUMAN);
+  let highest = e.y, f = 0;
+  for (; f < 2000 && e.x < 100; f++) {
+    e.brain.think = 99; // keep it at it
+    e.brain.job = 'wandering';
+    e.brain.goalX = 110;
+    e.brain.goalY = 54;
+    w.step();
+    highest = Math.min(highest, e.y);
+  }
+  assert.ok(e.x >= 100, `past the tree in ${f} steps (at ${e.x},${e.y})`);
+  assert.equal(highest, 54, 'it never left the ground');
+});
+
 test('a human climbs all the way over a cliff to wood on the lower side', () => {
   const w = makeWorld(200, 90, 2);
   fillRect(w, 0, 85, 199, 89, ID.STONE);

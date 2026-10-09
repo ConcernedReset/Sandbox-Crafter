@@ -527,8 +527,10 @@ Each frame (60 per second):
    into a Phoenix, the whole bird.
 
    **Humans** (Lightning striking Clay) have a mind of their own. A human
-   climbs any wall too high to step up, slowly, hand over hand, all the
-   way over (digging through only where it can't climb). One that ends up
+   cuts through a thin wall in its way (a tree trunk or bush up to 8 cells
+   thick, anything else it can dig up to 4) and climbs any thicker one,
+   slowly, hand over hand, all the way over (digging through only where it
+   can't climb). One that ends up
    more than 150 cells from its camp for a long while (carried off, or
    stuck somewhere it can't get back from) makes a new camp where it is.
    It carries as much as it picks up

@@ -190,7 +190,10 @@ else; `test/build.test.js` checks the bundle runs.
   they don't dig up the floor. A new camp clears flammable ground from its
   fire pit (`clearFirePit`). Swimmers keep `brain.heading` (the way they
   last walked) and resume `wasJob` on leaving the water. Walking (`walkTo`) up against a wall
-  higher than a step, they climb it, all the way up wherever the target is
+  higher than a step, they first look at it (`cutThrough`): at most
+  `THIN_WALL` (4) columns thick at body height, or `SOFT_WALL` (8) if it's
+  all wood or growth (a tree trunk), and all diggable, they dig through it.
+  Otherwise they climb it, all the way up wherever the target is
   (`climbWall`: a cell every `WALL_EVERY` (12) steps, holding on with
   `brain.hold`/`brain.climbing`; a climb counts as progress only above
   `brain.climbTop`, the highest yet on this walk, so a climb-and-drop
