@@ -914,6 +914,13 @@ export const WORLD_ELEMENTS = [
     desc: 'The gentle fire humans keep: it flickers and smokes a little, never spreads, and stays just warm enough to sit by. Water puts it out.',
     hint: 'Humans light it, from a pile of Wood.',
   },
+  {
+    key: 'SCAFFOLDING', name: 'Scaffolding', sym: 'Scf', cat: 'material', state: SOLID,
+    colors: ['#c49a5e', '#a87c42', '#d6ad6e', '#8f6a38'], density: 0.5, conduct: 0.08, strength: 12,
+    flammable: 0.06, ignite: 280, burn: { ash: 0.3, smoke: 0.5, fireLife: [60, 100] },
+    desc: 'A light wooden lattice that holds back loose earth. Humans cut four from each piece of Wood to line their tunnels.',
+    hint: 'Humans cut it from Wood, to line their tunnels.',
+  },
 
   // ---- weather and the Earth ------------------------------------------------------
   {

@@ -44,7 +44,7 @@ for (const [dx, dy] of DIRS) {
       w.boxCells(40 + k * dx, 40 + k * dy, 0, 1, box);
       for (const c of box) assert.equal(w.type[c], 0, `spot ${k} stays open (found ${w.type[c]})`);
     }
-    const lined = countOf(w, ID.WOOD);
+    const lined = countOf(w, ID.SCAFFOLDING);
     assert.ok(lined > 0 && lined < 120, `${lined} lining`);
   });
 }
@@ -56,7 +56,7 @@ test('a level run through stone needs no lining', () => {
   b.tool = 1;
   open(w, b, 30, 30);
   carve(w, b, 30, 30, 1, 0, 10);
-  assert.equal(countOf(w, ID.WOOD), 0);
+  assert.equal(countOf(w, ID.SCAFFOLDING), 0);
   assert.equal(w.workSpot(digger, newBrain(), 42, 30), 'blocked', 'no pickaxe: stone stops it');
 });
 
@@ -247,4 +247,34 @@ test('a tunnel filled with sand is dug out; one filled with steel is dropped', (
   const before = w.tunnels.edges.size;
   for (let f = 0; f < 4000 && w.tunnels.edges.size >= before; f++) w.step();
   assert.ok(w.tunnels.edges.size < before, 'the stretch was dropped');
+});
+
+// Scaffolding: cut 4 from each piece of wood, in the pack, to line tunnels.
+
+test('one wood makes four scaffolding, as needed, and a human holds 40', () => {
+  const w = makeWorld(40, 40, 1);
+  const b = newBrain();
+  w.stow(b, ID.WOOD);
+  w.stow(b, ID.WOOD);
+  assert.equal(w.cutScaffolding(b), true);
+  assert.equal(w.has(b, ID.SCAFFOLDING), 4);
+  assert.equal(w.has(b, ID.WOOD), 1);
+  for (let k = 0; k < 40; k++) w.stow(b, ID.SCAFFOLDING);
+  assert.equal(w.has(b, ID.SCAFFOLDING), 40, 'up to 40');
+  assert.equal(w.cutScaffolding(b), false, 'no room for four more');
+  assert.equal(w.has(b, ID.WOOD), 1);
+});
+
+test('tunnel walls are scaffolding, cut from wood as they go', () => {
+  const w = makeWorld(80, 80, 1);
+  fillRect(w, 0, 0, 79, 79, ID.DIRT);
+  const b = newBrain();
+  for (let k = 0; k < 10; k++) w.stow(b, ID.WOOD);
+  open(w, b, 40, 40);
+  carve(w, b, 40, 40, 1, 0, 8);
+  assert.ok(countOf(w, ID.SCAFFOLDING) > 0, 'scaffolding walls');
+  assert.equal(countOf(w, ID.WOOD), 0, 'no wooden ones');
+  const used = 10 - w.has(b, ID.WOOD), walls = countOf(w, ID.SCAFFOLDING) + w.has(b, ID.SCAFFOLDING);
+  assert.ok(used <= Math.ceil(walls / 4), `a wood for every four walls (${used} wood, ${walls} scaffolding)`);
+  assert.ok(w.seen[ID.SCAFFOLDING], 'discovered');
 });

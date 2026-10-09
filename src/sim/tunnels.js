@@ -8,20 +8,21 @@
 // straight edges between them, which humans path along, climbing shafts
 // and stairs. Mixed into World.prototype.
 
-import { DEFS, ID, State } from './elements.js';
+import { DEFS, ID, State, SPECIAL } from './elements.js';
 import { SHAPED } from './creatures.js';
 import {
-  USEFUL, DANGER, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
+  USEFUL, DANGER, HUT_W, WALK_EVERY, SCAFFOLD_STACK, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
 } from './humans.js';
 
 const { POWDER, LIQUID } = State;
-const { WOOD } = ID;
+const { WOOD, SCAFFOLDING } = ID;
+const SCAFFOLD_CUT = 4; // scaffolding cut from each piece of wood
 const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
 const BOX_UP = 6; // a spot's box: 3 wide, 6 tall
 const NEW_COST = 4; // digging a new spot of tunnel counts as walking this many
 const SHAFT_COST = 1.5; // and climbing a spot of shaft as this many
 const CLIMB_EVERY = 6; // steps per spot climbed up or down a shaft
-export const TUNNEL_WOOD = 8; // lining wood it gathers before tunnelling
+export const TUNNEL_LINING = 24; // lining it wants in hand before it tunnels: scaffolding, and 4 for each wood
 const ENTRY_DEPTH = 7; // a new entrance starts as a shaft this deep: a small mouth, soon underground
 const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
 const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
@@ -82,15 +83,31 @@ export const Tunnels = {
     return out;
   },
 
-  // Swap a loose cell for lining wood from its pack (keeping what was there,
-  // if it's useful): false if it has no wood.
+  // Cut 4 scaffolding from a piece of wood in its pack, if it has room for
+  // them: true if it did.
+  cutScaffolding(b) {
+    if (this.has(b, SCAFFOLDING) > SCAFFOLD_STACK - SCAFFOLD_CUT || !this.takeOut(b, WOOD)) return false;
+    b.items.set(SCAFFOLDING, this.has(b, SCAFFOLDING) + SCAFFOLD_CUT);
+    return true;
+  },
+
+  // Lining it has in hand: scaffolding, and what its wood would make.
+  liningInHand(b) {
+    return this.has(b, SCAFFOLDING) + SCAFFOLD_CUT * this.has(b, WOOD);
+  },
+
+  // Swap a loose cell for scaffolding from its pack (cut from wood if it
+  // has none; keeping what was there, if it's useful): false if it has
+  // neither.
   lineCell(b, c) {
-    if (!this.takeOut(b, WOOD)) return false;
+    if (this.has(b, SCAFFOLDING) === 0) this.cutScaffolding(b);
+    if (!this.takeOut(b, SCAFFOLDING)) return false;
     if (USEFUL[this.type[c]]) this.stow(b, this.type[c]);
     this.clearCell(c);
-    this.spawn(c, WOOD);
-    this.humanMade.set(c, WOOD);
+    this.spawn(c, SCAFFOLDING);
+    this.humanMade.set(c, SCAFFOLDING);
     this.tunnels.mask[c] |= LINED;
+    this.record(SCAFFOLDING, SPECIAL['human-scaffolding']);
     return true;
   },
 
@@ -115,7 +132,7 @@ export const Tunnels = {
       }
       if (t === 0 || this.roomForBody(e, c)) continue;
       if (SHAPED[t]) return 'wait';
-      if (t === WOOD && (mask[c] & LINED) !== 0) this.stow(b, WOOD); // its own lining
+      if ((t === SCAFFOLDING || t === WOOD) && (mask[c] & LINED) !== 0) this.stow(b, t); // its own lining
       else if (!this.diggable(c, this.digLimit(b))) return 'blocked';
       else if (USEFUL[t]) this.stow(b, t);
       mask[c] &= ~LINED;
@@ -371,8 +388,9 @@ export const Tunnels = {
   },
 
   // Set off to mine `key` (a RESOURCES key) until it holds `goal`: plan a
-  // tunnel to the nearest deposit. Wood to line it with first (up to
-  // TUNNEL_WOOD; it goes with less only if there's no more to be had).
+  // tunnel to the nearest deposit. Lining first (TUNNEL_LINING in hand: it
+  // gathers wood for it; it goes with less only if there's no more to be
+  // had).
   // False if there's no way (it skips that one a while).
   startMining(e, b, camp, key, goal) {
     if ((b.skip.get(key) ?? 0) > this.tick) return false;
@@ -386,9 +404,9 @@ export const Tunnels = {
       b.skip.set(key, this.tick + BAN_FOR);
       return false;
     }
-    if (this.has(b, WOOD) < TUNNEL_WOOD) {
+    if (this.liningInHand(b) < TUNNEL_LINING) {
       if (this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood')) return true;
-      if (this.has(b, WOOD) === 0) {
+      if (this.liningInHand(b) === 0) {
         b.skip.set(key, this.tick + BAN_FOR);
         return false;
       }
@@ -485,7 +503,6 @@ export const Tunnels = {
       // Someone's in the way (coming out, say): it steps away and tries later.
       if ((b.stuck += DIG_EVERY) > WAIT_SPOT) this.endTunnel(b);
     } else if (r === 'blocked' || r === 'wood' || (r === 'clear' && (b.stuck += DIG_EVERY) > GIVE_UP)) {
-      if (r === 'wood') b.tunnelWood = true;
       this.giveUp(e, b);
     }
     return false;
@@ -538,7 +555,6 @@ export const Tunnels = {
       this.dropStretch(e.x, e.y, e.x + Math.sign(wx - e.x), e.y + Math.sign(wy - e.y));
       this.endTunnel(b);
     } else if (r === 'wood') {
-      b.tunnelWood = true;
       this.endTunnel(b);
     } else if (r === 'wait' && ++b.stuck > GIVE_UP) this.giveUp(e, b);
   },
@@ -558,7 +574,7 @@ export const Tunnels = {
     if (!this.wetSpot(e.x + dx, e.y + dy) && this.moveBody(e, e.x + dx, e.y + dy, e.frame === 0 ? 1 : 0, face, e.gx, e.gy)) {
       b.stuck = 0;
       b.bailed = 0;
-      if (this.has(b, WOOD) > 0) {
+      if (this.liningInHand(b) > 0) {
         const loose = this.looseRound(e.x, e.y);
         if (loose.length > 0) this.lineCell(b, loose[0]);
       }
@@ -621,7 +637,6 @@ export const Tunnels = {
       return;
     }
     if (r === 'wood') {
-      b.tunnelWood = true;
       this.endTunnel(b);
       return;
     }

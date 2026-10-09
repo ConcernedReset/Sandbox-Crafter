@@ -533,9 +533,11 @@ Each frame (60 per second):
    gunpowder in its pack; metal (any
    metal or alloy) for a gun (5 metal and a wood stock); then 8 more for
    armour. To reach what's buried it digs a **tunnel**, at 45° steps
-   (level, stairs, or a shaft it climbs up and down), lining it with wood
-   wherever dirt or sand would fall in, so the ground around stays put; out
-   of wood, it goes up for more and comes back. Every tunnel joins one
+   (level, stairs, or a shaft it climbs up and down), lining it with
+   **Scaffolding** wherever dirt or sand would fall in, so the ground
+   around stays put. It cuts 4 scaffolding from each piece of wood in its
+   pack, and carries up to 40; running short, it goes up for wood and
+   comes back. Every tunnel joins one
    network the humans share: entrances, junctions, bends and ends, which
    they find their way along, branching off an existing tunnel when that's
    shorter than starting a new one, and digging out or giving up on

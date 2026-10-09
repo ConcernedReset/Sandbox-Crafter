@@ -229,8 +229,13 @@ else; `test/build.test.js` checks the bundle runs.
   undiggable blockage drops the run (`dropStretch`, `prune`). `brain.hold`
   stops `stepHuman` dropping a human in shafts and stairs; `overTunnel`
   lets humans cross a tunnel's mouth overland; `walkTo` first calls
-  `leaveTunnel` (out by the nearest entrance). Out of lining wood, it sets
-  `brain.tunnelWood` and gathers `TUNNEL_WOOD` before tunnelling again.
+  `leaveTunnel` (out by the nearest entrance). Lining is **Scaffolding**:
+  `lineCell` cuts 4 from a wood in the pack when it has none
+  (`cutScaffolding`; a human holds `SCAFFOLD_STACK` = 40 of it, 10 of
+  anything else); recovered face lining goes back in the pack as
+  scaffolding. Before tunnelling it wants `TUNNEL_LINING` (24) in hand,
+  counting 4 per wood (`liningInHand`), and gathers wood if short. The
+  recipe lab sends a human tunnelling (`tunnelLab` in recipes.test.js).
   Humans never fetch human-placed wood (`findWanted` skips `madeByHuman`).
   Tested in `test/tunnels.test.js`. A new entrance starts as a shaft
   `ENTRY_DEPTH` (7) deep; entrances keep 14+ cells from the fire (resting
@@ -251,10 +256,11 @@ else; `test/build.test.js` checks the bundle runs.
   reach (`roomToStand`). The pile holds two rows; a burning pile's
   Campfire counts as fuel (`ON_FIRE`). A one-cell puddle under its feet
   isn't swimming. Walk-digging also tries a 2-cell step up. Measured over
-  12 Wilderness seeds and 40,000 steps: fire 11, hut 9-11, pickaxe 9-11,
-  armour 2-3 (from fire 5/6, hut 4/6, armour 0/6). Still weak: mining
-  logistics (wood for lining, one miner at a time), and a seed whose fire
-  is never lit. Probe scripts that measure this (milestones, time per job,
+  12 Wilderness seeds and 40,000 steps: fire 11, hut and pickaxe 9, armour
+  8 (from fire 5/6, hut 4/6, armour 0/6), usually by 9,000-16,000 steps;
+  `test/humans-wilderness.test.js` runs seed 2 to armour. Still weak: two
+  seeds never build a hut, one stalls after the pickaxe, one never lights
+  its fire. Probe scripts that measure this (milestones, time per job,
   stuck episodes) are worth rewriting when you come back to it.
   Shooting: `findFoe` (Spiders, Phoenixes, `rival` humans), `findPrey`
   (hunting, at most every 2,000 steps), `shootAt` holds fire unless the

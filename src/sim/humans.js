@@ -76,7 +76,7 @@ const DIG = Uint16Array.from(DEFS, (d) => (d.shape || DANGER[d.id] || d.indestru
 const METALS = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.cat === 'metal' || d.cat === 'alloy') ? 1 : 0));
 export const RESOURCES = { coal: setOf(['COAL']), salt: setOf(['SALT']), metal: METALS };
 // What it keeps when it digs through it: fuel, salt, metal, building stone.
-export const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' ? 1 : 0));
+export const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' || d.key === 'SCAFFOLDING' ? 1 : 0));
 export const MINE_R = 120; // how far from the camp it looks for coal, salt and metal
 export const CRAFT_FIRE_TIME = 3000; // steps its camp's fire has burned before it crafts
 const PICK_WOOD = 3; // a pickaxe: 3 Wood
@@ -96,6 +96,7 @@ const TRACER = 4; // frames a pellet's path is drawn
 export const SEAM_R = 8; // and how near the last one it looks for more of the same
 export const WOOD_ONLY = setOf(['WOOD']);
 export const STACK = 10; // the most of any one element it carries
+export const SCAFFOLD_STACK = 40; // but it carries this much scaffolding (it's light)
 export const HELD_PICKAXE = -1, HELD_GUN = -2; // what it shows in its hand, besides a pixel
 const FEED = setOf(['WOOD', 'PEAT', 'SAWDUST']); // fuel it feeds the fire before coal
 
@@ -118,7 +119,6 @@ export function newBrain() {
     skip: new Map(), // resource key -> tick until which it doesn't look for it
     refill: true, // it wants gunpowder (a full stack the first time)
     tun: null, // the tunnel it's travelling or digging (tunnels.js)
-    tunnelWood: false, // it has run out of lining wood before: gathers some first
     hold: false, // holding on in a tunnel (no falling) this step
     bailed: 0, // liquid cells bailed out of the spot it's clearing
     swapAt: -SWAP_EVERY, // when it last traded places with another human
@@ -483,7 +483,7 @@ export const Humans = {
   // Put one t in its inventory, if it has room: true if it did.
   stow(b, t) {
     const k = this.has(b, t);
-    if (k >= STACK) return false;
+    if (k >= (t === ID.SCAFFOLDING ? SCAFFOLD_STACK : STACK)) return false;
     b.items.set(t, k + 1);
     b.held = t;
     this.mixPowder(b);

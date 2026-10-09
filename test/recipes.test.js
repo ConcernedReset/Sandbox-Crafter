@@ -54,7 +54,27 @@ function creatureLab(rule, kind) {
   return { w, each: (f) => { for (const h of hooks) h(f); } };
 }
 
+// Scaffolding: a human with wood, sent tunnelling to coal under dirt.
+function tunnelLab(rule) {
+  const w = makeWorld(120, 70, 1000 + rule.output);
+  fillRect(w, 0, 66, 119, 69, ID.STONE);
+  fillRect(w, 0, 30, 119, 65, ID.DIRT);
+  for (let y = 50; y <= 52; y++) for (let x = 70; x <= 76; x++) { w.clearCell(y * w.w + x); w.spawn(y * w.w + x, ID.COAL); }
+  w.spawn(20 * w.w + 40, ID.HUMAN);
+  return {
+    w,
+    each: () => {
+      const e = w.creatures.find((c) => c.brain);
+      if (!e || e.brain.tun !== null) return;
+      if (e.brain.camp === null) e.brain.camp = w.joinOrMakeCamp(e);
+      while (w.has(e.brain, ID.WOOD) < 10) w.stow(e.brain, ID.WOOD);
+      if (e.brain.camp !== null) w.startMining(e, e.brain, e.brain.camp, 'coal', 5);
+    },
+  };
+}
+
 function setUp(rule) {
+  if (rule.output === ID.SCAFFOLDING) return tunnelLab(rule);
   const shaped = rule.inputs.find((t) => SHAPED[t]);
   if (shaped !== undefined) return creatureLab(rule, shaped);
   const w = makeWorld(60, 50, 1000 + rule.output);
