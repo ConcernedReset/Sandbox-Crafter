@@ -544,7 +544,8 @@ Each frame (60 per second):
    shorter than starting a new one, and digging out or giving up on
    stretches that get blocked. Cutting a tree at its foot brings it down.
    Humans in each other's way trade places. A shot is 4 pellets in a tight spread for 1 gunpowder; each
-   pellet takes out the pixel of a creature it hits. Armed humans shoot
+   pellet flies up to 80 cells (twice the 40 at which a human picks a
+   target) and takes out the pixel of a creature it hits. Armed humans shoot
    Spiders and Phoenixes near camp, hunt an animal now and then (it leaves
    Meat), and fight humans from other camps; an unarmed human flees an
    armed rival. Armour takes half the hits from pellets and blasts, and
