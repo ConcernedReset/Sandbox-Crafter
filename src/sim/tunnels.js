@@ -25,6 +25,11 @@ const CLIMB_EVERY = 6; // steps per spot climbed up or down a shaft
 export const TUNNEL_LINING = 24; // lining it wants in hand before it tunnels: scaffolding, and 4 for each wood
 const ENTRY_DEPTH = 7; // a new entrance starts as a shaft this deep: a small mouth, soon underground
 const ENTRY_GAP = 5; // and keeps this far across from other tunnels (side by side, walkers fall in one from the other)
+const ENTRY_SPACE = 20; // and this far from other entrances
+const TUNNEL_GAP = 4; // solid cells kept between a new run and other tunnels (closer, they merge into one cavern)
+const START_R = 8; // except this near where it branches off
+const SEAM_START_R = 5; // or, going on along a seam, this near where it is (not back alongside its own run)
+const PLAN_TRIES = 30; // the cheapest plans it checks for clearance
 const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
 const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
 
@@ -369,15 +374,30 @@ export const Tunnels = {
     return false;
   },
 
-  // A standing spot on the surface for a new entrance: 14 to 90 cells
+  // Is there an entrance (or one another human has set off to open)
+  // within ENTRY_SPACE of (x, y)?
+  nearEntrance(e, x, y) {
+    for (const n of this.tunnels.nodes.values()) {
+      if (n.entrance && Math.abs(n.x - x) <= ENTRY_SPACE && Math.abs(n.y - y) <= ENTRY_SPACE) return true;
+    }
+    return this.entranceClaimed(e, x, ENTRY_SPACE);
+  },
+
+  // The cheapest of entranceSpots, or null.
+  entranceSpot(e, camp, tx, ty) {
+    let best = null;
+    for (const s of this.entranceSpots(e, camp, tx, ty)) if (best === null || s.cost < best.cost) best = s;
+    return best;
+  },
+
+  // Standing spots on the surface for a new entrance: 14 to 90 cells
   // beside the camp (past where humans sit by the fire, who would block its
   // mouth), ENTRY_GAP or more clear of its hut and the lawn round it
-  // (grounds.js), not in a tunnel nor another camp's lawn, the side towards
-  // the target first. { x, y, cost } or null.
-  entranceSpot(e, camp, tx, ty) {
-    const lawn = this.lawn(camp), tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
-    let best = null;
-    for (const s of tu >= 0 ? [1, -1] : [-1, 1]) {
+  // (grounds.js) and of tunnels, ENTRY_SPACE from other entrances, not in
+  // another camp's lawn. [{ x, y, cost }].
+  entranceSpots(e, camp, tx, ty) {
+    const lawn = this.lawn(camp), out = [];
+    for (const s of [1, -1]) {
       for (let k = 14; k <= 90; k++) {
         const u = s * k;
         if (lawn !== null && u >= lawn.u0 - ENTRY_GAP && u <= lawn.u1 + ENTRY_GAP) continue;
@@ -386,22 +406,52 @@ export const Tunnels = {
         const c = this.campCell(camp, u, g - 1);
         if (c < 0 || this.type[c] !== 0) continue;
         const x = c % this.w, y = (c / this.w) | 0;
-        if (this.inLawn(x, y, ENTRY_DEPTH + 6) || this.nearTunnel(x, y, ENTRY_GAP) || this.entranceClaimed(e, x, ENTRY_GAP)) continue;
+        if (this.inLawn(x, y, ENTRY_DEPTH + 6) || this.nearTunnel(x, y, ENTRY_GAP) || this.nearEntrance(e, x, y)) continue;
         const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;
         const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * (ENTRY_DEPTH + this.octo(bx, by, tx, ty, camp.gx, camp.gy));
-        if (best === null || cost < best.cost) best = { x, y, cost };
+        out.push({ x, y, cost });
       }
     }
-    return best;
+    return out;
+  },
+
+  // Would a run dug from (x, y) along `legs` (down being (gx, gy)) keep
+  // TUNNEL_GAP solid cells from every other tunnel, but within `near` of
+  // where it starts?
+  pathClear(x, y, legs, gx, gy, near = START_R) {
+    const { w, tunnels: { mask } } = this, sx = x, sy = y;
+    for (const leg of legs) {
+      for (let s = 0; s < leg.n; s++) {
+        x += leg.dx;
+        y += leg.dy;
+        for (let up = -TUNNEL_GAP; up < BOX_UP + TUNNEL_GAP; up++) {
+          for (let k = -1 - TUNNEL_GAP; k <= 1 + TUNNEL_GAP; k++) {
+            const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
+            if (!this.inBounds(cx, cy) || (mask[cy * w + cx] & INSIDE) === 0) continue;
+            if (Math.abs(cx - sx) <= near && Math.abs(cy - sy) <= near) continue;
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  },
+
+  // The legs of a plan from (x, y) to (tx, ty): from a new entrance, its
+  // shaft first.
+  planLegs(x, y, entrance, tx, ty, gx, gy) {
+    if (!entrance) return this.legsTo(x, y, tx, ty, gx, gy);
+    const bx = x + ENTRY_DEPTH * gx, by = y + ENTRY_DEPTH * gy;
+    return [{ dx: gx, dy: gy, n: ENTRY_DEPTH }, ...this.legsTo(bx, by, tx, ty, gx, gy)];
   },
 
   // The cheapest way to tunnel to (tx, ty): from a spot on the network
-  // (travel there, then dig), or from a new entrance. { cost, x, y,
-  // entrance } or null.
+  // (travel there, then dig), or from a new entrance, whose new run keeps
+  // clear of other tunnels (pathClear). { cost, x, y, entrance } or null.
   planTunnel(e, camp, tx, ty) {
     const net = this.tunnels;
     if (net.nodes.size > 0 && (net.gx !== e.gx || net.gy !== e.gy)) return null; // dug under another gravity
-    let best = null;
+    const plans = [];
     if (net.edges.size > 0) {
       const { dist } = this.netDistances(this.netSources(e).src);
       for (const ed of net.edges.values()) {
@@ -409,13 +459,17 @@ export const Tunnels = {
         for (let k = 0; k <= ed.len; k++) {
           const x = a.x + k * ed.dx, y = a.y + k * ed.dy;
           const cost = this.costAlong(ed, k, dist) + NEW_COST * this.octo(x, y, tx, ty, e.gx, e.gy);
-          if (best === null || cost < best.cost) best = { cost, x, y, entrance: false };
+          if (Number.isFinite(cost)) plans.push({ cost, x, y, entrance: false });
         }
       }
     }
-    const ent = this.entranceSpot(e, camp, tx, ty);
-    if (ent !== null && (best === null || ent.cost < best.cost)) best = { cost: ent.cost, x: ent.x, y: ent.y, entrance: true };
-    return best;
+    for (const s of this.entranceSpots(e, camp, tx, ty)) plans.push({ cost: s.cost, x: s.x, y: s.y, entrance: true });
+    plans.sort((p, q) => p.cost - q.cost);
+    for (let i = 0; i < plans.length && i < PLAN_TRIES; i++) {
+      const p = plans[i];
+      if (this.pathClear(p.x, p.y, this.planLegs(p.x, p.y, p.entrance, tx, ty, e.gx, e.gy), e.gx, e.gy)) return p;
+    }
+    return null;
   },
 
   // Set off to mine `key` (a RESOURCES key) until it holds `goal`: plan a
@@ -537,8 +591,7 @@ export const Tunnels = {
         net.gy = e.gy;
       }
       t.node = this.nodeAt(e.x, e.y) ?? this.addNode(e.x, e.y, true);
-      const bx = e.x + ENTRY_DEPTH * e.gx, by = e.y + ENTRY_DEPTH * e.gy;
-      t.legs = [{ dx: e.gx, dy: e.gy, n: ENTRY_DEPTH }, ...this.legsTo(bx, by, t.tx, t.ty, e.gx, e.gy)];
+      t.legs = this.planLegs(e.x, e.y, true, t.tx, t.ty, e.gx, e.gy);
       return;
     }
     if (t.route === null) t.route = this.netRoute(e, t.x, t.y);
@@ -622,14 +675,16 @@ export const Tunnels = {
         return;
       }
       this.release(b);
-      this.claim(b, b.camp, n);
-      t.tx = n % this.w;
-      t.ty = (n / this.w) | 0;
-      t.legs = this.legsTo(e.x, e.y, t.tx, t.ty, e.gx, e.gy);
-      if (t.legs.length === 0) {
+      const legs = this.legsTo(e.x, e.y, n % this.w, (n / this.w) | 0, e.gx, e.gy);
+      if (legs.length === 0 || !this.pathClear(e.x, e.y, legs, e.gx, e.gy, SEAM_START_R)) {
+        b.banned.set(n, this.tick + BAN_FOR); // too near another tunnel from here
         this.endTunnel(b);
         return;
       }
+      this.claim(b, b.camp, n);
+      t.tx = n % this.w;
+      t.ty = (n / this.w) | 0;
+      t.legs = legs;
     }
     if (++b.pace < DIG_EVERY) return;
     b.pace = 0;

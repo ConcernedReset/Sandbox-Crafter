@@ -42,6 +42,8 @@ export const FRAME_KNEEL = 2, FRAME_SIT = 3;
 const NEAR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export const DANGER = setOf(['LAVA', 'ACID', 'NAPALM', 'GREEK_FIRE', 'GREY_GOO', 'VIRUS', 'ANTIMATTER', 'BLACK_HOLE']);
 const CAMP_JOIN = 60; // it joins a camp this close
+const CAMP_AWAY_R = 150; // farther than this from its camp
+const CAMP_AWAY_FOR = 3000; // for this many steps on end, it leaves it for a camp where it is
 export const FUEL_R = 120; // and fetches fuel this far from it
 const PILE_LIGHT = 6; // fuel in the pile before it's lit
 const PILE_LOW = 4; // a burning pile with less is topped up
@@ -123,7 +125,8 @@ export function newBrain() {
     tun: null, // the tunnel it's travelling or digging (tunnels.js)
     hold: false, // holding on in a tunnel or to a wall (no falling) this step
     climbing: false, // it's climbing a wall
-    climbTop: -Infinity, // the highest it has climbed since it last walked
+    climbTop: -Infinity, // the highest it has climbed on this walk
+    awayAt: -1, // when it last went farther than CAMP_AWAY_R from its camp (-1: it's near)
     bailed: 0, // liquid cells bailed out of the spot it's clearing
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     rub: 0, // steps spent rubbing sticks
@@ -378,17 +381,17 @@ export const Humans = {
       b.climbing = false;
       return false;
     }
-    // A wall too high to step up, with the target level with it or above:
-    // it climbs it, a cell at a time, holding on. Where it can't (an
-    // overhang, a ceiling), or what it's after is lower down or in the wall
-    // right ahead (stone from a boulder), it digs through what's in the
-    // way, a cell at a time (up a step, if the target is above it, or down
-    // one). Both count as getting closer (climbing, only higher than it has
-    // climbed on the way yet: under an overhang it would climb a cell, drop
-    // back and climb again for ever).
+    // A wall too high to step up: it climbs it, a cell at a time, holding
+    // on, all the way up (wherever the target is). Where it can't (an
+    // overhang, a ceiling), or what it's after is in the wall right ahead
+    // (stone from a boulder), it digs through what's in the way, a cell at
+    // a time (up a step, if the target is above it, or down one). Both
+    // count as getting closer (climbing, only higher than it has climbed on
+    // the way yet: under an overhang it would climb a cell, drop back and
+    // climb again for ever).
     const vdir = v < -1 ? -1 : v > 4 ? 1 : 0;
     const inWall = Math.abs(a) <= 6 && v >= -6 && this.inBounds(tx, ty) && this.builtAt(ty * this.w + tx);
-    if (vdir <= 0 && !inWall && this.climbWall(e, b.heading)) {
+    if (!inWall && this.climbWall(e, b.heading)) {
       b.climbing = true;
       b.hold = true;
       const h = -(e.x * e.gx + e.y * e.gy);
@@ -655,6 +658,7 @@ export const Humans = {
   // pile, then (once a fire has been lit) the hut, then keep the fire fed,
   // then rest by it (or wander, before it's lit). A job under way carries on.
   chooseWork(e, b) {
+    if (this.strayed(e, b)) this.leaveCamp(e);
     if (b.camp === null) b.camp = this.joinOrMakeCamp(e);
     const camp = b.camp;
     if (camp === null) {
@@ -703,6 +707,24 @@ export const Humans = {
       }
     }
     b.job = camp.lit ? 'resting by the fire' : 'wandering';
+  },
+
+  // Has it been farther than CAMP_AWAY_R from its camp for CAMP_AWAY_FOR
+  // steps on end (carried off, trapped, or lost its way back)?
+  strayed(e, b) {
+    const camp = b.camp;
+    if (camp === null || Math.max(Math.abs(e.x - camp.x), Math.abs(e.y - camp.y)) <= CAMP_AWAY_R) {
+      b.awayAt = -1;
+      return false;
+    }
+    if (b.awayAt < 0) b.awayAt = this.tick;
+    if (this.tick - b.awayAt < CAMP_AWAY_FOR || !this.supported(e)) return false; // on its feet, to make camp
+    b.awayAt = -1;
+    b.tun = null;
+    b.climbing = false;
+    b.goalX = -1;
+    b.job = 'wandering';
+    return true;
   },
 
   // Make a pickaxe, a gun or armour from what it carries: true if it could.

@@ -336,6 +336,45 @@ test('a human climbs a sheer wall, slowly, without digging into it', () => {
   assert.ok(climbing >= 12 * 12, `climbing slowly (${climbing} steps on the wall)`);
 });
 
+test('a human climbs all the way over a cliff to wood on the lower side', () => {
+  const w = makeWorld(200, 90, 2);
+  fillRect(w, 0, 85, 199, 89, ID.STONE);
+  fillRect(w, 0, 75, 199, 84, ID.DIRT);
+  fillRect(w, 90, 40, 110, 74, ID.STONE); // a cliff 35 high
+  fillRect(w, 111, 60, 199, 74, ID.STONE); // and a plateau beyond, lower
+  fillRect(w, 150, 50, 158, 59, ID.WOOD);
+  w.spawn(70 * 200 + 50, ID.HUMAN);
+  const rock = () => countOf(w, ID.STONE);
+  let f = 0, e = null;
+  for (; f < 3000; f++) {
+    w.step();
+    e = w.creatures.find((c) => c.kind === ID.HUMAN && c.brain);
+    if (f === 40) e.brain.items.clear();
+    if (f > 40 && w.has(e.brain, ID.WOOD) > 0) break;
+  }
+  assert.ok(w.has(e.brain, ID.WOOD) > 0, `it got wood (${e.brain.job} at ${e.x},${e.y} after ${f})`);
+  assert.equal(rock(), 21 * 35 + 89 * 15 + 200 * 5, 'it dug no rock');
+});
+
+test('a human far from its camp for long enough makes a new camp where it is', () => {
+  const w = makeWorld(400, 60, 1);
+  fillRect(w, 0, 50, 399, 59, ID.STONE);
+  const old = w.makeCamp(20, 49);
+  fillRect(w, 300, 30, 300, 49, ID.WALL); // walled in, far off
+  fillRect(w, 330, 30, 330, 49, ID.WALL);
+  fillRect(w, 300, 29, 330, 29, ID.WALL);
+  w.spawn(45 * 400 + 315, ID.HUMAN);
+  for (let f = 0; f < 40; f++) w.step();
+  const e = w.creatures.find((c) => c.kind === ID.HUMAN);
+  w.leaveCamp(e);
+  e.brain.camp = old;
+  old.members.add(e.id);
+  for (let f = 0; f < 3200 && e.brain.camp === old; f++) w.step();
+  assert.notEqual(e.brain.camp, old, 'it left the old camp');
+  assert.ok(e.brain.camp && Math.abs(e.brain.camp.x - 315) < 20, `a new camp where it is (${e.brain.camp?.x})`);
+  assert.ok(!w.camps.includes(old), 'the empty old camp is gone');
+});
+
 test('a drop of liquid underfoot is not water to swim in', () => {
   const w = makeWorld(40, 30, 1);
   fillRect(w, 0, 25, 39, 29, ID.STONE);

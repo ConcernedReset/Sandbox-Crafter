@@ -189,13 +189,13 @@ else; `test/build.test.js` checks the bundle runs.
   they don't dig up the floor. A new camp clears flammable ground from its
   fire pit (`clearFirePit`). Swimmers keep `brain.heading` (the way they
   last walked) and resume `wasJob` on leaving the water. Walking (`walkTo`) up against a wall
-  higher than a step, with the target level or above, they climb it
+  higher than a step, they climb it, all the way up wherever the target is
   (`climbWall`: a cell every `WALL_EVERY` (12) steps, holding on with
   `brain.hold`/`brain.climbing`; a climb counts as progress only above
   `brain.climbTop`, the highest yet on this walk, so a climb-and-drop
   under an overhang still gives up). Unable to climb (an overhang, a
-  ceiling), with the target lower down, or with the target itself in the
-  wall just ahead (stone from a boulder), they dig (`digToward`) one
+  ceiling), or with the target itself in the wall just ahead (stone from a
+  boulder), they dig (`digToward`) one
   cell of whatever stops a level step, or a step up: only if every blocking
   cell is `diggable` (a powder or a solid of strength <= 30, not hot, not
   a danger, and not `madeByHuman`). `world.humanMade` maps cells to what a
@@ -241,8 +241,13 @@ else; `test/build.test.js` checks the bundle runs.
   45° steps, the way down it was dug with, and a cell `mask` (INSIDE,
   LINED). `planTunnel` picks the cheapest start (network travel, shafts
   1.5x, plus 4x per new spot, two legs diagonal then straight: `legsTo`) or
-  a new entrance (`entranceSpot`: 14-90 cells from camp, clear of the hut's
-  lawn and of tunnels). `mine` = `tunnelGo` (`netRoute` waypoints, splitting a
+  a new entrance (`entranceSpots`: 14-90 cells from camp, clear of the
+  hut's lawn and of tunnels, `ENTRY_SPACE` (20) from other entrances).
+  Plans are tried cheapest first (up to `PLAN_TRIES`) and taken only if
+  the new run keeps `TUNNEL_GAP` (4) solid cells from every other tunnel
+  outside `START_R` (8) of its start (`pathClear`); going on along a seam
+  checks the same within `SEAM_START_R` (5), and bans that cell if not.
+  Side-by-side runs merge into one cavern humans can't climb out of. `mine` = `tunnelGo` (`netRoute` waypoints, splitting a
   run into a junction where it starts) then `tunnelDig` (`growTunnel`).
   `stepAlong` moves spot to spot, re-lines, and repairs (`workSpot`);
   undiggable blockage drops the run (`dropStretch`, `prune`). `brain.hold`
@@ -290,6 +295,9 @@ else; `test/build.test.js` checks the bundle runs.
   over 3+ counts as swimming); doorways are 7 high (a cell of headroom for
   growth or ash underfoot) and a blocked human can duck a step down (never
   into a tunnel); the rest spot is somewhere a body fits (`restSpot`); a
+  human more than `CAMP_AWAY_R` (150) from its camp for `CAMP_AWAY_FOR`
+  (3000) steps on end, standing, leaves it (`strayed`, in `chooseWork`)
+  and joins or makes a camp where it is. A
   camp with no hut site twice over moves (`moveCamp`, to a reachable spot
   where a hut fits, `walkable` now also refusing water and drops) or, with
   nowhere to go, does without (`noHut`: crafting starts without a hut);

@@ -121,6 +121,27 @@ test('a plan starts from the network when that is cheaper, else from a new entra
   assert.deepEqual(w.legsTo(0, 0, 0, -4, 0, 1), [{ dx: 0, dy: -1, n: 4 }]);
 });
 
+test('a new run keeps 4 solid cells from other tunnels, but where it branches off', () => {
+  const w = makeWorld(100, 80, 1);
+  fillRect(w, 0, 21, 99, 79, ID.DIRT);
+  carve(w, woody(), 20, 40, 1, 0, 40); // a level run, its inside rows 35 to 40
+  const right = [{ dx: 1, dy: 0, n: 40 }];
+  assert.equal(w.pathClear(20, 48, right, 0, 1), false, 'alongside, 2 cells under it: no');
+  assert.equal(w.pathClear(20, 51, right, 0, 1), true, 'alongside, 5 cells under it: yes');
+  assert.equal(w.pathClear(40, 40, [{ dx: 0, dy: 1, n: 25 }], 0, 1), true, 'straight down from it: yes');
+  assert.equal(w.pathClear(50, 70, [{ dx: 0, dy: -1, n: 24 }], 0, 1), false, 'coming up from far below to right under it: no');
+});
+
+test('new entrances are 20 cells or more from other entrances', () => {
+  const w = makeWorld(200, 60, 1);
+  fillRect(w, 0, 21, 199, 59, ID.DIRT);
+  const camp = w.makeCamp(60, 20);
+  w.addNode(100, 20, true);
+  const spots = w.entranceSpots({ x: 60, y: 20, gx: 0, gy: 1, brain: null }, camp, 150, 50);
+  assert.ok(spots.length > 0);
+  for (const s of spots) assert.ok(Math.abs(s.x - 100) > 20, `entrance at ${s.x}`);
+});
+
 // Fill a rectangle with t, whatever was there.
 function put(w, x0, y0, x1, y1, t) {
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { w.clearCell(y * w.w + x); w.spawn(y * w.w + x, t); }

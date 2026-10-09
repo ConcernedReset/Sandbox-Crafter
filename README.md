@@ -512,8 +512,11 @@ Each frame (60 per second):
    into a Phoenix, the whole bird.
 
    **Humans** (Lightning striking Clay) have a mind of their own. A human
-   climbs any wall too high to step up, slowly, hand over hand (digging
-   through only where it can't climb), and carries as much as it picks up
+   climbs any wall too high to step up, slowly, hand over hand, all the
+   way over (digging through only where it can't climb). One that ends up
+   more than 150 cells from its camp for a long while (carried off, or
+   stuck somewhere it can't get back from) makes a new camp where it is.
+   It carries as much as it picks up
    (nothing it digs through is wasted), but
    sets out to gather 10 of a thing at a time. It makes a camp on flat
    ground, scraping the grass off its fire pit, fetches wood (or coal, peat
@@ -549,7 +552,9 @@ Each frame (60 per second):
    network the humans share: entrances, junctions, bends and ends, which
    they find their way along, branching off an existing tunnel when that's
    shorter than starting a new one, and digging out or giving up on
-   stretches that get blocked. Cutting a tree at its foot brings it down
+   stretches that get blocked. New tunnels keep 4 cells of solid ground
+   from the others (side by side they would cave into one pit), and
+   entrances are at least 20 cells apart. Cutting a tree at its foot brings it down
    (its leaves scatter). A camp with nowhere for a hut moves somewhere
    that has room, or, with nowhere it can get to, does without one.
    Humans walk right through each other. A shot is 4 pellets in a tight spread for 1 gunpowder; each
