@@ -49,6 +49,7 @@ const SCORCH_R = 2; // (flames move a cell a step, and burn in one touch)
 const REACH = 3; // how far across it reaches to pick something up
 const FUEL = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST']);
 const FIRE_SET = setOf(['FIRE', 'CAMPFIRE']);
+const FLAMES = setOf(['FIRE']); // real fire, which it won't walk through
 export const HUT_W = 9; // the hut's width
 export const HUT_WALL = 8; // its walls' height
 export const DOOR = 6; // the doorway's height
@@ -69,6 +70,12 @@ export const RESOURCES = { coal: setOf(['COAL']), salt: setOf(['SALT']), metal: 
 // What it keeps when it digs through it: fuel, salt, metal, building stone.
 const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' ? 1 : 0));
 const MINE_R = 120; // how far from the camp it looks for coal, salt and metal
+export const CRAFT_FIRE_TIME = 3000; // steps its camp's fire has burned before it crafts
+const PICK_WOOD = 3; // a pickaxe: 3 Wood
+const GUN_METAL = 5, GUN_WOOD = 1; // a gun: 5 metal and a Wood stock
+const ARMOUR_METAL = 8; // armour: 8 metal
+export const ARMOUR_HITS = 10; // hits armour absorbs before it breaks
+const AMMO_LOW = 4; // gunpowder below this, it goes for more
 const SEAM_R = 8; // and how near the last one it looks for more of the same
 const WOOD_ONLY = setOf(['WOOD']);
 export const STACK = 10; // the most of any one element it carries
@@ -92,6 +99,7 @@ export function newBrain() {
     fetchSet: null, fetchR: 0, fetchSide: false, // what it's fetching, and where from
     mineKey: '', wantN: 0, // what it's mining (a RESOURCES key) and how many it wants
     skip: new Map(), // resource key -> tick until which it doesn't look for it
+    refill: true, // it wants gunpowder (a full stack the first time)
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
     fleeDir: 1,
@@ -572,7 +580,72 @@ export const Humans = {
       }
       if (this.gather(e, b, camp, FUEL, FUEL_R, 'gathering wood')) return;
     }
+    if (this.craftWork(e, b, camp)) return;
     b.job = camp.lit ? 'resting by the fire' : 'wandering';
+  },
+
+  // Make a pickaxe, a gun or armour from what it carries: true if it could.
+  craft(b, what) {
+    if (what === 'pickaxe') {
+      if (b.tool !== 0 || this.has(b, WOOD) < PICK_WOOD) return false;
+      for (let k = 0; k < PICK_WOOD; k++) this.takeOut(b, WOOD);
+      b.tool = 1;
+      b.held = HELD_PICKAXE;
+      return true;
+    }
+    if (what === 'gun') {
+      if (b.weapon !== 0 || this.holding(b, METALS) < GUN_METAL || this.has(b, WOOD) < GUN_WOOD) return false;
+      for (let k = 0; k < GUN_METAL; k++) this.takeAny(b, METALS);
+      for (let k = 0; k < GUN_WOOD; k++) this.takeOut(b, WOOD);
+      b.weapon = 1;
+      b.held = HELD_GUN;
+      return true;
+    }
+    if (what === 'armour') {
+      if (b.armour > 0 || this.holding(b, METALS) < ARMOUR_METAL) return false;
+      for (let k = 0; k < ARMOUR_METAL; k++) this.takeAny(b, METALS);
+      b.armour = ARMOUR_HITS;
+      return true;
+    }
+    return false;
+  },
+
+  // Crafting starts once the camp is settled: its hut built and its fire
+  // burned for a while.
+  canCraft(camp) {
+    return camp.hut !== null && camp.hut.done === true && camp.burned >= CRAFT_FIRE_TIME;
+  },
+
+  // Gunpowder wanted: a full stack the first time, and again once it's low.
+  wantsPowder(b) {
+    const gp = this.has(b, GUNPOWDER);
+    if (gp >= STACK) b.refill = false;
+    else if (gp < AMMO_LOW) b.refill = true;
+    return b.refill;
+  },
+
+  // Its next crafting step, in order: a pickaxe, coal and salt for
+  // gunpowder, metal for a gun, then armour. Crafting is instant once it
+  // has what's needed; otherwise it sets off to get it. True if that gave it
+  // a job. A resource out of reach is skipped for a while (startMining).
+  craftWork(e, b, camp) {
+    if (!this.canCraft(camp)) return false;
+    if (b.tool === 0 && !this.craft(b, 'pickaxe')) {
+      return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
+    }
+    if (this.wantsPowder(b)) {
+      const pairs = Math.ceil((STACK - this.has(b, GUNPOWDER)) / 2);
+      if (this.has(b, COAL) < pairs && this.startMining(e, b, camp, 'coal', pairs)) return true;
+      if (this.has(b, COAL) > 0 && this.startMining(e, b, camp, 'salt', 0)) return true;
+    }
+    if (b.weapon === 0 && !this.craft(b, 'gun')) {
+      if (this.holding(b, METALS) < GUN_METAL) return this.startMining(e, b, camp, 'metal', GUN_METAL);
+      return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
+    }
+    if (b.weapon !== 0 && b.armour === 0 && !this.craft(b, 'armour')) {
+      return this.startMining(e, b, camp, 'metal', ARMOUR_METAL);
+    }
+    return false;
   },
 
   // A job under way carries on: something still there to fetch, a load
@@ -844,7 +917,7 @@ export const Humans = {
     const u0 = (x0 - camp.x) * camp.gy - (y0 - camp.y) * camp.gx;
     const u1 = (x1 - camp.x) * camp.gy - (y1 - camp.y) * camp.gx;
     if (!((u0 > 2 && u1 < -2) || (u0 < -2 && u1 > 2))) return false;
-    return this.pileCount(camp, FIRE_SET) > 0;
+    return this.pileCount(camp, FLAMES) > 0;
   },
 
   // The pile and the flames over it.
@@ -1091,9 +1164,11 @@ export const Humans = {
     return false;
   },
 
-  // Sit a couple of cells from the fire.
+  // Sit a few cells from the fire, on the side away from the hut (its
+  // doorway would be in the way).
   restByFire(e, b) {
-    const s = this.besideCamp(e, b.camp, REST_U);
+    const camp = b.camp, hut = camp.hut;
+    const s = hut === null ? this.besideCamp(e, camp, REST_U) : this.campCell(camp, -hut.side * REST_U, 0);
     if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
   },
 
