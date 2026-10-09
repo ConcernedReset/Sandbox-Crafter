@@ -18,6 +18,7 @@ import { portalHues } from '../sim/portals.js';
 import { SHAPED, BODY } from '../sim/creatures.js';
 import { HELD_PICKAXE, HELD_GUN } from '../sim/humans.js';
 import { SHAPE_COLORS } from '../sim/shapes.js';
+import { AITrails, viewOf, drawInfluence, drawAI } from './ai-overlay.js';
 
 const BG = [10, 12, 16];
 const SHADES = 8;
@@ -269,6 +270,9 @@ export class Renderer {
     this.gas = true; // the Gas effect (see the top of this file)
     this.glow = true; // the Glow effect
     this.showSleep = false; // outline sleeping areas (sleep.js)
+    this.showInfluence = false; // camps' spheres of influence (ai-overlay.js)
+    this.showAI = false; // what each human is after, and its way there
+    this.trails = new AITrails();
     this.frame = 0;
     this.count = 0;
     this.setWorld(world);
@@ -402,6 +406,14 @@ export class Renderer {
       ctx.globalCompositeOperation = 'source-over';
     }
     this.drawEdges();
+    if (this.showInfluence || this.showAI) {
+      const v = viewOf(canvas, cam);
+      if (this.showInfluence) drawInfluence(ctx, this.world, v);
+      if (this.showAI) {
+        this.trails.record(this.world);
+        drawAI(ctx, this.world, v, this.trails);
+      }
+    }
     if (brush) this.drawBrush(brush);
   }
 

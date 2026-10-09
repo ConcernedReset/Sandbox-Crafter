@@ -331,6 +331,8 @@ perfSelect.addEventListener('change', () => {
 });
 applyPerf();
 $('menu-sleep').addEventListener('change', (e) => { renderer.showSleep = e.target.checked; });
+$('menu-influence').addEventListener('change', (e) => { renderer.showInfluence = e.target.checked; });
+$('menu-ai').addEventListener('change', (e) => { renderer.showAI = e.target.checked; });
 
 $('menu-hard').checked = progress.hard;
 $('menu-hard').addEventListener('change', (e) => {

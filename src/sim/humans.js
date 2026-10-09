@@ -41,8 +41,8 @@ const SHORE_R = 40; // how far it looks for a shore
 export const FRAME_KNEEL = 2, FRAME_SIT = 3;
 const NEAR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export const DANGER = setOf(['LAVA', 'ACID', 'NAPALM', 'GREEK_FIRE', 'GREY_GOO', 'VIRUS', 'ANTIMATTER', 'BLACK_HOLE']);
-const CAMP_JOIN = 60; // it joins a camp this close
-const CAMP_AWAY_R = 150; // farther than this from its camp
+export const CAMP_JOIN = 60; // it joins a camp this close
+export const CAMP_AWAY_R = 150; // farther than this from its camp
 const CAMP_AWAY_FOR = 3000; // for this many steps on end, it leaves it for a camp where it is
 export const FUEL_R = 120; // and fetches fuel this far from it
 const PILE_LIGHT = 6; // fuel in the pile before it's lit

@@ -182,6 +182,21 @@ back to system ones; progress is saved per file location.)
 - **Show sleeping areas** (in the `⋯` menu) outlines the parts of the world
   that are asleep (see below): blue where fully asleep, green where half
   asleep.
+- **Show spheres of influence** (`⋯` menu) draws each human camp in its own
+  colour: the square its humans gather and mine in (120 cells), the one
+  newcomers join it from (60) and the one past which a member strikes out
+  on its own (150); its hut (dashed while being built) and levelled lawn;
+  crosses on what its humans are on their way to fetch; a line to each
+  member (red and dashed once it's strayed too far); and a label with its
+  fire, hut and how many are away. The tunnel network is drawn in gold,
+  entrances as larger squares.
+- **Show AI data** (`⋯` menu) draws, for each human, a fading trail of
+  where it's been, a dashed line along the way it means to go (for a miner,
+  through the tunnels and along the run it will dig), a crosshair on its
+  target, an arrow the way it's fleeing, and a label over its head with its
+  job and progress ("mining coal 3/5", "stuck 120", "climbing"), coloured
+  by the kind of goal: green gathering, orange building, gold mining, red
+  fighting, pink fleeing, blue resting, teal swimming, grey wandering.
 
 There are eight ways to combine things (the tree calls contact Mix, or Spark
 when it needs a spark, and particle hits Bombard or Collide):

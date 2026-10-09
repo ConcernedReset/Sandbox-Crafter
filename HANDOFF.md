@@ -45,6 +45,7 @@ else; `test/build.test.js` checks the bundle runs.
 | `src/sim/gravity.js` | Gravity settings and the per-air-block gravity table; the Newtonian solver (`Solver`) |
 | `src/sim/fft.js` | Radix-2 FFT used by the Newtonian solver |
 | `src/render/renderer.js` | Draws the grid, the Gas and Glow effects, particles, minimap; heat and pressure views |
+| `src/render/ai-overlay.js` | Show spheres of influence / Show AI data: camp ranges, huts, lawns, tunnels, claims, members (`drawInfluence`); each human's trail, route, target and goal label (`aiPlan`, `drawAI`, `AITrails`), drawn on the canvas after the picture (`Renderer.showInfluence`, `showAI`) |
 | `src/render/tree-view.js` | Draws the recipe tree under the game; drag, zoom and click handling |
 | `src/game/tree.js` | Recipe tree layout (pure, tested): which elements show, one link into each, columns and rows |
 | `src/game/physics-panel.js` | The Physics strip: gravity dial, strength box, Newtonian and convection switches; saves settings |
