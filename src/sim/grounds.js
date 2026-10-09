@@ -13,7 +13,7 @@ import { USEFUL, HUT_W, WALK_EVERY, DIG_EVERY, HELD_PICKAXE, WOOD_ONLY, FUEL_R }
 
 const { SOLID, LIQUID, GAS } = State;
 const { WOOD, SCAFFOLDING } = ID;
-export const LAWN_R = 10; // columns either side of the hut that are levelled
+export const LAWN_R = 20; // columns either side of the hut that are levelled
 const LAWN_UP = 10; // what rises this high above the level is dug away
 const LAWN_DOWN = 4; // and dips are filled this deep (a deeper one is bridged)
 export const LAWN_DEEP = 8; // no deposit is mined nearer the lawn's surface than this
@@ -52,6 +52,7 @@ export const Grounds = {
       const c = this.campCell(camp, u, v);
       if (c < 0 || !this.builtAt(c) || this.isBanned(b, c)) continue;
       if (camp.hut.set.has(c) || this.isInside(c % this.w, (c / this.w) | 0)) continue;
+      if (this.type[c] === ID.ASH) continue; // from the fire, it slides in again: left be
       if (CLEARABLE[this.type[c]] || this.diggable(c, limit)) out.push([c, false]);
     }
     // The dip: the open cells from the level down, until the ground.

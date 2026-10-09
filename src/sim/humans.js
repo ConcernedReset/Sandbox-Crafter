@@ -20,6 +20,7 @@ export const THINK_EVERY = 8;
 export const WALK_EVERY = 4; // steps per cell walked
 export const RUN_EVERY = 2; // and run
 const CLIMB = 2; // the highest step it climbs
+const WALL_EVERY = 12; // steps per cell climbing a wall higher than that (twice a tunnel shaft's)
 const SWIM_CLIMB = 6; // or swims up, getting out of water
 const SWIM_DEPTH = 4; // liquid this deep beside it (above its waist), it swims; shallower, it wades
 export const GIVE_UP = 300; // steps without getting closer before it gives up on a target
@@ -120,7 +121,9 @@ export function newBrain() {
     skip: new Map(), // resource key -> tick until which it doesn't look for it
     refill: true, // it wants gunpowder (a full stack the first time)
     tun: null, // the tunnel it's travelling or digging (tunnels.js)
-    hold: false, // holding on in a tunnel (no falling) this step
+    hold: false, // holding on in a tunnel or to a wall (no falling) this step
+    climbing: false, // it's climbing a wall
+    climbTop: -Infinity, // the highest it has climbed since it last walked
     bailed: 0, // liquid cells bailed out of the spot it's clearing
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     rub: 0, // steps spent rubbing sticks
@@ -343,8 +346,11 @@ export const Humans = {
     if (Math.abs(a) <= near && v >= -9 && v <= 4) {
       b.stuck = 0;
       b.best = Infinity;
+      b.climbing = false;
+      b.climbTop = -Infinity;
       return true;
     }
+    if (b.climbing) b.hold = true; // clinging on between moves
     // It won't walk through its camp's fire: it waits for it to burn down
     // (and wanders somewhere else), standing back from it.
     if (b.camp !== null && this.acrossFire(b.camp, e.x, e.y, tx, ty)) {
@@ -365,18 +371,52 @@ export const Humans = {
       this.giveUp(e, b);
       return false;
     }
-    if (++b.pace < every) return false;
+    if (++b.pace < (b.climbing ? WALL_EVERY : every)) return false;
     b.pace = 0;
     b.heading = a > 0 ? 1 : a < 0 ? -1 : e.facing; // remembered for swimming
-    // Something in the way it can dig: it digs through it, a cell at a
-    // time (up a step, if the target is above it, or down one). Digging
-    // counts as getting closer.
+    if (this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY)) {
+      b.climbing = false;
+      return false;
+    }
+    // A wall too high to step up, with the target level with it or above:
+    // it climbs it, a cell at a time, holding on. Where it can't (an
+    // overhang, a ceiling), or what it's after is lower down or in the wall
+    // right ahead (stone from a boulder), it digs through what's in the
+    // way, a cell at a time (up a step, if the target is above it, or down
+    // one). Both count as getting closer (climbing, only higher than it has
+    // climbed on the way yet: under an overhang it would climb a cell, drop
+    // back and climb again for ever).
     const vdir = v < -1 ? -1 : v > 4 ? 1 : 0;
-    if (!this.stepAcross(e, b.heading, CLIMB, every === RUN_EVERY) && this.digToward(e, b, b.heading, vdir)) {
+    const inWall = Math.abs(a) <= 6 && v >= -6 && this.inBounds(tx, ty) && this.builtAt(ty * this.w + tx);
+    if (vdir <= 0 && !inWall && this.climbWall(e, b.heading)) {
+      b.climbing = true;
+      b.hold = true;
+      const h = -(e.x * e.gx + e.y * e.gy);
+      if (h > b.climbTop) {
+        b.climbTop = h;
+        b.stuck = 0;
+      }
+      return false;
+    }
+    b.climbing = false;
+    if (this.digToward(e, b, b.heading, vdir)) {
       b.stuck = 0;
       b.pace = every - DIG_EVERY;
     }
     return false;
+  },
+
+  // Up a cell, against a wall the way `dir`: something solid (or powder)
+  // right beside its body there, and room above it. Returns whether it
+  // climbed.
+  climbWall(e, dir) {
+    const rx = e.gy * dir, ry = -e.gx * dir;
+    let wall = false;
+    for (let up = 0; up < 6 && !wall; up++) {
+      const x = e.x + 2 * rx - up * e.gx, y = e.y + 2 * ry - up * e.gy;
+      wall = this.inBounds(x, y) && this.builtAt(y * this.w + x);
+    }
+    return wall && this.moveBody(e, e.x - e.gx, e.y - e.gy, e.frame, dir, e.gx, e.gy);
   },
 
   // Dig out one cell of what stops e stepping across the way `dir`: level,
@@ -1428,6 +1468,15 @@ export const Humans = {
     // enough (coal last; the rest it keeps).
     const want = this.pileCount(camp, FIRE_SET) > 0 ? PILE_LOW : PILE_LIGHT;
     const c = this.pileSpace(camp);
+    // Standing on the pile itself (humans walk through each other, so one
+    // may be where the next piece goes): it steps off first.
+    if (c < 0 && this.inPile(camp, e.x, e.y)) {
+      if (++b.pace >= WALK_EVERY) {
+        b.pace = 0;
+        this.stepAcross(e, (e.x - camp.x) * camp.gy - (e.y - camp.y) * camp.gx >= 0 ? 1 : -1, CLIMB, false);
+      }
+      return;
+    }
     if (c >= 0 && this.pileCount(camp, want === PILE_LOW ? ON_FIRE : FUEL) < want) {
       const t = this.takeAny(b, FEED) || this.takeAny(b, FUEL);
       if (t !== 0) {
@@ -1521,6 +1570,7 @@ export const Humans = {
     b.goalX = -1;
     b.stuck = 0;
     b.best = Infinity;
+    b.climbTop = -Infinity;
     b.job = 'wandering';
     b.think = 0;
   },
@@ -1530,6 +1580,7 @@ export const Humans = {
     camp.claims.add(t);
     b.best = Infinity;
     b.stuck = 0;
+    b.climbTop = -Infinity;
   },
 
   release(b) {

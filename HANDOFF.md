@@ -188,7 +188,14 @@ else; `test/build.test.js` checks the bundle runs.
   (`tending`); building material must be open to one side (`openSide`), so
   they don't dig up the floor. A new camp clears flammable ground from its
   fire pit (`clearFirePit`). Swimmers keep `brain.heading` (the way they
-  last walked) and resume `wasJob` on leaving the water. Walking (`walkTo`) and blocked, they dig (`digToward`) one
+  last walked) and resume `wasJob` on leaving the water. Walking (`walkTo`) up against a wall
+  higher than a step, with the target level or above, they climb it
+  (`climbWall`: a cell every `WALL_EVERY` (12) steps, holding on with
+  `brain.hold`/`brain.climbing`; a climb counts as progress only above
+  `brain.climbTop`, the highest yet on this walk, so a climb-and-drop
+  under an overhang still gives up). Unable to climb (an overhang, a
+  ceiling), with the target lower down, or with the target itself in the
+  wall just ahead (stone from a boulder), they dig (`digToward`) one
   cell of whatever stops a level step, or a step up: only if every blocking
   cell is `diggable` (a powder or a solid of strength <= 30, not hot, not
   a danger, and not `madeByHuman`). `world.humanMade` maps cells to what a
@@ -208,13 +215,14 @@ else; `test/build.test.js` checks the bundle runs.
   levelling the lawn (`flattenWork`, below), gunpowder (`wantsPowder`),
   gun, armour (`craft`).
 - **Levelling the camp** (`grounds.js`): the lawn (`lawn(camp)`) is
-  `LAWN_R` (10) columns either side of the hut, level with the hut's
+  `LAWN_R` (20) columns either side of the hut, level with the hut's
   ground row. One human at a time (`camp.flattener`; others carry on
   crafting) with a pickaxe works out from the hut a column at a time
   (`lawnWork`, `lawnColumn`): solids up to 10 above the level dug away
   top-down (wood fells its tree), empty cells down to 4 below filled with
   scaffolding bottom-up (a deeper pit is bridged), skipping the fire pit,
-  ponds, tunnels, human-made cells and banned cells. Job `'flattening the
+  its ash (which keeps sliding in), ponds, tunnels, human-made cells and
+  banned cells. Job `'flattening the
   camp'` (`flatten`); wood for scaffolding is gathered when it has none.
   `camp.flat` once nothing is left. No deposit within `LAWN_DEEP` (8)
   under any lawn is mined (`inLawn` in `findDeposit`), and entrances keep
@@ -233,7 +241,7 @@ else; `test/build.test.js` checks the bundle runs.
   45° steps, the way down it was dug with, and a cell `mask` (INSIDE,
   LINED). `planTunnel` picks the cheapest start (network travel, shafts
   1.5x, plus 4x per new spot, two legs diagonal then straight: `legsTo`) or
-  a new entrance (`entranceSpot`: 14-70 cells from camp, clear of the hut's
+  a new entrance (`entranceSpot`: 14-90 cells from camp, clear of the hut's
   lawn and of tunnels). `mine` = `tunnelGo` (`netRoute` waypoints, splitting a
   run into a junction where it starts) then `tunnelDig` (`growTunnel`).
   `stepAlong` moves spot to spot, re-lines, and repairs (`workSpot`);

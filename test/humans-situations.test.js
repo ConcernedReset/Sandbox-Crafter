@@ -314,6 +314,28 @@ test('a human standing wholly inside another can still dig its way on', () => {
   assert.ok(w.digToward(inner, inner.brain, 1, 0), 'it digs into the bank');
 });
 
+test('a human climbs a sheer wall, slowly, without digging into it', () => {
+  const w = makeWorld(80, 50, 3);
+  fillRect(w, 0, 45, 79, 49, ID.STONE);
+  fillRect(w, 40, 30, 79, 44, ID.STONE); // a cliff 15 high
+  w.spawn(38 * 80 + 20, ID.HUMAN);
+  for (let f = 0; f < 40; f++) w.step();
+  const e = w.creatures.find((c) => c.kind === ID.HUMAN);
+  const rock = countOf(w, ID.STONE);
+  let f = 0, climbing = 0;
+  for (; f < 2000 && e.y > 29; f++) {
+    e.brain.think = 99; // keep it at it
+    e.brain.job = 'wandering';
+    e.brain.goalX = 55;
+    e.brain.goalY = 29;
+    w.step();
+    if (e.brain.climbing) climbing++;
+  }
+  assert.equal(e.y, 29, `on top of the cliff in ${f} steps (at ${e.x},${e.y})`);
+  assert.equal(countOf(w, ID.STONE), rock, 'it dug nothing');
+  assert.ok(climbing >= 12 * 12, `climbing slowly (${climbing} steps on the wall)`);
+});
+
 test('a drop of liquid underfoot is not water to swim in', () => {
   const w = makeWorld(40, 30, 1);
   fillRect(w, 0, 25, 39, 29, ID.STONE);

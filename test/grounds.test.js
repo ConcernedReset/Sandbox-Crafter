@@ -57,7 +57,7 @@ function unlevel(camp, people) {
 
 const built = (w, x, y) => w.builtAt(y * w.w + x);
 
-test('the lawn is the 10 columns either side of the hut, level with its floor', () => {
+test('the lawn is the 20 columns either side of the hut, level with its floor', () => {
   const { w, camp } = camped(0);
   const l = w.lawn(camp);
   assert.equal(l.u0, camp.hut.u0 - LAWN_R);

@@ -512,7 +512,9 @@ Each frame (60 per second):
    into a Phoenix, the whole bird.
 
    **Humans** (Lightning striking Clay) have a mind of their own. A human
-   carries as much as it picks up (nothing it digs through is wasted), but
+   climbs any wall too high to step up, slowly, hand over hand (digging
+   through only where it can't climb), and carries as much as it picks up
+   (nothing it digs through is wasted), but
    sets out to gather 10 of a thing at a time. It makes a camp on flat
    ground, scraping the grass off its fire pit, fetches wood (or coal, peat
    or sawdust) from up to 120 cells away, an armful at a time, and piles it
@@ -530,7 +532,7 @@ Each frame (60 per second):
    has burned a while, each human crafts for itself, in order: a wooden
    pickaxe (3 wood; with it, it digs anything up to strength 150: stone,
    granite and most metals, not steel or diamond); then one human at a
-   time **levels the camp**: the 10 cells either side of the hut are
+   time **levels the camp**: the 20 cells either side of the hut are
    brought level with its floor, digging away mounds and boulders and
    filling dips with scaffolding (a deep pit is bridged over), and nobody
    opens a mine there or digs for anything just under it (the others carry

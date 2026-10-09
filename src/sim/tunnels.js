@@ -369,7 +369,7 @@ export const Tunnels = {
     return false;
   },
 
-  // A standing spot on the surface for a new entrance: 14 to 70 cells
+  // A standing spot on the surface for a new entrance: 14 to 90 cells
   // beside the camp (past where humans sit by the fire, who would block its
   // mouth), ENTRY_GAP or more clear of its hut and the lawn round it
   // (grounds.js), not in a tunnel nor another camp's lawn, the side towards
@@ -378,7 +378,7 @@ export const Tunnels = {
     const lawn = this.lawn(camp), tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
     let best = null;
     for (const s of tu >= 0 ? [1, -1] : [-1, 1]) {
-      for (let k = 14; k <= 70; k++) {
+      for (let k = 14; k <= 90; k++) {
         const u = s * k;
         if (lawn !== null && u >= lawn.u0 - ENTRY_GAP && u <= lawn.u1 + ENTRY_GAP) continue;
         const g = this.groundAt(camp, u);
