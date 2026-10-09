@@ -539,7 +539,8 @@ Each frame (60 per second):
    network the humans share: entrances, junctions, bends and ends, which
    they find their way along, branching off an existing tunnel when that's
    shorter than starting a new one, and digging out or giving up on
-   stretches that get blocked. A shot is 4 pellets in a tight spread for 1 gunpowder; each
+   stretches that get blocked. Cutting a tree at its foot brings it down.
+   Humans in each other's way trade places. A shot is 4 pellets in a tight spread for 1 gunpowder; each
    pellet takes out the pixel of a creature it hits. Armed humans shoot
    Spiders and Phoenixes near camp, hunt an animal now and then (it leaves
    Meat), and fight humans from other camps; an unarmed human flees an
@@ -903,7 +904,7 @@ every creature, the gallery every element and the machine world every
 machine (with its lamps lit), and that showcases discover nothing until the
 world is cleared.
 The recipe tests run all 1243 production rules in the real simulation.
-About 1,660 tests in all. Most run in a few seconds; the human situations
+About 1,670 tests in all. Most run in a few seconds; the human situations
 and crafting runs take about a minute.
 
 Regenerate the table below after changing recipes with

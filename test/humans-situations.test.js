@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
 import { loadScene } from '../src/game/scenes.js';
-import { makeWorld, fillRect } from './helpers.js';
+import { makeWorld, fillRect, countOf } from './helpers.js';
 
 const SEEDS = [1, 2, 3];
 
@@ -246,4 +246,47 @@ test('what a human builds is remembered as made by humans', () => {
   const camp = w.camps.find((c) => c.hut?.done);
   assert.ok(camp, 'a hut was built');
   for (const c of camp.hut.cells) assert.equal(w.diggable(c), false, `hut cell ${c}`);
+});
+
+// Reliability in rough country (the reliability pass): the Wilderness's
+// hills, trees and boulders, three humans, several seeds.
+
+for (const seed of [2, 5, 8]) {
+  test(`Wilderness humans light a fire, build a hut and make a pickaxe (seed ${seed})`, () => {
+    const w = makeWorld(400, 240, seed);
+    loadScene(w, 'wilderness');
+    const done = () => w.camps.some((c) => c.hut?.done) && w.creatures.some((e) => e.brain?.tool);
+    let f = 0;
+    for (; f < 5000 && !done(); f++) w.step();
+    assert.ok(done(), `hut and pickaxe in ${f} steps: ${w.creatures.filter((e) => e.brain).map((e) => e.brain.job).join(', ')}`);
+    assert.equal(w.creatures.filter((e) => e.kind === ID.HUMAN).length, 3, 'nobody died');
+  });
+}
+
+test("two humans in each other's way trade places, bodies whole", () => {
+  const w = makeWorld(60, 30, 1);
+  fillRect(w, 0, 25, 59, 29, ID.STONE);
+  w.spawn(22 * 60 + 26, ID.HUMAN);
+  w.spawn(22 * 60 + 30, ID.HUMAN);
+  for (let f = 0; f < 40; f++) w.step();
+  const [a, b] = w.creatures.filter((e) => e.kind === ID.HUMAN).sort((p, q) => p.x - q.x);
+  const pa = [a.x, a.y], pb = [b.x, b.y], cells = countOf(w, ID.HUMAN);
+  a.brain.swapAt = b.brain.swapAt = -1000;
+  assert.ok(w.swapPlaces(a, b));
+  assert.deepEqual([a.x, a.y], pb);
+  assert.deepEqual([b.x, b.y], pa);
+  assert.equal(countOf(w, ID.HUMAN), cells, 'no pixel lost');
+  for (const e of [a, b]) for (const c of e.cells) assert.equal(w.ctype[c], e.id, 'each cell is its own');
+  assert.equal(w.swapPlaces(a, b), false, 'not again straight away');
+});
+
+test('a drop of liquid underfoot is not water to swim in', () => {
+  const w = makeWorld(40, 30, 1);
+  fillRect(w, 0, 25, 39, 29, ID.STONE);
+  w.spawn(18 * 40 + 20, ID.HUMAN);
+  for (let f = 0; f < 40; f++) w.step();
+  const e = w.creatures.find((c) => c.kind === ID.HUMAN);
+  w.clearCell((e.y + 1) * 40 + e.x);
+  w.spawn((e.y + 1) * 40 + e.x, ID.WATER);
+  assert.equal(w.inLiquid(e, w.headUnder(e)), false);
 });

@@ -115,8 +115,8 @@ function wilderness(world) {
   // Buried under the dirt: coal, a salt bed and veins of metal, for humans
   // with a pickaxe.
   for (const [x0, x1, d0, d1, t] of [
-    [60, 90, 16, 19, ID.COAL], [196, 222, 26, 29, ID.COAL], [118, 140, 18, 21, ID.SALT],
-    [36, 48, 28, 31, ID.METAL], [242, 252, 22, 25, ID.COPPER],
+    [84, 104, 11, 14, ID.COAL], [196, 222, 26, 29, ID.COAL], [140, 158, 11, 13, ID.SALT],
+    [160, 168, 15, 18, ID.METAL], [90, 100, 19, 21, ID.COPPER], [242, 252, 22, 25, ID.COPPER],
   ]) {
     for (let x = x0; x <= x1; x++) for (let y = ground(x) + d0; y <= ground(x) + d1; y++) set(x, y, t);
   }

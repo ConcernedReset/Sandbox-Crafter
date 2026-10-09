@@ -11,17 +11,20 @@
 import { DEFS, ID, State } from './elements.js';
 import { SHAPED } from './creatures.js';
 import {
-  USEFUL, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
+  USEFUL, DANGER, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
 } from './humans.js';
 
-const { POWDER } = State;
+const { POWDER, LIQUID } = State;
 const { WOOD } = ID;
 const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
 const BOX_UP = 6; // a spot's box: 3 wide, 6 tall
 const NEW_COST = 4; // digging a new spot of tunnel counts as walking this many
 const SHAFT_COST = 1.5; // and climbing a spot of shaft as this many
 const CLIMB_EVERY = 6; // steps per spot climbed up or down a shaft
-export const TUNNEL_WOOD = 8; // lining wood it gathers before tunnelling, once it has run short
+export const TUNNEL_WOOD = 8; // lining wood it gathers before tunnelling
+const ENTRY_DEPTH = 7; // a new entrance starts as a shaft this deep: a small mouth, soon underground
+const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
+const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
 
 export function initTunnels(world) {
   world.tunnels = {
@@ -93,9 +96,10 @@ export const Tunnels = {
 
   // One piece of work on the spot (x, y): line one loose cell round it, or
   // else dig out one cell of its box (the top row first; lining wood in the
-  // way goes back in its pack, useful things too). 'work' while there's
-  // more, 'clear' once the box is open, 'wood' when lining is needed and it
-  // has none, 'blocked' for something it can't dig, 'wait' for a creature.
+  // way goes back in its pack, useful things too), bailing out any liquid.
+  // 'work' while there's more, 'clear' once the box is open, 'wood' when
+  // lining is needed and it has none, 'blocked' for something it can't dig
+  // (or a flooded or dangerous liquid), 'wait' for a creature.
   workSpot(e, b, x, y) {
     const { gx, gy, mask } = this.tunnels, box = this.tunnelBox;
     if (!this.boxCells(x, y, gx, gy, box)) return 'blocked';
@@ -104,6 +108,11 @@ export const Tunnels = {
     if (loose.length > 0) return this.lineCell(b, loose[0]) ? 'work' : 'wood';
     for (let n = box.length - 1; n >= 0; n--) {
       const c = box[n], t = this.type[c];
+      if (t !== 0 && DEFS[t].state === LIQUID) {
+        if (DANGER[t] || ++b.bailed > BAIL) return 'blocked';
+        this.clearCell(c);
+        return 'work';
+      }
       if (t === 0 || this.roomForBody(e, c)) continue;
       if (SHAPED[t]) return 'wait';
       if (t === WOOD && (mask[c] & LINED) !== 0) this.stow(b, WOOD); // its own lining
@@ -313,14 +322,15 @@ export const Tunnels = {
     return legs;
   },
 
-  // A standing spot on the surface for a new entrance: 10 to 40 cells
-  // beside the camp, 4 or more clear of its hut (and its doorways), not in
-  // a tunnel, the side towards the target first. { x, y, cost } or null.
+  // A standing spot on the surface for a new entrance: 14 to 40 cells
+  // beside the camp (past where humans sit by the fire, who would block its
+  // mouth), 4 or more clear of its hut (and its doorways), not in a tunnel,
+  // the side towards the target first. { x, y, cost } or null.
   entranceSpot(e, camp, tx, ty) {
     const hut = camp.hut, tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
     let best = null;
     for (const s of tu >= 0 ? [1, -1] : [-1, 1]) {
-      for (let k = 10; k <= 40; k++) {
+      for (let k = 14; k <= 40; k++) {
         const u = s * k;
         if (hut !== null && u >= hut.u0 - 4 && u < hut.u0 + HUT_W + 4) continue;
         const g = this.groundAt(camp, u);
@@ -329,7 +339,8 @@ export const Tunnels = {
         if (c < 0 || this.type[c] !== 0) continue;
         const x = c % this.w, y = (c / this.w) | 0;
         if (this.isInside(x, y) || this.nodeAt(x, y) !== null) continue;
-        const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * this.octo(x, y, tx, ty, camp.gx, camp.gy);
+        const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;
+        const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * (ENTRY_DEPTH + this.octo(bx, by, tx, ty, camp.gx, camp.gy));
         if (best === null || cost < best.cost) best = { x, y, cost };
       }
     }
@@ -360,10 +371,14 @@ export const Tunnels = {
   },
 
   // Set off to mine `key` (a RESOURCES key) until it holds `goal`: plan a
-  // tunnel to the nearest deposit. Wood to line it with first, if it has
-  // run short before. False if there's no way (it skips that one a while).
+  // tunnel to the nearest deposit. Wood to line it with first (up to
+  // TUNNEL_WOOD; it goes with less only if there's no more to be had).
+  // False if there's no way (it skips that one a while).
   startMining(e, b, camp, key, goal) {
     if ((b.skip.get(key) ?? 0) > this.tick) return false;
+    // One human in the tunnels at a time: two in a tunnel can't pass. The
+    // others wait their turn (doing other things).
+    for (const o of this.creatures) if (o !== e && o.brain !== null && this.inTunnels(o)) return false;
     const set = RESOURCES[key];
     const t = this.findDeposit(e, camp, set, this.digLimit(b));
     const plan = t < 0 ? null : this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
@@ -371,7 +386,7 @@ export const Tunnels = {
       b.skip.set(key, this.tick + BAN_FOR);
       return false;
     }
-    if (b.tunnelWood && this.has(b, WOOD) < TUNNEL_WOOD) {
+    if (this.has(b, WOOD) < TUNNEL_WOOD) {
       if (this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood')) return true;
       if (this.has(b, WOOD) === 0) {
         b.skip.set(key, this.tick + BAN_FOR);
@@ -410,21 +425,84 @@ export const Tunnels = {
     return (e.x === x && e.y === y) || this.moveBody(e, x, y, 0, e.facing, e.gx, e.gy);
   },
 
+  // Is there liquid in the box at spot (x, y)?
+  wetSpot(x, y) {
+    const { gx, gy } = this.tunnels, box = this.tunnelBox;
+    if (!this.boxCells(x, y, gx, gy, box)) return false;
+    for (const c of box) if (this.type[c] !== 0 && DEFS[this.type[c]].state === LIQUID) return true;
+    return false;
+  },
+
+  // Is human o using the tunnels: mining, or anywhere in the network but
+  // an entrance?
+  inTunnels(o) {
+    if (o.brain.tun !== null) return true;
+    if (this.tunnels.edges.size === 0 || !this.isInside(o.x, o.y)) return false;
+    const at = this.nearSpot(o.x, o.y);
+    return at !== null && !(at.node !== null && at.node.entrance);
+  },
+
+  // The nearest spot of the network to (x, y), within 2 cells: { x, y,
+  // node, edge, k }, or null.
+  nearSpot(x0, y0) {
+    for (let r = 0; r <= 2; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const at = this.onNet(x0 + dx, y0 + dy);
+          if (at !== null) return { ...at, x: x0 + dx, y: y0 + dy };
+        }
+      }
+    }
+    return null;
+  },
+
+  // e is inside a tunnel but not on one of its spots (it dropped down a
+  // shaft, say): onto the nearest spot, if it can. Not at an entrance: by
+  // one, it's out on the surface already.
+  backOnNet(e) {
+    const at = this.nearSpot(e.x, e.y);
+    return at !== null && !(at.node !== null && at.node.entrance) && this.snapTo(e, at.x, at.y);
+  },
+
+  // Overland to the spot (x, y), and exactly onto it, clearing it (lined)
+  // if something has filled it. True once there; it gives up if it can't
+  // dig the spot clear.
+  reachSpot(e, b, x, y) {
+    if (e.x === x && e.y === y) return true;
+    // Walk there; once it's as near as walking gets it, dig the spot clear
+    // (if need be) and step onto it.
+    const near = Math.abs(x - e.x) <= 1 && Math.abs(y - e.y) <= 2;
+    if (!near && !this.walkTo(e, b, x, y, 1, WALK_EVERY)) return false;
+    if (this.snapTo(e, x, y)) {
+      b.stuck = 0;
+      return true;
+    }
+    if (++b.pace < DIG_EVERY) return false;
+    b.pace = 0;
+    const r = this.workSpot(e, b, x, y);
+    if (r === 'wait') {
+      // Someone's in the way (coming out, say): it steps away and tries later.
+      if ((b.stuck += DIG_EVERY) > WAIT_SPOT) this.endTunnel(b);
+    } else if (r === 'blocked' || r === 'wood' || (r === 'clear' && (b.stuck += DIG_EVERY) > GIVE_UP)) {
+      if (r === 'wood') b.tunnelWood = true;
+      this.giveUp(e, b);
+    }
+    return false;
+  },
+
   // On to the plan's start: a new entrance overland, or through the network.
   tunnelGo(e, b, t) {
     if (t.entrance) {
-      if (!this.walkTo(e, b, t.x, t.y, 0, WALK_EVERY)) return;
-      if (!this.snapTo(e, t.x, t.y)) {
-        this.giveUp(e, b);
-        return;
-      }
+      if (!this.reachSpot(e, b, t.x, t.y)) return;
       const net = this.tunnels;
       if (net.nodes.size === 0) {
         net.gx = e.gx;
         net.gy = e.gy;
       }
       t.node = this.nodeAt(e.x, e.y) ?? this.addNode(e.x, e.y, true);
-      t.legs = this.legsTo(e.x, e.y, t.tx, t.ty, e.gx, e.gy);
+      const bx = e.x + ENTRY_DEPTH * e.gx, by = e.y + ENTRY_DEPTH * e.gy;
+      t.legs = [{ dx: e.gx, dy: e.gy, n: ENTRY_DEPTH }, ...this.legsTo(bx, by, t.tx, t.ty, e.gx, e.gy)];
       return;
     }
     if (t.route === null) t.route = this.netRoute(e, t.x, t.y);
@@ -434,12 +512,7 @@ export const Tunnels = {
       return;
     }
     if (r.outside) {
-      const n = r.wps[0];
-      if (!this.walkTo(e, b, n.x, n.y, 0, WALK_EVERY)) return;
-      if (!this.snapTo(e, n.x, n.y)) {
-        this.giveUp(e, b);
-        return;
-      }
+      if (!this.reachSpot(e, b, r.wps[0].x, r.wps[0].y)) return;
       r.outside = false;
     }
     while (r.wps.length > 0 && r.wps[0].x === e.x && r.wps[0].y === e.y) r.wps.shift();
@@ -482,8 +555,9 @@ export const Tunnels = {
     if (++b.pace < (a === 0 ? CLIMB_EVERY : WALK_EVERY)) return 'busy';
     b.pace = 0;
     const face = a > 0 ? 1 : a < 0 ? -1 : e.facing;
-    if (this.moveBody(e, e.x + dx, e.y + dy, e.frame === 0 ? 1 : 0, face, e.gx, e.gy)) {
+    if (!this.wetSpot(e.x + dx, e.y + dy) && this.moveBody(e, e.x + dx, e.y + dy, e.frame === 0 ? 1 : 0, face, e.gx, e.gy)) {
       b.stuck = 0;
+      b.bailed = 0;
       if (this.has(b, WOOD) > 0) {
         const loose = this.looseRound(e.x, e.y);
         if (loose.length > 0) this.lineCell(b, loose[0]);
@@ -492,7 +566,23 @@ export const Tunnels = {
     }
     const r = this.workSpot(e, b, e.x + dx, e.y + dy);
     if (r === 'work') return 'busy';
+    // Another human in the way: they trade places.
+    if (r === 'wait' || r === 'clear') {
+      const o = this.humanIn(e, e.x + dx, e.y + dy);
+      if (o !== null && this.swapPlaces(e, o)) return 'moved';
+    }
     return r === 'clear' ? 'wait' : r;
+  },
+
+  // Another human with a cell in the box at spot (x, y), or null.
+  humanIn(e, x, y) {
+    const { gx, gy } = this.tunnels, box = this.tunnelBox;
+    if (!this.boxCells(x, y, gx, gy, box)) return null;
+    for (const c of box) {
+      const o = this.creatureAt(c);
+      if (o !== null && o !== e && o.brain !== null) return o;
+    }
+    return null;
   },
 
   // Dig the plan's legs a spot at a time from where it stands, growing the
@@ -500,6 +590,12 @@ export const Tunnels = {
   // more.
   tunnelDig(e, b, t) {
     b.hold = true;
+    // It digs from the node it stands on; moved off it (pushed, or another
+    // human dug that end on), it plans again.
+    if (!this.tunnels.nodes.has(t.node.id) || e.x !== t.node.x || e.y !== t.node.y) {
+      this.endTunnel(b);
+      return;
+    }
     if (t.legs.length === 0 || !b.fetchSet[this.type[t.ty * this.w + t.tx]]) {
       const n = this.wantsMore(b) ? this.findDeposit(e, b.camp, b.fetchSet, this.digLimit(b), SEAM_R) : -1;
       if (n < 0) {
@@ -540,6 +636,7 @@ export const Tunnels = {
       return;
     }
     b.stuck = 0;
+    b.bailed = 0;
     this.growTunnel(t, x, y, leg.dx, leg.dy);
     if (--leg.n === 0) t.legs.shift();
   },
@@ -582,7 +679,8 @@ export const Tunnels = {
   leaveTunnel(e, b) {
     const net = this.tunnels;
     if (net.edges.size === 0 || net.gx !== e.gx || net.gy !== e.gy) return false;
-    const at = this.onNet(e.x, e.y);
+    let at = this.onNet(e.x, e.y);
+    if (at === null && this.isInside(e.x, e.y) && this.backOnNet(e)) at = this.onNet(e.x, e.y);
     if (at === null || (at.node !== null && at.node.entrance)) return false;
     const { dist, prev } = this.netDistances(this.netSources(e).src);
     let best = -1, bd = Infinity;
@@ -601,6 +699,8 @@ export const Tunnels = {
       this.dropStretch(e.x, e.y, e.x + Math.sign(n.x - e.x), e.y + Math.sign(n.y - e.y));
       return false;
     }
+    if (r === 'wait' && ++b.stuck > GIVE_UP) return false; // stuck: it finds its own way
+    if (r === 'moved') b.stuck = 0;
     return r !== 'wood';
   },
 };

@@ -49,9 +49,9 @@ function seam(seed, under = ID.DIRT) {
 
 // Run up to `steps`, sending e back to mining whenever it stops (as its
 // crafting would), until it holds `goal` coal: the steps taken.
-function mineCoal(w, e, goal, steps, also = () => {}) {
+function mineCoal(w, e, goal, steps, also = () => {}, stop = () => false) {
   let f = 0;
-  for (; f < steps && w.has(e.brain, ID.COAL) < goal; f++) {
+  for (; f < steps && w.has(e.brain, ID.COAL) < goal && !stop(); f++) {
     const b = e.brain;
     if (b.tun === null && b.job !== 'gathering wood') w.startMining(e, b, b.camp, 'coal', goal);
     also();
@@ -62,8 +62,7 @@ function mineCoal(w, e, goal, steps, also = () => {}) {
 
 test('without a pickaxe, a seam under stone is given up on; with one, it is mined', () => {
   const { w, e } = seam(1, ID.STONE);
-  assert.ok(w.startMining(e, e.brain, e.brain.camp, 'coal', 5));
-  for (let f = 0; f < 3000 && !(e.brain.skip.get('coal') > w.tick); f++) w.step();
+  mineCoal(w, e, 5, 4000, () => {}, () => e.brain.skip.get('coal') > w.tick);
   assert.ok(e.brain.skip.get('coal') > w.tick, `skipped for a while (${e.brain.job})`);
   assert.equal(w.has(e.brain, ID.COAL), 0);
   e.brain.tool = 1;

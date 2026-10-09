@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,660 tests, all passing, in about a minute (most of it the human situations)
+npm test    # node --test: about 1,670 tests, all passing, in about a minute (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -232,9 +232,30 @@ else; `test/build.test.js` checks the bundle runs.
   `leaveTunnel` (out by the nearest entrance). Out of lining wood, it sets
   `brain.tunnelWood` and gathers `TUNNEL_WOOD` before tunnelling again.
   Humans never fetch human-placed wood (`findWanted` skips `madeByHuman`).
-  Tested in `test/tunnels.test.js`. Known weak spot: in the Wilderness the
-  whole crafting chain can still stall (humans crowding a boulder end up on
-  each other's heads; the hut is then never finished), seed-dependent.
+  Tested in `test/tunnels.test.js`. A new entrance starts as a shaft
+  `ENTRY_DEPTH` (7) deep; entrances keep 14+ cells from the fire (resting
+  humans would sit on the mouth). One human in the tunnels at a time
+  (`inTunnels`: two can't pass in a 3-wide tunnel). `reachSpot` walks to a
+  spot and digs it clear if it has filled; `workSpot` bails out liquid
+  (`BAIL` cells, then the spot counts flooded). A human off-spot inside a
+  tunnel snaps back on (`backOnNet`, never to an entrance). Tunnel lining
+  is protected from gatherers but a walker may dig lining in its way.
+- **Reliability** (the Wilderness pass): humans in each other's way trade
+  places (`swapPlaces`: exact cells and pose, so it always fits; not more
+  often than `SWAP_EVERY`), and head-to-head the younger steps back. Giving
+  up on a target bans everything of its kind within `BAN_R`. Taking wood
+  with trunk above fells the tree (`fell`: its wood and leaves fall loose).
+  Hut sites: up to `HUT_R` (40) from the pile, a climbable step of flat,
+  growth cleared (`CLEARABLE`, `clearSite`), and `walkable` from the pile
+  (no rock in the way). Fetch targets need room for a body to stand within
+  reach (`roomToStand`). The pile holds two rows; a burning pile's
+  Campfire counts as fuel (`ON_FIRE`). A one-cell puddle under its feet
+  isn't swimming. Walk-digging also tries a 2-cell step up. Measured over
+  12 Wilderness seeds and 40,000 steps: fire 11, hut 9-11, pickaxe 9-11,
+  armour 2-3 (from fire 5/6, hut 4/6, armour 0/6). Still weak: mining
+  logistics (wood for lining, one miner at a time), and a seed whose fire
+  is never lit. Probe scripts that measure this (milestones, time per job,
+  stuck episodes) are worth rewriting when you come back to it.
   Shooting: `findFoe` (Spiders, Phoenixes, `rival` humans), `findPrey`
   (hunting, at most every 2,000 steps), `shootAt` holds fire unless the
   target is first on the line (`lineFirst`), `shoot` fires 4 `pellet`s for

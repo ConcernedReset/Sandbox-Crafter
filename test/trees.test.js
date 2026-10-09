@@ -74,3 +74,17 @@ test('a tree grows up against the gravity arrow', () => {
   assert.ok(right >= 18, `trunk reaches x ${right}`);
   assert.ok(countOf(w, ID.LEAVES) >= 20);
 });
+
+test('a tree whose trunk is cut at the foot comes down where its wood can be gathered', () => {
+  const w = makeWorld(60, 60, 1);
+  fillRect(w, 0, 55, 59, 59, ID.DIRT);
+  fillRect(w, 30, 30, 30, 54, ID.WOOD); // a trunk
+  fillRect(w, 26, 26, 34, 29, ID.LEAVES); // and its crown
+  w.clearCell(54 * 60 + 30);
+  w.fell(30, 54);
+  for (let f = 0; f < 300; f++) w.step();
+  let high = 0;
+  for (let y = 0; y < 45; y++) for (let x = 0; x < 60; x++) if (w.type[y * 60 + x] === ID.WOOD) high++;
+  assert.equal(high, 0, 'no wood left hanging up high');
+  assert.ok(w.type.filter((t) => t === ID.WOOD).length >= 20, 'the wood is all still there, on the ground');
+});

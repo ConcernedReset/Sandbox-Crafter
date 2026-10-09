@@ -11105,9 +11105,13 @@ const WALK_EVERY = 4; // steps per cell walked
 const RUN_EVERY = 2; // and run
 const CLIMB = 2; // the highest step it climbs
 const PASS_REACH = 14; // how far it squeezes past other humans in its way
+const SWAP_EVERY = 40; // steps between trading places with another human
 const SWIM_CLIMB = 6; // or swims up, getting out of water
 const GIVE_UP = 300; // steps without getting closer before it gives up on a target
 const BAN_FOR = 1800; // and leaves that target alone
+const FELL_MAX = 800; // the most cells of a tree that come down when it's felled
+const TREE = setOf(['WOOD', 'LEAVES']);
+const BAN_R = 5; // (and what's like it this close: the rest of that log is no easier to reach)
 const DANGER_R = 16; // it runs from danger this close
 const SAFE_R = 24; // until there's none this close
 // °C: anything this hot (but a gas) is danger. Its body holds BODY_T, so
@@ -11134,14 +11138,18 @@ const REACH = 3; // how far across it reaches to pick something up
 const FUEL = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST']);
 const FIRE_SET = setOf(['FIRE', 'CAMPFIRE']);
 const FLAMES = setOf(['FIRE']); // real fire, which it won't walk through
+const ON_FIRE = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST', 'CAMPFIRE']); // fuel on a burning pile, alight or not
 const HUT_W = 9; // the hut's width
 const HUT_WALL = 8; // its walls' height
 const DOOR = 6; // the doorway's height
 const HUT_GAP = 4; // the least space between the hut and the pile
 const STONE_R = 120; // how far from the camp it fetches building material
+const HUT_R = 40; // how far from the pile it looks for a site for the hut
 const COLD_AIR = 10; // °C: air this cold sends it to shelter
 const RAIN_R = 20; // as does rain, snow or hail falling this close
 const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
+// Growth it clears away for a building site: plants, leaves, flowers, moss.
+const CLEARABLE = Uint8Array.from(DEFS, (d) => (d.state === SOLID && d.cat === 'life' && d.strength > 0 && d.strength <= 6 ? 1 : 0));
 const HAND_DIG = 30; // the strongest solid it digs by hand (sandstone); powders always
 const TOOL_DIG = 150; // and with a pickaxe (stone, granite, most metals)
 const DIG_EVERY = 8; // steps per cell dug
@@ -11196,6 +11204,8 @@ function newBrain() {
     tun: null, // the tunnel it's travelling or digging (tunnels.js)
     tunnelWood: false, // it has run out of lining wood before: gathers some first
     hold: false, // holding on in a tunnel (no falling) this step
+    bailed: 0, // liquid cells bailed out of the spot it's clearing
+    swapAt: -SWAP_EVERY, // when it last traded places with another human
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
@@ -11319,11 +11329,16 @@ const Humans = {
     return 0;
   },
 
-  // In a liquid: its head under, or liquid under its feet.
+  // In a liquid: its head under, or liquid under its feet (most of the
+  // ground under it: a drop of something in a puddle isn't water to swim).
   inLiquid(e, under) {
     if (under !== 0) return true;
-    const x = e.x + e.gx, y = e.y + e.gy;
-    return this.inBounds(x, y) && DEFS[this.type[y * this.w + x]].state === LIQUID;
+    let wet = 0;
+    for (let k = -1; k <= 1; k++) {
+      const x = e.x + k * e.gy + e.gx, y = e.y - k * e.gx + e.gy;
+      if (this.inBounds(x, y) && DEFS[this.type[y * this.w + x]].state === LIQUID) wet++;
+    }
+    return wet >= 2;
   },
 
   // Swim up for air, then on the way it was going (or, going nowhere, to
@@ -11362,7 +11377,7 @@ const Humans = {
   // faces: on the level, or up a step of up to `climb` cells. Running
   // (`leap`), it carries on over a gap of up to 2 cells. Another human in
   // the way: they squeeze past each other. Returns whether it moved.
-  stepAcross(e, dir, climb, leap) {
+  stepAcross(e, dir, climb, leap, giveWay = true) {
     const rx = e.gy * dir, ry = -e.gx * dir;
     const fr = e.frame === 0 ? 1 : 0;
     for (let up = 0; up <= climb; up++) {
@@ -11375,8 +11390,31 @@ const Humans = {
       return true;
     }
     const other = this.creatureAhead(e, rx, ry);
-    if (other !== null && other.kind === e.kind) return this.passBy(e, other, rx, ry, dir);
+    if (other === null || other.kind !== e.kind) return false;
+    if (this.passBy(e, other, rx, ry, dir) || this.swapPlaces(e, other)) return true;
+    // Head to head and no way past: the younger gives way, stepping back.
+    if (giveWay && other.brain !== null && other.brain.heading === -dir && e.id > other.id) this.stepAcross(e, -dir, CLIMB, false, false);
     return false;
+  },
+
+  // Two humans in each other's way trade places: e takes o's exact cells
+  // and pose, and o takes e's. Together they fill the same cells as before,
+  // so it always fits, on a slope or in a tunnel alike. Only whole bodies,
+  // and not too often (so they don't trade back and forth).
+  swapPlaces(e, o) {
+    if (o.brain === null || o.kind !== e.kind || e.grow >= 0 || o.grow >= 0) return false;
+    if (this.tick - e.brain.swapAt < SWAP_EVERY || this.tick - o.brain.swapAt < SWAP_EVERY) return false;
+    for (let p = 0; p < e.n; p++) if (e.pix[p] !== BODY || o.pix[p] !== BODY) return false;
+    const te = this.bodyTemp(e), to = this.bodyTemp(o);
+    const ec = Int32Array.from(e.cells), oc = Int32Array.from(o.cells);
+    const pose = (a) => ({ x: a.x, y: a.y, frame: a.frame, facing: a.facing, gx: a.gx, gy: a.gy, fallV: 0 });
+    const pe = pose(e), po = pose(o);
+    for (let p = 0; p < e.n; p++) this.writePixel(e, p, oc[p], te, po.frame);
+    for (let p = 0; p < o.n; p++) this.writePixel(o, p, ec[p], to, pe.frame);
+    Object.assign(e, po);
+    Object.assign(o, pe);
+    e.brain.swapAt = o.brain.swapAt = this.tick;
+    return true;
   },
 
   // Squeeze past the humans ahead of it (rx, ry): to the first place beyond
@@ -11468,7 +11506,7 @@ const Humans = {
   digToward(e, b, dir, vdir) {
     const out = this.footB, rx = e.gy * dir, ry = -e.gx * dir;
     const fr = e.frame === 0 ? 1 : 0, limit = this.digLimit(b);
-    for (const up of vdir < 0 ? [1, 0] : vdir > 0 ? [-1, 0] : [0, 1]) {
+    for (const up of vdir < 0 ? [1, 2, 0] : vdir > 0 ? [-1, 0] : [0, 1, 2]) {
       if (!this.placeCells(e.kind, e.x + rx - up * e.gx, e.y + ry - up * e.gy, fr, dir, e.gx, e.gy, out)) continue;
       let first = -1, ok = true;
       for (let p = 0; p < e.n && ok; p++) {
@@ -11487,10 +11525,12 @@ const Humans = {
   },
 
   // Can a human dig out cell c, digging things up to strength `limit`: not
-  // too hard, not hot, and not something a human put there?
+  // too hard, not hot, and not something a human put there (but tunnel
+  // lining in its way it can: left standing when the dirt round it went, it
+  // would wall humans in; a tunnel that needs it is re-lined when used)?
   diggable(c, limit = HAND_DIG) {
     const s = DIG[this.type[c]];
-    return s > 0 && s <= limit && this.temp[c] < HOT && !this.madeByHuman(c);
+    return s > 0 && s <= limit && this.temp[c] < HOT && (!this.madeByHuman(c) || (this.tunnels.mask[c] & 2) !== 0);
   },
 
   digLimit(b) {
@@ -11576,6 +11616,30 @@ const Humans = {
     b.fetchSide = side;
     b.job = job;
     return true;
+  },
+
+  // Wood taken from (x, y) with more trunk above it: the tree comes down. Its
+  // wood and leaves (but nothing humans put there) fall loose, like sand,
+  // and pile up where they can be gathered.
+  fell(x, y) {
+    const { gravity: g, w } = this;
+    const ax = x - g.downX, ay = y - g.downY;
+    if (!this.inBounds(ax, ay) || this.type[ay * w + ax] !== WOOD || this.madeByHuman(ay * w + ax)) return;
+    const seen = new Set([ay * w + ax]), todo = [ay * w + ax];
+    while (todo.length > 0 && seen.size < FELL_MAX) {
+      const c = todo.pop();
+      this.loose[c] = 1;
+      const cx = c % w, cy = (c / w) | 0;
+      for (const [dx, dy] of NEAR4) {
+        const nx = cx + dx, ny = cy + dy;
+        if (!this.inBounds(nx, ny)) continue;
+        const j = ny * w + nx;
+        if (!seen.has(j) && TREE[this.type[j]] && !this.madeByHuman(j)) {
+          seen.add(j);
+          todo.push(j);
+        }
+      }
+    }
   },
 
   // A human that dies drops the pixels it carried round where it lay; its
@@ -11683,7 +11747,8 @@ const Humans = {
     }
     if (this.carryingOn(e, b, camp)) return;
     this.release(b);
-    const fuel = this.pileCount(camp, FUEL), burning = this.pileCount(camp, FIRE_SET) > 0;
+    const burning = this.pileCount(camp, FIRE_SET) > 0;
+    const fuel = this.pileCount(camp, burning ? ON_FIRE : FUEL); // a burning pile's own campfire counts
     if (burning) camp.lit = true;
     if (camp.lighter !== 0 && this.creatureById[camp.lighter]?.brain?.job !== 'lighting the fire') camp.lighter = 0;
     if (!burning && fuel >= PILE_LIGHT && camp.lighter === 0) {
@@ -11973,6 +12038,7 @@ const Humans = {
         camp.hutRetry = this.tick + 600;
         return false;
       }
+      this.clearSite(camp, camp.hut);
     }
     const hut = camp.hut;
     if (hut.done) return false;
@@ -11994,9 +12060,10 @@ const Humans = {
   },
 
   // A site for the hut: HUT_W columns side by side, at least HUT_GAP cells
-  // past the pile, on ground within a cell of flat, with room for it.
+  // past the pile (up to HUT_R), on ground within a climbable step of flat,
+  // with room for it and a way there (walkable).
   planHut(camp) {
-    for (let off = 3 + HUT_GAP; off <= 24; off++) {
+    for (let off = 3 + HUT_GAP; off <= HUT_R; off++) {
       for (const side of [1, -1]) {
         const plan = this.hutAt(camp, side > 0 ? off : -off - (HUT_W - 1), side);
         if (plan !== null) return plan;
@@ -12018,12 +12085,13 @@ const Humans = {
       top = Math.min(top, g);
       bottom = Math.max(bottom, g);
     }
-    if (bottom - top > 1) return null;
+    if (bottom - top > CLIMB) return null; // a step it can climb, inside
+    if (!this.walkable(camp, side > 0 ? 2 : -2, side > 0 ? u0 : u0 + HUT_W - 1)) return null;
     const floor = top - 1; // the row it stands in
     for (let v = floor; v >= floor - HUT_WALL; v--) {
       for (let u = u0; u < u0 + HUT_W; u++) {
         const c = this.campCell(camp, u, v);
-        if (c < 0 || this.builtAt(c)) return null;
+        if (c < 0 || this.groundCell(c)) return null;
       }
     }
     const farU = side > 0 ? u0 + HUT_W - 1 : u0, doorU = side > 0 ? u0 : u0 + HUT_W - 1;
@@ -12042,9 +12110,41 @@ const Humans = {
     for (let v = -8; v <= 8; v++) {
       const c = this.campCell(camp, u, v), a = this.campCell(camp, u, v - 1);
       if (c < 0 || a < 0) continue;
-      if (this.builtAt(c) && !this.builtAt(a)) return v;
+      if (this.groundCell(c) && !this.groundCell(a)) return v;
     }
     return null;
+  },
+
+  // Can a human get from column ua to column ub of the camp's frame, on
+  // the level of ua's ground: nothing too hard to dig by hand (rock, metal)
+  // in a body's height above that level, all the way? (Dirt, wood and
+  // growth it walks over or digs through.)
+  walkable(camp, ua, ub) {
+    const s = ub >= ua ? 1 : -1, g = this.groundAt(camp, ua);
+    if (g === null) return false;
+    for (let u = ua; u !== ub + s; u += s) {
+      for (let v = g - 1; v >= g - 6; v--) {
+        const c = this.campCell(camp, u, v);
+        if (c < 0 || (this.groundCell(c) && !this.diggable(c, HAND_DIG))) return false;
+      }
+    }
+    return true;
+  },
+
+  // Is cell c ground to build on, or in the way of building: built (solid
+  // or powder), and not growth it would clear away?
+  groundCell(c) {
+    return this.builtAt(c) && !CLEARABLE[this.type[c]];
+  },
+
+  // Clear the growth off a hut's site, from its floor to its roof.
+  clearSite(camp, hut) {
+    for (let v = hut.floor; v >= hut.floor - HUT_WALL; v--) {
+      for (let u = hut.u0; u < hut.u0 + HUT_W; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && CLEARABLE[this.type[c]]) this.clearCell(c);
+      }
+    }
   },
 
   // Is cell c solid (or powder), and not a creature?
@@ -12234,7 +12334,7 @@ const Humans = {
   // empty, or holds only ash from the last fire or something weak that
   // fell or drifted in (it clears it out).
   pileSpace(camp) {
-    for (let v = 0; v >= -2; v--) {
+    for (let v = 0; v >= -1; v--) { // two rows: low enough to step over
       for (const u of [0, -1, 1]) {
         const c = this.campCell(camp, u, v);
         if (c < 0) continue;
@@ -12287,7 +12387,8 @@ const Humans = {
   },
 
   // Is there a place within 3 cells of (x, y) a human could stand: empty,
-  // with solid ground or powder under it?
+  // with solid ground or powder under it, and room for its body (3 wide, 6
+  // tall) above?
   nearGround(x, y, gx, gy) {
     for (let dy = -3; dy <= 3; dy++) {
       for (let dx = -3; dx <= 3; dx++) {
@@ -12295,10 +12396,24 @@ const Humans = {
         if (!this.inBounds(nx, ny) || !this.inBounds(nx + gx, ny + gy)) continue;
         if (this.type[ny * this.w + nx] !== 0) continue;
         const g = this.type[(ny + gy) * this.w + nx + gx], s = DEFS[g].state;
-        if (g !== 0 && (s === SOLID || s === POWDER)) return true;
+        if (g !== 0 && (s === SOLID || s === POWDER) && this.roomToStand(nx, ny, gx, gy)) return true;
       }
     }
     return false;
+  },
+
+  // Room for a human's body standing at (x, y): nothing solid or powder in
+  // the 3x6 box above its feet (creatures, liquids and gases don't count).
+  roomToStand(x, y, gx, gy) {
+    for (let up = 0; up < 6; up++) {
+      for (let k = -1; k <= 1; k++) {
+        const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
+        if (!this.inBounds(cx, cy)) return false;
+        const t = this.type[cy * this.w + cx];
+        if (t !== 0 && !SHAPED[t] && (DEFS[t].state === SOLID || DEFS[t].state === POWDER)) return false;
+      }
+    }
+    return true;
   },
 
   isBanned(b, i) {
@@ -12355,6 +12470,7 @@ const Humans = {
     this.release(b);
     if (this.stow(b, u)) {
       this.clearCell(t);
+      if (u === WOOD) this.fell(t % this.w, (t / this.w) | 0);
       if (this.holding(b, b.fetchSet) < STACK && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide)) return;
     }
     b.job = b.job === 'fetching stone' ? 'building the hut' : 'wandering';
@@ -12374,7 +12490,7 @@ const Humans = {
     // enough (coal last; the rest it keeps).
     const want = this.pileCount(camp, FIRE_SET) > 0 ? PILE_LOW : PILE_LIGHT;
     const c = this.pileSpace(camp);
-    if (c >= 0 && this.pileCount(camp, FUEL) < want) {
+    if (c >= 0 && this.pileCount(camp, want === PILE_LOW ? ON_FIRE : FUEL) < want) {
       const t = this.takeAny(b, FEED) || this.takeAny(b, FUEL);
       if (t !== 0) {
         this.putDown(c, t);
@@ -12438,7 +12554,13 @@ const Humans = {
     if (b.job === 'mining') b.skip.set(b.mineKey, this.tick + BAN_FOR);
     b.tun = null;
     if (b.target >= 0) {
-      b.banned.set(b.target, this.tick + BAN_FOR);
+      const t = this.type[b.target], x0 = b.target % this.w, y0 = (b.target / this.w) | 0;
+      for (let y = Math.max(0, y0 - BAN_R); y <= Math.min(this.h - 1, y0 + BAN_R); y++) {
+        for (let x = Math.max(0, x0 - BAN_R); x <= Math.min(this.w - 1, x0 + BAN_R); x++) {
+          const i = y * this.w + x;
+          if (i === b.target || (t !== 0 && this.type[i] === t)) b.banned.set(i, this.tick + BAN_FOR);
+        }
+      }
       this.release(b);
     }
     b.goalX = -1;
@@ -12480,7 +12602,7 @@ const Humans = {
   },
 };
 
-return { THINK_EVERY, WALK_EVERY, RUN_EVERY, GIVE_UP, BAN_FOR, DANGER_R, BREATH, FRAME_KNEEL, FUEL_R, HUT_W, HUT_WALL, DOOR, HAND_DIG, TOOL_DIG, DIG_EVERY, RESOURCES, USEFUL, MINE_R, CRAFT_FIRE_TIME, ARMOUR_HITS, PELLETS, FIRE_EVERY, SEAM_R, WOOD_ONLY, STACK, HELD_PICKAXE, newBrain, inventoryNote, Humans };
+return { THINK_EVERY, WALK_EVERY, RUN_EVERY, GIVE_UP, BAN_FOR, DANGER_R, BREATH, FRAME_KNEEL, DANGER, FUEL_R, HUT_W, HUT_WALL, DOOR, HAND_DIG, TOOL_DIG, DIG_EVERY, RESOURCES, USEFUL, MINE_R, CRAFT_FIRE_TIME, ARMOUR_HITS, PELLETS, FIRE_EVERY, SEAM_R, WOOD_ONLY, STACK, HELD_PICKAXE, newBrain, inventoryNote, Humans };
 })();
 
 __modules["src/sim/trees.js"] = (() => {
@@ -12655,16 +12777,19 @@ __modules["src/sim/tunnels.js"] = (() => {
 
 const { DEFS, ID, State } = __modules["src/sim/elements.js"];
 const { SHAPED } = __modules["src/sim/creatures.js"];
-const { USEFUL, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R } = __modules["src/sim/humans.js"];
+const { USEFUL, DANGER, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R } = __modules["src/sim/humans.js"];
 
-const { POWDER } = State;
+const { POWDER, LIQUID } = State;
 const { WOOD } = ID;
 const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
 const BOX_UP = 6; // a spot's box: 3 wide, 6 tall
 const NEW_COST = 4; // digging a new spot of tunnel counts as walking this many
 const SHAFT_COST = 1.5; // and climbing a spot of shaft as this many
 const CLIMB_EVERY = 6; // steps per spot climbed up or down a shaft
-const TUNNEL_WOOD = 8; // lining wood it gathers before tunnelling, once it has run short
+const TUNNEL_WOOD = 8; // lining wood it gathers before tunnelling
+const ENTRY_DEPTH = 7; // a new entrance starts as a shaft this deep: a small mouth, soon underground
+const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
+const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
 
 function initTunnels(world) {
   world.tunnels = {
@@ -12736,9 +12861,10 @@ const Tunnels = {
 
   // One piece of work on the spot (x, y): line one loose cell round it, or
   // else dig out one cell of its box (the top row first; lining wood in the
-  // way goes back in its pack, useful things too). 'work' while there's
-  // more, 'clear' once the box is open, 'wood' when lining is needed and it
-  // has none, 'blocked' for something it can't dig, 'wait' for a creature.
+  // way goes back in its pack, useful things too), bailing out any liquid.
+  // 'work' while there's more, 'clear' once the box is open, 'wood' when
+  // lining is needed and it has none, 'blocked' for something it can't dig
+  // (or a flooded or dangerous liquid), 'wait' for a creature.
   workSpot(e, b, x, y) {
     const { gx, gy, mask } = this.tunnels, box = this.tunnelBox;
     if (!this.boxCells(x, y, gx, gy, box)) return 'blocked';
@@ -12747,6 +12873,11 @@ const Tunnels = {
     if (loose.length > 0) return this.lineCell(b, loose[0]) ? 'work' : 'wood';
     for (let n = box.length - 1; n >= 0; n--) {
       const c = box[n], t = this.type[c];
+      if (t !== 0 && DEFS[t].state === LIQUID) {
+        if (DANGER[t] || ++b.bailed > BAIL) return 'blocked';
+        this.clearCell(c);
+        return 'work';
+      }
       if (t === 0 || this.roomForBody(e, c)) continue;
       if (SHAPED[t]) return 'wait';
       if (t === WOOD && (mask[c] & LINED) !== 0) this.stow(b, WOOD); // its own lining
@@ -12956,14 +13087,15 @@ const Tunnels = {
     return legs;
   },
 
-  // A standing spot on the surface for a new entrance: 10 to 40 cells
-  // beside the camp, 4 or more clear of its hut (and its doorways), not in
-  // a tunnel, the side towards the target first. { x, y, cost } or null.
+  // A standing spot on the surface for a new entrance: 14 to 40 cells
+  // beside the camp (past where humans sit by the fire, who would block its
+  // mouth), 4 or more clear of its hut (and its doorways), not in a tunnel,
+  // the side towards the target first. { x, y, cost } or null.
   entranceSpot(e, camp, tx, ty) {
     const hut = camp.hut, tu = (tx - camp.x) * camp.gy - (ty - camp.y) * camp.gx;
     let best = null;
     for (const s of tu >= 0 ? [1, -1] : [-1, 1]) {
-      for (let k = 10; k <= 40; k++) {
+      for (let k = 14; k <= 40; k++) {
         const u = s * k;
         if (hut !== null && u >= hut.u0 - 4 && u < hut.u0 + HUT_W + 4) continue;
         const g = this.groundAt(camp, u);
@@ -12972,7 +13104,8 @@ const Tunnels = {
         if (c < 0 || this.type[c] !== 0) continue;
         const x = c % this.w, y = (c / this.w) | 0;
         if (this.isInside(x, y) || this.nodeAt(x, y) !== null) continue;
-        const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * this.octo(x, y, tx, ty, camp.gx, camp.gy);
+        const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;
+        const cost = Math.abs(x - e.x) + Math.abs(y - e.y) + NEW_COST * (ENTRY_DEPTH + this.octo(bx, by, tx, ty, camp.gx, camp.gy));
         if (best === null || cost < best.cost) best = { x, y, cost };
       }
     }
@@ -13003,10 +13136,14 @@ const Tunnels = {
   },
 
   // Set off to mine `key` (a RESOURCES key) until it holds `goal`: plan a
-  // tunnel to the nearest deposit. Wood to line it with first, if it has
-  // run short before. False if there's no way (it skips that one a while).
+  // tunnel to the nearest deposit. Wood to line it with first (up to
+  // TUNNEL_WOOD; it goes with less only if there's no more to be had).
+  // False if there's no way (it skips that one a while).
   startMining(e, b, camp, key, goal) {
     if ((b.skip.get(key) ?? 0) > this.tick) return false;
+    // One human in the tunnels at a time: two in a tunnel can't pass. The
+    // others wait their turn (doing other things).
+    for (const o of this.creatures) if (o !== e && o.brain !== null && this.inTunnels(o)) return false;
     const set = RESOURCES[key];
     const t = this.findDeposit(e, camp, set, this.digLimit(b));
     const plan = t < 0 ? null : this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
@@ -13014,7 +13151,7 @@ const Tunnels = {
       b.skip.set(key, this.tick + BAN_FOR);
       return false;
     }
-    if (b.tunnelWood && this.has(b, WOOD) < TUNNEL_WOOD) {
+    if (this.has(b, WOOD) < TUNNEL_WOOD) {
       if (this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood')) return true;
       if (this.has(b, WOOD) === 0) {
         b.skip.set(key, this.tick + BAN_FOR);
@@ -13053,21 +13190,84 @@ const Tunnels = {
     return (e.x === x && e.y === y) || this.moveBody(e, x, y, 0, e.facing, e.gx, e.gy);
   },
 
+  // Is there liquid in the box at spot (x, y)?
+  wetSpot(x, y) {
+    const { gx, gy } = this.tunnels, box = this.tunnelBox;
+    if (!this.boxCells(x, y, gx, gy, box)) return false;
+    for (const c of box) if (this.type[c] !== 0 && DEFS[this.type[c]].state === LIQUID) return true;
+    return false;
+  },
+
+  // Is human o using the tunnels: mining, or anywhere in the network but
+  // an entrance?
+  inTunnels(o) {
+    if (o.brain.tun !== null) return true;
+    if (this.tunnels.edges.size === 0 || !this.isInside(o.x, o.y)) return false;
+    const at = this.nearSpot(o.x, o.y);
+    return at !== null && !(at.node !== null && at.node.entrance);
+  },
+
+  // The nearest spot of the network to (x, y), within 2 cells: { x, y,
+  // node, edge, k }, or null.
+  nearSpot(x0, y0) {
+    for (let r = 0; r <= 2; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const at = this.onNet(x0 + dx, y0 + dy);
+          if (at !== null) return { ...at, x: x0 + dx, y: y0 + dy };
+        }
+      }
+    }
+    return null;
+  },
+
+  // e is inside a tunnel but not on one of its spots (it dropped down a
+  // shaft, say): onto the nearest spot, if it can. Not at an entrance: by
+  // one, it's out on the surface already.
+  backOnNet(e) {
+    const at = this.nearSpot(e.x, e.y);
+    return at !== null && !(at.node !== null && at.node.entrance) && this.snapTo(e, at.x, at.y);
+  },
+
+  // Overland to the spot (x, y), and exactly onto it, clearing it (lined)
+  // if something has filled it. True once there; it gives up if it can't
+  // dig the spot clear.
+  reachSpot(e, b, x, y) {
+    if (e.x === x && e.y === y) return true;
+    // Walk there; once it's as near as walking gets it, dig the spot clear
+    // (if need be) and step onto it.
+    const near = Math.abs(x - e.x) <= 1 && Math.abs(y - e.y) <= 2;
+    if (!near && !this.walkTo(e, b, x, y, 1, WALK_EVERY)) return false;
+    if (this.snapTo(e, x, y)) {
+      b.stuck = 0;
+      return true;
+    }
+    if (++b.pace < DIG_EVERY) return false;
+    b.pace = 0;
+    const r = this.workSpot(e, b, x, y);
+    if (r === 'wait') {
+      // Someone's in the way (coming out, say): it steps away and tries later.
+      if ((b.stuck += DIG_EVERY) > WAIT_SPOT) this.endTunnel(b);
+    } else if (r === 'blocked' || r === 'wood' || (r === 'clear' && (b.stuck += DIG_EVERY) > GIVE_UP)) {
+      if (r === 'wood') b.tunnelWood = true;
+      this.giveUp(e, b);
+    }
+    return false;
+  },
+
   // On to the plan's start: a new entrance overland, or through the network.
   tunnelGo(e, b, t) {
     if (t.entrance) {
-      if (!this.walkTo(e, b, t.x, t.y, 0, WALK_EVERY)) return;
-      if (!this.snapTo(e, t.x, t.y)) {
-        this.giveUp(e, b);
-        return;
-      }
+      if (!this.reachSpot(e, b, t.x, t.y)) return;
       const net = this.tunnels;
       if (net.nodes.size === 0) {
         net.gx = e.gx;
         net.gy = e.gy;
       }
       t.node = this.nodeAt(e.x, e.y) ?? this.addNode(e.x, e.y, true);
-      t.legs = this.legsTo(e.x, e.y, t.tx, t.ty, e.gx, e.gy);
+      const bx = e.x + ENTRY_DEPTH * e.gx, by = e.y + ENTRY_DEPTH * e.gy;
+      t.legs = [{ dx: e.gx, dy: e.gy, n: ENTRY_DEPTH }, ...this.legsTo(bx, by, t.tx, t.ty, e.gx, e.gy)];
       return;
     }
     if (t.route === null) t.route = this.netRoute(e, t.x, t.y);
@@ -13077,12 +13277,7 @@ const Tunnels = {
       return;
     }
     if (r.outside) {
-      const n = r.wps[0];
-      if (!this.walkTo(e, b, n.x, n.y, 0, WALK_EVERY)) return;
-      if (!this.snapTo(e, n.x, n.y)) {
-        this.giveUp(e, b);
-        return;
-      }
+      if (!this.reachSpot(e, b, r.wps[0].x, r.wps[0].y)) return;
       r.outside = false;
     }
     while (r.wps.length > 0 && r.wps[0].x === e.x && r.wps[0].y === e.y) r.wps.shift();
@@ -13125,8 +13320,9 @@ const Tunnels = {
     if (++b.pace < (a === 0 ? CLIMB_EVERY : WALK_EVERY)) return 'busy';
     b.pace = 0;
     const face = a > 0 ? 1 : a < 0 ? -1 : e.facing;
-    if (this.moveBody(e, e.x + dx, e.y + dy, e.frame === 0 ? 1 : 0, face, e.gx, e.gy)) {
+    if (!this.wetSpot(e.x + dx, e.y + dy) && this.moveBody(e, e.x + dx, e.y + dy, e.frame === 0 ? 1 : 0, face, e.gx, e.gy)) {
       b.stuck = 0;
+      b.bailed = 0;
       if (this.has(b, WOOD) > 0) {
         const loose = this.looseRound(e.x, e.y);
         if (loose.length > 0) this.lineCell(b, loose[0]);
@@ -13135,7 +13331,23 @@ const Tunnels = {
     }
     const r = this.workSpot(e, b, e.x + dx, e.y + dy);
     if (r === 'work') return 'busy';
+    // Another human in the way: they trade places.
+    if (r === 'wait' || r === 'clear') {
+      const o = this.humanIn(e, e.x + dx, e.y + dy);
+      if (o !== null && this.swapPlaces(e, o)) return 'moved';
+    }
     return r === 'clear' ? 'wait' : r;
+  },
+
+  // Another human with a cell in the box at spot (x, y), or null.
+  humanIn(e, x, y) {
+    const { gx, gy } = this.tunnels, box = this.tunnelBox;
+    if (!this.boxCells(x, y, gx, gy, box)) return null;
+    for (const c of box) {
+      const o = this.creatureAt(c);
+      if (o !== null && o !== e && o.brain !== null) return o;
+    }
+    return null;
   },
 
   // Dig the plan's legs a spot at a time from where it stands, growing the
@@ -13143,6 +13355,12 @@ const Tunnels = {
   // more.
   tunnelDig(e, b, t) {
     b.hold = true;
+    // It digs from the node it stands on; moved off it (pushed, or another
+    // human dug that end on), it plans again.
+    if (!this.tunnels.nodes.has(t.node.id) || e.x !== t.node.x || e.y !== t.node.y) {
+      this.endTunnel(b);
+      return;
+    }
     if (t.legs.length === 0 || !b.fetchSet[this.type[t.ty * this.w + t.tx]]) {
       const n = this.wantsMore(b) ? this.findDeposit(e, b.camp, b.fetchSet, this.digLimit(b), SEAM_R) : -1;
       if (n < 0) {
@@ -13183,6 +13401,7 @@ const Tunnels = {
       return;
     }
     b.stuck = 0;
+    b.bailed = 0;
     this.growTunnel(t, x, y, leg.dx, leg.dy);
     if (--leg.n === 0) t.legs.shift();
   },
@@ -13225,7 +13444,8 @@ const Tunnels = {
   leaveTunnel(e, b) {
     const net = this.tunnels;
     if (net.edges.size === 0 || net.gx !== e.gx || net.gy !== e.gy) return false;
-    const at = this.onNet(e.x, e.y);
+    let at = this.onNet(e.x, e.y);
+    if (at === null && this.isInside(e.x, e.y) && this.backOnNet(e)) at = this.onNet(e.x, e.y);
     if (at === null || (at.node !== null && at.node.entrance)) return false;
     const { dist, prev } = this.netDistances(this.netSources(e).src);
     let best = -1, bd = Infinity;
@@ -13244,6 +13464,8 @@ const Tunnels = {
       this.dropStretch(e.x, e.y, e.x + Math.sign(n.x - e.x), e.y + Math.sign(n.y - e.y));
       return false;
     }
+    if (r === 'wait' && ++b.stuck > GIVE_UP) return false; // stuck: it finds its own way
+    if (r === 'moved') b.stuck = 0;
     return r !== 'wood';
   },
 };
@@ -17090,8 +17312,8 @@ function wilderness(world) {
   // Buried under the dirt: coal, a salt bed and veins of metal, for humans
   // with a pickaxe.
   for (const [x0, x1, d0, d1, t] of [
-    [60, 90, 16, 19, ID.COAL], [196, 222, 26, 29, ID.COAL], [118, 140, 18, 21, ID.SALT],
-    [36, 48, 28, 31, ID.METAL], [242, 252, 22, 25, ID.COPPER],
+    [84, 104, 11, 14, ID.COAL], [196, 222, 26, 29, ID.COAL], [140, 158, 11, 13, ID.SALT],
+    [160, 168, 15, 18, ID.METAL], [90, 100, 19, 21, ID.COPPER], [242, 252, 22, 25, ID.COPPER],
   ]) {
     for (let x = x0; x <= x1; x++) for (let y = ground(x) + d0; y <= ground(x) + d1; y++) set(x, y, t);
   }
