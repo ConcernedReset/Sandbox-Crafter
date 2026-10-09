@@ -529,10 +529,17 @@ Each frame (60 per second):
    has burned a while, each human crafts for itself, in order: a wooden
    pickaxe (3 wood; with it, it digs anything up to strength 150: stone,
    granite and most metals, not steel or diamond); coal and salt, mined
-   from deposits it knows of within 120 cells of camp (digging a staircase
-   down to them), which turn into 10 gunpowder in its pack; metal (any
+   from deposits it knows of within 120 cells of camp, which turn into 10
+   gunpowder in its pack; metal (any
    metal or alloy) for a gun (5 metal and a wood stock); then 8 more for
-   armour. A shot is 4 pellets in a tight spread for 1 gunpowder; each
+   armour. To reach what's buried it digs a **tunnel**, at 45° steps
+   (level, stairs, or a shaft it climbs up and down), lining it with wood
+   wherever dirt or sand would fall in, so the ground around stays put; out
+   of wood, it goes up for more and comes back. Every tunnel joins one
+   network the humans share: entrances, junctions, bends and ends, which
+   they find their way along, branching off an existing tunnel when that's
+   shorter than starting a new one, and digging out or giving up on
+   stretches that get blocked. A shot is 4 pellets in a tight spread for 1 gunpowder; each
    pellet takes out the pixel of a creature it hits. Armed humans shoot
    Spiders and Phoenixes near camp, hunt an animal now and then (it leaves
    Meat), and fight humans from other camps; an unarmed human flees an
@@ -896,7 +903,7 @@ every creature, the gallery every element and the machine world every
 machine (with its lamps lit), and that showcases discover nothing until the
 world is cleared.
 The recipe tests run all 1243 production rules in the real simulation.
-About 1,650 tests in all. Most run in a few seconds; the human situations
+About 1,660 tests in all. Most run in a few seconds; the human situations
 and crafting runs take about a minute.
 
 Regenerate the table below after changing recipes with

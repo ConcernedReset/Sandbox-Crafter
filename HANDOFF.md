@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,650 tests, all passing, in about a minute (most of it the human situations)
+npm test    # node --test: about 1,660 tests, all passing, in about a minute (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -208,11 +208,33 @@ else; `test/build.test.js` checks the bundle runs.
   ages `world.shots`. Crafting (`craftWork`) starts when `canCraft`: the
   hut done and `camp.burned` >= `CRAFT_FIRE_TIME`; order pickaxe,
   gunpowder (`wantsPowder`), gun, armour (`craft`). Mining:
-  `startMining(e, b, camp, key, goal)` with `RESOURCES` keys, `findDeposit`
-  (buried is fine), `mine`; a resource out of reach is skipped for
-  `BAN_FOR` (`brain.skip`). Dig strength comes from `DIG` (1 for powders,
-  else the solid's strength) against `digLimit` (30 by hand, 150 with the
-  pickaxe); while mining something deep, `walkTo` digs a staircase down.
+  `startMining(e, b, camp, key, goal)` (tunnels.js) with `RESOURCES` keys,
+  `findDeposit` (buried is fine), then `mine`; a resource out of reach is
+  skipped for `BAN_FOR` (`brain.skip`). Dig strength comes from `DIG` (1
+  for powders, else the solid's strength) against `digLimit` (30 by hand,
+  150 with the pickaxe).
+- **Tunnels** (`tunnels.js`): mining digs tunnels. A spot is where a
+  human's feet go; its inside is the 3x6 body box. `workSpot` lines first
+  (`looseRound`: powders with the inside below or diagonally below are
+  swapped for wood, useful ones pocketed), then digs the box top row first,
+  taking its own lining back. `world.tunnels` holds one network: nodes
+  (`entrance`, `junction`, `bend`, `end`: `nodeKind`), straight edges at
+  45° steps, the way down it was dug with, and a cell `mask` (INSIDE,
+  LINED). `planTunnel` picks the cheapest start (network travel, shafts
+  1.5x, plus 4x per new spot, two legs diagonal then straight: `legsTo`) or
+  a new entrance (`entranceSpot`: 10-40 cells from camp, clear of the hut
+  and of tunnels). `mine` = `tunnelGo` (`netRoute` waypoints, splitting a
+  run into a junction where it starts) then `tunnelDig` (`growTunnel`).
+  `stepAlong` moves spot to spot, re-lines, and repairs (`workSpot`);
+  undiggable blockage drops the run (`dropStretch`, `prune`). `brain.hold`
+  stops `stepHuman` dropping a human in shafts and stairs; `overTunnel`
+  lets humans cross a tunnel's mouth overland; `walkTo` first calls
+  `leaveTunnel` (out by the nearest entrance). Out of lining wood, it sets
+  `brain.tunnelWood` and gathers `TUNNEL_WOOD` before tunnelling again.
+  Humans never fetch human-placed wood (`findWanted` skips `madeByHuman`).
+  Tested in `test/tunnels.test.js`. Known weak spot: in the Wilderness the
+  whole crafting chain can still stall (humans crowding a boulder end up on
+  each other's heads; the hut is then never finished), seed-dependent.
   Shooting: `findFoe` (Spiders, Phoenixes, `rival` humans), `findPrey`
   (hunting, at most every 2,000 steps), `shootAt` holds fire unless the
   target is first on the line (`lineFirst`), `shoot` fires 4 `pellet`s for
