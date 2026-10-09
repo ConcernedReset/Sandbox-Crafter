@@ -76,6 +76,15 @@ const GUN_METAL = 5, GUN_WOOD = 1; // a gun: 5 metal and a Wood stock
 const ARMOUR_METAL = 8; // armour: 8 metal
 export const ARMOUR_HITS = 10; // hits armour absorbs before it breaks
 const AMMO_LOW = 4; // gunpowder below this, it goes for more
+export const PELLETS = 4; // a shot: 4 pellets in a tight spread
+const SPREAD = 0.035; // radians between pellets
+const SHOT_R = 48; // how far a pellet flies
+export const FIRE_EVERY = 40; // steps between shots
+const FIGHT_R = 40; // it shoots at threats and rivals this close
+const THREAT = setOf(['SPIDER', 'PHOENIX']);
+const HUNT_EVERY = 2000; // steps between hunts
+const HUNT_FOR = 400; // and the longest a hunt goes on
+const TRACER = 4; // frames a pellet's path is drawn
 const SEAM_R = 8; // and how near the last one it looks for more of the same
 const WOOD_ONLY = setOf(['WOOD']);
 export const STACK = 10; // the most of any one element it carries
@@ -100,6 +109,7 @@ export function newBrain() {
     mineKey: '', wantN: 0, // what it's mining (a RESOURCES key) and how many it wants
     skip: new Map(), // resource key -> tick until which it doesn't look for it
     refill: true, // it wants gunpowder (a full stack the first time)
+    reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
     fleeDir: 1,
@@ -517,6 +527,19 @@ export const Humans = {
         }
       }
     }
+    // Unarmed (or out of gunpowder), it fears armed humans of other camps
+    // within shot.
+    if (!this.armed(e.brain)) {
+      for (const o of this.creatures) {
+        if (o.brain === null || o === e || !this.rival(e.brain, o.brain) || !this.armed(o.brain)) continue;
+        if (Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y)) > SHOT_R) continue;
+        const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = o.y * w + o.x;
+        }
+      }
+    }
     if (best < 0 && this.air.p[this.air.at(e.x, e.y)] > BLAST_FEAR) {
       const l = this.pressureAt(Math.max(0, e.x - 8), e.y), rt = this.pressureAt(Math.min(w - 1, e.x + 8), e.y);
       best = e.y * w + (l > rt ? Math.max(0, e.x - 1) : Math.min(w - 1, e.x + 1));
@@ -542,6 +565,16 @@ export const Humans = {
       return;
     }
     if (b.job === 'fleeing') b.job = 'wandering';
+    if (this.armed(b)) {
+      const foe = this.findFoe(e, b);
+      if (foe !== null) {
+        if (b.foe !== foe.id) b.reload = FIRE_EVERY - 8; // a gun at the ready
+        b.foe = foe.id;
+        b.job = 'shooting';
+        return;
+      }
+    }
+    if (b.job === 'shooting') b.job = 'wandering';
     this.chooseWork(e, b);
   },
 
@@ -581,6 +614,18 @@ export const Humans = {
       if (this.gather(e, b, camp, FUEL, FUEL_R, 'gathering wood')) return;
     }
     if (this.craftWork(e, b, camp)) return;
+    // With nothing else to do, now and then it goes hunting.
+    if (camp.lit && this.armed(b) && this.has(b, GUNPOWDER) >= AMMO_LOW && this.tick >= b.huntAt) {
+      const prey = this.findPrey(e);
+      if (prey !== null) {
+        b.foe = prey.id;
+        b.huntAt = this.tick + HUNT_EVERY;
+        b.huntUntil = this.tick + HUNT_FOR;
+        b.reload = FIRE_EVERY - 8;
+        b.job = 'hunting';
+        return;
+      }
+    }
     b.job = camp.lit ? 'resting by the fire' : 'wandering';
   },
 
@@ -648,6 +693,161 @@ export const Humans = {
     return false;
   },
 
+  // A gun and gunpowder for it.
+  armed(b) {
+    return b.weapon !== 0 && this.has(b, GUNPOWDER) > 0;
+  },
+
+  // Is the human with brain ob of a rival camp?
+  rival(b, ob) {
+    return ob !== null && ob.camp !== null && b.camp !== null && ob.camp !== b.camp;
+  },
+
+  // Where its gun's muzzle is: in front of its chest.
+  muzzle(e) {
+    return [e.x + 2 * e.facing * e.gy - 4 * e.gx, e.y - 2 * e.facing * e.gx - 4 * e.gy];
+  },
+
+  // A cell of o's body to aim at (its first whole pixel), or -1.
+  aimAt(o) {
+    for (let p = 0; p < o.n; p++) if (o.pix[p] === BODY) return o.cells[p];
+    return -1;
+  },
+
+  // Can e see o: is o the first thing on the line from its muzzle?
+  sees(e, o) {
+    const c = this.aimAt(o);
+    if (c < 0) return false;
+    const [mx, my] = this.muzzle(e);
+    return this.lineFirst(e, mx, my, c % this.w, (c / this.w) | 0) === o;
+  },
+
+  // The first creature (not e) on the straight line from (x0, y0) to
+  // (x1, y1), before anything solid: the creature, or null.
+  lineFirst(e, x0, y0, x1, y1) {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let k = 1; k <= n; k++) {
+      const x = Math.round(x0 + ((x1 - x0) * k) / n), y = Math.round(y0 + ((y1 - y0) * k) / n);
+      if (!this.inBounds(x, y)) return null;
+      const c = y * this.w + x, t = this.type[c];
+      if (t === 0 || this.ownCell(e, c)) continue;
+      const o = this.creatureAt(c);
+      if (o !== null) return o;
+      const s = DEFS[t].state;
+      if (s === SOLID || s === POWDER) return null;
+    }
+    return null;
+  },
+
+  // The nearest threat (a Spider or Phoenix) or rival human within FIGHT_R
+  // of e or its camp, that it can see: a creature, or null.
+  findFoe(e, b) {
+    let best = null, bd = Infinity;
+    for (const o of this.creatures) {
+      if (o === e || o.grow >= 0) continue;
+      if (!THREAT[o.kind] && !(o.brain !== null && this.rival(b, o.brain))) continue;
+      const d = Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y));
+      const dc = b.camp === null ? Infinity : Math.max(Math.abs(o.x - b.camp.x), Math.abs(o.y - b.camp.y));
+      if (Math.min(d, dc) > FIGHT_R || d > SHOT_R || d >= bd || !this.sees(e, o)) continue;
+      best = o;
+      bd = d;
+    }
+    return best;
+  },
+
+  // An animal within FIGHT_R that it can see: a creature, or null.
+  findPrey(e) {
+    let best = null, bd = Infinity;
+    for (const o of this.creatures) {
+      if (o === e || o.grow >= 0 || o.brain !== null || THREAT[o.kind]) continue;
+      const d = Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y));
+      if (d > FIGHT_R || d >= bd || !this.sees(e, o)) continue;
+      best = o;
+      bd = d;
+    }
+    return best;
+  },
+
+  // Face the foe and fire every FIRE_EVERY steps, aiming at a random pixel
+  // of it, but only while nothing else is in the way.
+  shootAt(e, b) {
+    const o = b.foe === 0 ? null : this.creatureById[b.foe];
+    if (o == null || o.id !== b.foe || !this.armed(b) || (b.job === 'hunting' && this.tick > b.huntUntil)) {
+      b.foe = 0;
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    b.held = HELD_GUN;
+    const a = (o.x - e.x) * e.gy - (o.y - e.y) * e.gx;
+    const face = a > 0 ? 1 : a < 0 ? -1 : e.facing;
+    if (face !== e.facing || e.frame !== 0) this.moveBody(e, e.x, e.y, 0, face, e.gx, e.gy);
+    if (++b.reload < FIRE_EVERY) return;
+    const aim = this.randomCell(o);
+    if (aim < 0) return;
+    const [mx, my] = this.muzzle(e), ax = aim % this.w, ay = (aim / this.w) | 0;
+    if (this.lineFirst(e, mx, my, ax, ay) !== o) return; // holds its fire
+    b.reload = 0;
+    this.shoot(e, b, mx, my, ax, ay);
+  },
+
+  // Fire one shot from (mx, my) at (ax, ay): PELLETS pellets in a tight
+  // spread, for one gunpowder, and a puff of smoke.
+  shoot(e, b, mx, my, ax, ay) {
+    if (!this.takeOut(b, GUNPOWDER)) return;
+    const base = Math.atan2(ay - my, ax - mx);
+    for (let k = 0; k < PELLETS; k++) {
+      const a = base + (k - (PELLETS - 1) / 2) * SPREAD + (this.rand() - 0.5) * SPREAD;
+      this.pellet(e, mx, my, Math.cos(a), Math.sin(a));
+    }
+    if (this.inBounds(mx, my)) {
+      const s = this.spawnNear(mx, my, ID.SMOKE);
+      if (s >= 0) this.temp[s] = 45;
+    }
+  },
+
+  // A pellet from (x0, y0) along (dx, dy): it flies through air, gases and
+  // liquids, and stops at the first solid, powder or creature (which loses
+  // the pixel it hit). Its path is kept for drawing.
+  pellet(e, x0, y0, dx, dy) {
+    let x = x0 + 0.5, y = y0 + 0.5, cx = x0, cy = y0;
+    for (let k = 0; k < SHOT_R; k++) {
+      const nx = Math.floor(x), ny = Math.floor(y);
+      if (!this.inBounds(nx, ny)) break;
+      cx = nx;
+      cy = ny;
+      const c = cy * this.w + cx, t = this.type[c];
+      if (t !== 0 && !this.ownCell(e, c)) {
+        const o = this.creatureAt(c);
+        if (o !== null) {
+          this.pelletHits(o, c);
+          break;
+        }
+        const s = DEFS[t].state;
+        if (s === SOLID || s === POWDER) break;
+      }
+      x += dx;
+      y += dy;
+    }
+    this.shots.push({ x0, y0, x1: cx, y1: cy, ttl: TRACER });
+  },
+
+  // A pellet hits creature o at cell c: armour takes it half the time;
+  // otherwise that pixel is lost.
+  pelletHits(o, c) {
+    if (o.brain !== null && o.brain.armour > 0 && this.rand() < 0.5) {
+      o.brain.armour--;
+      return;
+    }
+    for (let p = 0; p < o.n; p++) {
+      if (o.cells[p] !== c || o.pix[p] !== BODY) continue;
+      this.clearCell(c);
+      this.hurt(o, p, false);
+      o.shot = true;
+      return;
+    }
+  },
+
   // A job under way carries on: something still there to fetch, a load
   // still to deliver, the fire it's lighting.
   carryingOn(e, b, camp) {
@@ -659,6 +859,7 @@ export const Humans = {
         && (this.holding(b, MATERIAL) > 0 || (camp.hut.wood && this.has(b, WOOD) > 0));
       case 'lighting the fire': return camp.lighter === e.id;
       case 'mining': return b.target >= 0 && b.fetchSet[this.type[b.target]] === 1;
+      case 'hunting': return b.foe !== 0 && this.creatureById[b.foe] != null && this.tick <= b.huntUntil;
       default: return false;
     }
   },
@@ -840,6 +1041,8 @@ export const Humans = {
       case 'resting by the fire': this.restByFire(e, b); break;
       case 'building the hut': this.build(e, b); break;
       case 'mining': this.mine(e, b); break;
+      case 'shooting':
+      case 'hunting': this.shootAt(e, b); break;
       case 'sheltering': this.shelter(e, b); break;
       default: this.wander(e, b);
     }

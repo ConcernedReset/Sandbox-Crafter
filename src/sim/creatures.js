@@ -75,6 +75,7 @@ export const Creatures = {
       dry: 0, // steps a swimmer has been out of water
       wades: d.critter.wades,
       brain: null, // a human's (humans.js)
+      shot: false, // hit by gunfire (an animal killed so leaves Meat)
       slot: this.creatures.length, // its place in world.creatures
     };
     if (id === this.creatureById.length) this.creatureById.push(e);
@@ -377,6 +378,7 @@ export const Creatures = {
       if (e.pix[p] !== BODY) continue;
       const c = e.cells[p];
       if (burnt) this.convert(c, ASH, false, -1);
+      else if (e.shot && e.brain === null) this.convert(c, ID.MEAT, false, -1);
       else if (le === null) this.clearCell(c);
       else if (le.alt >= 0 && this.rand() < le.altChance) this.convert(c, le.alt, false, le.altRule);
       else this.convert(c, le.to, false, le.rule);
@@ -526,6 +528,10 @@ export const Creatures = {
         if (d2 > r2 || this.wallBetween(x, y, cx, cy)) continue;
         hit = true;
         if (this.rand() < Math.min(0.9, strength / (8 * Math.max(1, Math.sqrt(d2))))) {
+          if (e.brain !== null && e.brain.armour > 0 && this.rand() < 0.5) {
+            e.brain.armour--; // its armour took it
+            continue;
+          }
           this.clearCell(c);
           this.hurt(e, p, false);
         }
