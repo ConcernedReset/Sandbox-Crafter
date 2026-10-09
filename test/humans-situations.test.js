@@ -314,3 +314,31 @@ test('a drop of liquid underfoot is not water to swim in', () => {
   w.spawn((e.y + 1) * 40 + e.x, ID.WATER);
   assert.equal(w.inLiquid(e, w.headUnder(e)), false);
 });
+
+// A pool `depth` deep, level with the ground, between a human and its wood.
+function pool(depth) {
+  const w = makeWorld(160, 60, 1);
+  fillRect(w, 0, 55, 159, 59, ID.STONE);
+  for (let y = 55 - depth; y <= 54; y++) for (let x = 0; x <= 159; x++) if (x < 55 || x > 75) w.spawn(y * 160 + x, ID.STONE);
+  fillRect(w, 55, 55 - depth, 75, 54, ID.WATER);
+  fillRect(w, 20, 50 - depth, 29, 54 - depth, ID.WOOD);
+  w.spawn((40 - depth) * 160 + 100, ID.HUMAN);
+  return w;
+}
+const swims = (w) => {
+  let n = 0;
+  for (let f = 0; f < 2000 && !w.camps[0]?.lit; f++) {
+    w.step();
+    if (w.creatures[0]?.brain?.job === 'swimming') n++;
+  }
+  return n;
+};
+
+test('a human wades through shallow water, and swims in deep water', () => {
+  for (const depth of [1, 2]) {
+    const w = pool(depth);
+    assert.equal(swims(w), 0, `wades a pool ${depth} deep`);
+    assert.ok(w.camps[0]?.lit, 'and gets its wood across it');
+  }
+  assert.ok(swims(pool(8)) > 0, 'swims a deep one');
+});

@@ -21,6 +21,7 @@ export const WALK_EVERY = 4; // steps per cell walked
 export const RUN_EVERY = 2; // and run
 const CLIMB = 2; // the highest step it climbs
 const SWIM_CLIMB = 6; // or swims up, getting out of water
+const SWIM_DEPTH = 4; // liquid this deep beside it (above its waist), it swims; shallower, it wades
 export const GIVE_UP = 300; // steps without getting closer before it gives up on a target
 export const BAN_FOR = 1800; // and leaves that target alone
 const FELL_MAX = 800; // the most cells of a tree that come down when it's felled
@@ -243,16 +244,37 @@ export const Humans = {
     return 0;
   },
 
-  // In a liquid: its head under, or liquid under its feet (most of the
-  // ground under it: a drop of something in a puddle isn't water to swim).
+  // In a liquid deep enough to swim: its head under, or liquid beside it
+  // from its feet up to at least half its height. Shallower, it wades.
   inLiquid(e, under) {
-    if (under !== 0) return true;
+    if (under !== 0 || this.wadeDepth(e) >= SWIM_DEPTH) return true;
+    // Or afloat: deep liquid (3 or more) under its feet, not the bottom.
+    const liquid = (k, d) => {
+      const x = e.x + k * e.gy + d * e.gx, y = e.y - k * e.gx + d * e.gy;
+      return this.inBounds(x, y) && DEFS[this.type[y * this.w + x]].state === LIQUID;
+    };
     let wet = 0;
-    for (let k = -1; k <= 1; k++) {
-      const x = e.x + k * e.gy + e.gx, y = e.y - k * e.gx + e.gy;
-      if (this.inBounds(x, y) && DEFS[this.type[y * this.w + x]].state === LIQUID) wet++;
+    for (let k = -1; k <= 1; k++) if (liquid(k, 1)) wet++;
+    return wet >= 2 && liquid(0, 2) && liquid(0, 3);
+  },
+
+  // How deep the liquid it stands in is: rows of liquid beside its body,
+  // from its feet up, on both sides (or one side, against a wall: water
+  // pushed aside as it walks, standing in a thin column, isn't depth).
+  wadeDepth(e) {
+    const side = (k, up) => {
+      const x = e.x + k * e.gy - up * e.gx, y = e.y - k * e.gx - up * e.gy;
+      if (!this.inBounds(x, y)) return 2;
+      const s = DEFS[this.type[y * this.w + x]].state;
+      return s === LIQUID ? 1 : s === SOLID || s === POWDER ? 2 : 0;
+    };
+    let depth = 0;
+    for (let up = 0; up < 6; up++) {
+      const l = side(-2, up), r = side(2, up);
+      if (!((l === 1 && r !== 0) || (r === 1 && l !== 0))) break;
+      depth++;
     }
-    return wet >= 2;
+    return depth;
   },
 
   // Swim up for air, then on the way it was going (or, going nowhere, to
