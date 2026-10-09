@@ -39,6 +39,7 @@ import { Sleep, initSleep } from './sleep.js';
 import { Creatures, initCreatures, SHAPED } from './creatures.js';
 import { Humans } from './humans.js';
 import { Trees } from './trees.js';
+import { Tunnels, initTunnels } from './tunnels.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -138,6 +139,7 @@ export class World {
     initPortals(this);
     initSleep(this);
     initCreatures(this);
+    initTunnels(this);
     this.setQuality('high');
   }
 
@@ -197,6 +199,7 @@ export class World {
     this.doorTimer.fill(0);
     this.doorList.length = 0;
     initCreatures(this);
+    initTunnels(this);
     this.recording = true;
   }
 
@@ -1533,4 +1536,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Trees);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Trees);

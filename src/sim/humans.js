@@ -22,8 +22,8 @@ export const RUN_EVERY = 2; // and run
 const CLIMB = 2; // the highest step it climbs
 const PASS_REACH = 14; // how far it squeezes past other humans in its way
 const SWIM_CLIMB = 6; // or swims up, getting out of water
-const GIVE_UP = 300; // steps without getting closer before it gives up on a target
-const BAN_FOR = 1800; // and leaves that target alone
+export const GIVE_UP = 300; // steps without getting closer before it gives up on a target
+export const BAN_FOR = 1800; // and leaves that target alone
 export const DANGER_R = 16; // it runs from danger this close
 const SAFE_R = 24; // until there's none this close
 // °C: anything this hot (but a gas) is danger. Its body holds BODY_T, so
@@ -38,7 +38,7 @@ export const FRAME_KNEEL = 2, FRAME_SIT = 3;
 const NEAR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const DANGER = setOf(['LAVA', 'ACID', 'NAPALM', 'GREEK_FIRE', 'GREY_GOO', 'VIRUS', 'ANTIMATTER', 'BLACK_HOLE']);
 const CAMP_JOIN = 60; // it joins a camp this close
-const FUEL_R = 120; // and fetches fuel this far from it
+export const FUEL_R = 120; // and fetches fuel this far from it
 const PILE_LIGHT = 6; // fuel in the pile before it's lit
 const PILE_LOW = 4; // a burning pile with less is topped up
 const RUB_FOR = 180; // steps rubbing sticks before the pile catches
@@ -60,7 +60,7 @@ const RAIN_R = 20; // as does rain, snow or hail falling this close
 const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
 export const HAND_DIG = 30; // the strongest solid it digs by hand (sandstone); powders always
 export const TOOL_DIG = 150; // and with a pickaxe (stone, granite, most metals)
-const DIG_EVERY = 8; // steps per cell dug
+export const DIG_EVERY = 8; // steps per cell dug
 // How hard each thing is to dig: 1 for powders, a solid's strength, 0 for
 // what it never digs (creatures, dangers, anything that can't be broken).
 const DIG = Uint16Array.from(DEFS, (d) => (d.shape || DANGER[d.id] || d.indestructible ? 0
@@ -68,8 +68,8 @@ const DIG = Uint16Array.from(DEFS, (d) => (d.shape || DANGER[d.id] || d.indestru
 const METALS = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.cat === 'metal' || d.cat === 'alloy') ? 1 : 0));
 export const RESOURCES = { coal: setOf(['COAL']), salt: setOf(['SALT']), metal: METALS };
 // What it keeps when it digs through it: fuel, salt, metal, building stone.
-const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' ? 1 : 0));
-const MINE_R = 120; // how far from the camp it looks for coal, salt and metal
+export const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' ? 1 : 0));
+export const MINE_R = 120; // how far from the camp it looks for coal, salt and metal
 export const CRAFT_FIRE_TIME = 3000; // steps its camp's fire has burned before it crafts
 const PICK_WOOD = 3; // a pickaxe: 3 Wood
 const GUN_METAL = 5, GUN_WOOD = 1; // a gun: 5 metal and a Wood stock
@@ -85,8 +85,8 @@ const THREAT = setOf(['SPIDER', 'PHOENIX']);
 const HUNT_EVERY = 2000; // steps between hunts
 const HUNT_FOR = 400; // and the longest a hunt goes on
 const TRACER = 4; // frames a pellet's path is drawn
-const SEAM_R = 8; // and how near the last one it looks for more of the same
-const WOOD_ONLY = setOf(['WOOD']);
+export const SEAM_R = 8; // and how near the last one it looks for more of the same
+export const WOOD_ONLY = setOf(['WOOD']);
 export const STACK = 10; // the most of any one element it carries
 export const HELD_PICKAXE = -1, HELD_GUN = -2; // what it shows in its hand, besides a pixel
 const FEED = setOf(['WOOD', 'PEAT', 'SAWDUST']); // fuel it feeds the fire before coal
@@ -109,6 +109,9 @@ export function newBrain() {
     mineKey: '', wantN: 0, // what it's mining (a RESOURCES key) and how many it wants
     skip: new Map(), // resource key -> tick until which it doesn't look for it
     refill: true, // it wants gunpowder (a full stack the first time)
+    tun: null, // the tunnel it's travelling or digging (tunnels.js)
+    tunnelWood: false, // it has run out of lining wood before: gathers some first
+    hold: false, // holding on in a tunnel (no falling) this step
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
