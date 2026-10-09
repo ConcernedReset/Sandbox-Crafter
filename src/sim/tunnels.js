@@ -11,7 +11,7 @@
 import { DEFS, ID, State, SPECIAL } from './elements.js';
 import { SHAPED } from './creatures.js';
 import {
-  USEFUL, DANGER, HUT_W, WALK_EVERY, SCAFFOLD_STACK, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
+  USEFUL, DANGER, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
 } from './humans.js';
 
 const { POWDER, LIQUID } = State;
@@ -83,10 +83,9 @@ export const Tunnels = {
     return out;
   },
 
-  // Cut 4 scaffolding from a piece of wood in its pack, if it has room for
-  // them: true if it did.
+  // Cut 4 scaffolding from a piece of wood in its pack: true if it had one.
   cutScaffolding(b) {
-    if (this.has(b, SCAFFOLDING) > SCAFFOLD_STACK - SCAFFOLD_CUT || !this.takeOut(b, WOOD)) return false;
+    if (!this.takeOut(b, WOOD)) return false;
     b.items.set(SCAFFOLDING, this.has(b, SCAFFOLDING) + SCAFFOLD_CUT);
     return true;
   },

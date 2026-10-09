@@ -251,18 +251,14 @@ test('a tunnel filled with sand is dug out; one filled with steel is dropped', (
 
 // Scaffolding: cut 4 from each piece of wood, in the pack, to line tunnels.
 
-test('one wood makes four scaffolding, as needed, and a human holds 40', () => {
+test('one wood makes four scaffolding', () => {
   const w = makeWorld(40, 40, 1);
   const b = newBrain();
   w.stow(b, ID.WOOD);
-  w.stow(b, ID.WOOD);
   assert.equal(w.cutScaffolding(b), true);
   assert.equal(w.has(b, ID.SCAFFOLDING), 4);
-  assert.equal(w.has(b, ID.WOOD), 1);
-  for (let k = 0; k < 40; k++) w.stow(b, ID.SCAFFOLDING);
-  assert.equal(w.has(b, ID.SCAFFOLDING), 40, 'up to 40');
-  assert.equal(w.cutScaffolding(b), false, 'no room for four more');
-  assert.equal(w.has(b, ID.WOOD), 1);
+  assert.equal(w.has(b, ID.WOOD), 0);
+  assert.equal(w.cutScaffolding(b), false, 'no wood, no scaffolding');
 });
 
 test('tunnel walls are scaffolding, cut from wood as they go', () => {

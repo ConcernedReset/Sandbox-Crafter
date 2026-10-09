@@ -1,21 +1,37 @@
-// Humans carry an inventory: up to 10 of each element, a tool, a weapon and
-// armour (humans.js).
+// Humans carry an inventory: as much as they like of each element (they set
+// out to gather 10 at a time), a tool, a weapon and armour (humans.js).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
-import { STACK, inventoryNote, newBrain } from '../src/sim/humans.js';
+import { inventoryNote, newBrain } from '../src/sim/humans.js';
 import { makeWorld, fillRect, run, countOf } from './helpers.js';
 
-test('a human holds up to 10 of each element', () => {
+test('a human holds as much of anything as it picks up', () => {
   const w = makeWorld(10, 10);
   const b = newBrain();
-  for (let k = 0; k < 12; k++) w.stow(b, ID.WOOD);
-  assert.equal(w.has(b, ID.WOOD), STACK);
-  assert.equal(w.stow(b, ID.WOOD), false);
+  for (let k = 0; k < 25; k++) w.stow(b, ID.WOOD);
+  assert.equal(w.has(b, ID.WOOD), 25);
   assert.equal(w.stow(b, ID.STONE), true);
   assert.equal(w.takeAny(b, new Uint8Array(1000).fill(1)), ID.WOOD, 'the one it has most of');
-  assert.equal(w.has(b, ID.WOOD), 9);
+  assert.equal(w.has(b, ID.WOOD), 24);
+});
+
+test('a gatherer sets out for 10 at a time, but keeps what it digs through on the way', () => {
+  const w = makeWorld(160, 60, 2);
+  fillRect(w, 0, 55, 159, 59, ID.STONE);
+  fillRect(w, 20, 40, 45, 54, ID.WOOD); // far more than 10
+  w.spawn(45 * 160 + 90, ID.HUMAN);
+  let most = 0;
+  for (let f = 0; f < 3000; f++) {
+    w.step();
+    const e = w.creatures[0];
+    if (e?.brain?.job === 'gathering wood') most = Math.max(most, e.brain.items.get(ID.WOOD) ?? 0);
+  }
+  assert.ok(most > 0 && most <= 10, `never sets out for more than 10 (${most})`);
+  const b = newBrain();
+  for (let k = 0; k < 12; k++) w.stow(b, ID.COAL);
+  assert.equal(w.has(b, ID.COAL), 12, 'nothing dug through is wasted');
 });
 
 test('coal and salt in the inventory make gunpowder', () => {
@@ -27,7 +43,7 @@ test('coal and salt in the inventory make gunpowder', () => {
   assert.equal(w.has(b, ID.COAL), 2);
   assert.equal(w.has(b, ID.SALT), 0);
   for (let k = 0; k < 4; k++) w.stow(b, ID.SALT);
-  assert.equal(w.has(b, ID.GUNPOWDER), 10, 'up to a full stack');
+  assert.equal(w.has(b, ID.GUNPOWDER), 10, 'the coal used up');
   assert.equal(w.has(b, ID.SALT), 2, 'the rest kept');
 });
 

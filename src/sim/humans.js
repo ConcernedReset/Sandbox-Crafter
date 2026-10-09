@@ -95,8 +95,9 @@ const HUNT_FOR = 400; // and the longest a hunt goes on
 const TRACER = 4; // frames a pellet's path is drawn
 export const SEAM_R = 8; // and how near the last one it looks for more of the same
 export const WOOD_ONLY = setOf(['WOOD']);
-export const STACK = 10; // the most of any one element it carries
-export const SCAFFOLD_STACK = 40; // but it carries this much scaffolding (it's light)
+// It carries as much as it likes of anything (so nothing it digs through
+// is wasted), but sets out to gather this many of a thing at a time.
+export const GATHER = 10;
 export const HELD_PICKAXE = -1, HELD_GUN = -2; // what it shows in its hand, besides a pixel
 const FEED = setOf(['WOOD', 'PEAT', 'SAWDUST']); // fuel it feeds the fire before coal
 
@@ -110,7 +111,7 @@ export function newBrain() {
     best: Infinity, // its closest yet to the target
     stuck: 0, // steps without getting closer
     banned: new Map(), // cell -> tick until which it's left alone
-    items: new Map(), // element -> how many it carries (up to STACK)
+    items: new Map(), // element -> how many it carries
     tool: 0, weapon: 0, // a pickaxe, a gun (1 if it has one)
     armour: 0, // hits its armour can still take (0: none)
     held: 0, // what it shows in its hand: an element, HELD_PICKAXE or HELD_GUN
@@ -480,11 +481,9 @@ export const Humans = {
     return n;
   },
 
-  // Put one t in its inventory, if it has room: true if it did.
+  // Put one t in its inventory: true (there's always room).
   stow(b, t) {
-    const k = this.has(b, t);
-    if (k >= (t === ID.SCAFFOLDING ? SCAFFOLD_STACK : STACK)) return false;
-    b.items.set(t, k + 1);
+    b.items.set(t, this.has(b, t) + 1);
     b.held = t;
     this.mixPowder(b);
     return true;
@@ -512,9 +511,9 @@ export const Humans = {
   },
 
   // Coal and Salt carried together make Gunpowder (the game's own Coal +
-  // Salt reaction), two at a time, up to a full stack.
+  // Salt reaction), two at a time.
   mixPowder(b) {
-    while (this.has(b, COAL) > 0 && this.has(b, SALT) > 0 && this.has(b, GUNPOWDER) <= STACK - 2) {
+    while (this.has(b, COAL) > 0 && this.has(b, SALT) > 0) {
       this.takeOut(b, COAL);
       this.takeOut(b, SALT);
       b.items.set(GUNPOWDER, this.has(b, GUNPOWDER) + 2);
@@ -734,7 +733,7 @@ export const Humans = {
   // Gunpowder wanted: a full stack the first time, and again once it's low.
   wantsPowder(b) {
     const gp = this.has(b, GUNPOWDER);
-    if (gp >= STACK) b.refill = false;
+    if (gp >= GATHER) b.refill = false;
     else if (gp < AMMO_LOW) b.refill = true;
     return b.refill;
   },
@@ -749,7 +748,7 @@ export const Humans = {
       return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
     }
     if (this.wantsPowder(b)) {
-      const pairs = Math.ceil((STACK - this.has(b, GUNPOWDER)) / 2);
+      const pairs = Math.ceil((GATHER - this.has(b, GUNPOWDER)) / 2);
       if (this.has(b, COAL) < pairs && this.startMining(e, b, camp, 'coal', pairs)) return true;
       if (this.has(b, COAL) > 0 && this.startMining(e, b, camp, 'salt', 0)) return true;
     }
@@ -1366,7 +1365,7 @@ export const Humans = {
   // Does it want more of what it's mining? Salt goes into gunpowder as it's
   // mined, so it wants salt while it still has coal to go with it.
   wantsMore(b) {
-    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < STACK;
+    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < GATHER;
     return this.holding(b, b.fetchSet) < b.wantN;
   },
 
@@ -1387,7 +1386,7 @@ export const Humans = {
     if (this.stow(b, u)) {
       this.clearCell(t);
       if (u === WOOD) this.fell(t % this.w, (t / this.w) | 0);
-      if (this.holding(b, b.fetchSet) < STACK && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide)) return;
+      if (this.holding(b, b.fetchSet) < GATHER && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide)) return;
     }
     b.job = b.job === 'fetching stone' ? 'building the hut' : 'wandering';
     b.think = 0;

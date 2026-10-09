@@ -197,7 +197,7 @@ else; `test/build.test.js` checks the bundle runs.
   human put there (`putDown`); an entry counts while the cell
   still holds that element. Weak junk that falls into the fire pile is
   cleared for fuel (`pileSpace`).
-  Inventory: `brain.items` (element -> count, at most `STACK` = 10), `tool`,
+  Inventory: `brain.items` (element -> count, no limit; gathering trips aim for `GATHER` = 10), `tool`,
   `weapon`, `armour` (hits left) and `held` (an element, `HELD_PICKAXE` or
   `HELD_GUN`; the renderer's `paintHumans` draws it). `stow` mixes Coal and
   Salt into Gunpowder (`mixPowder`); `gather` fills its hands from
@@ -231,8 +231,7 @@ else; `test/build.test.js` checks the bundle runs.
   lets humans cross a tunnel's mouth overland; `walkTo` first calls
   `leaveTunnel` (out by the nearest entrance). Lining is **Scaffolding**:
   `lineCell` cuts 4 from a wood in the pack when it has none
-  (`cutScaffolding`; a human holds `SCAFFOLD_STACK` = 40 of it, 10 of
-  anything else); recovered face lining goes back in the pack as
+  (`cutScaffolding`); recovered face lining goes back in the pack as
   scaffolding. Before tunnelling it wants `TUNNEL_LINING` (24) in hand,
   counting 4 per wood (`liningInHand`), and gathers wood if short. The
   recipe lab sends a human tunnelling (`tunnelLab` in recipes.test.js).

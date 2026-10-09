@@ -11187,8 +11187,9 @@ const HUNT_FOR = 400; // and the longest a hunt goes on
 const TRACER = 4; // frames a pellet's path is drawn
 const SEAM_R = 8; // and how near the last one it looks for more of the same
 const WOOD_ONLY = setOf(['WOOD']);
-const STACK = 10; // the most of any one element it carries
-const SCAFFOLD_STACK = 40; // but it carries this much scaffolding (it's light)
+// It carries as much as it likes of anything (so nothing it digs through
+// is wasted), but sets out to gather this many of a thing at a time.
+const GATHER = 10;
 const HELD_PICKAXE = -1, HELD_GUN = -2; // what it shows in its hand, besides a pixel
 const FEED = setOf(['WOOD', 'PEAT', 'SAWDUST']); // fuel it feeds the fire before coal
 
@@ -11202,7 +11203,7 @@ function newBrain() {
     best: Infinity, // its closest yet to the target
     stuck: 0, // steps without getting closer
     banned: new Map(), // cell -> tick until which it's left alone
-    items: new Map(), // element -> how many it carries (up to STACK)
+    items: new Map(), // element -> how many it carries
     tool: 0, weapon: 0, // a pickaxe, a gun (1 if it has one)
     armour: 0, // hits its armour can still take (0: none)
     held: 0, // what it shows in its hand: an element, HELD_PICKAXE or HELD_GUN
@@ -11572,11 +11573,9 @@ const Humans = {
     return n;
   },
 
-  // Put one t in its inventory, if it has room: true if it did.
+  // Put one t in its inventory: true (there's always room).
   stow(b, t) {
-    const k = this.has(b, t);
-    if (k >= (t === ID.SCAFFOLDING ? SCAFFOLD_STACK : STACK)) return false;
-    b.items.set(t, k + 1);
+    b.items.set(t, this.has(b, t) + 1);
     b.held = t;
     this.mixPowder(b);
     return true;
@@ -11604,9 +11603,9 @@ const Humans = {
   },
 
   // Coal and Salt carried together make Gunpowder (the game's own Coal +
-  // Salt reaction), two at a time, up to a full stack.
+  // Salt reaction), two at a time.
   mixPowder(b) {
-    while (this.has(b, COAL) > 0 && this.has(b, SALT) > 0 && this.has(b, GUNPOWDER) <= STACK - 2) {
+    while (this.has(b, COAL) > 0 && this.has(b, SALT) > 0) {
       this.takeOut(b, COAL);
       this.takeOut(b, SALT);
       b.items.set(GUNPOWDER, this.has(b, GUNPOWDER) + 2);
@@ -11826,7 +11825,7 @@ const Humans = {
   // Gunpowder wanted: a full stack the first time, and again once it's low.
   wantsPowder(b) {
     const gp = this.has(b, GUNPOWDER);
-    if (gp >= STACK) b.refill = false;
+    if (gp >= GATHER) b.refill = false;
     else if (gp < AMMO_LOW) b.refill = true;
     return b.refill;
   },
@@ -11841,7 +11840,7 @@ const Humans = {
       return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
     }
     if (this.wantsPowder(b)) {
-      const pairs = Math.ceil((STACK - this.has(b, GUNPOWDER)) / 2);
+      const pairs = Math.ceil((GATHER - this.has(b, GUNPOWDER)) / 2);
       if (this.has(b, COAL) < pairs && this.startMining(e, b, camp, 'coal', pairs)) return true;
       if (this.has(b, COAL) > 0 && this.startMining(e, b, camp, 'salt', 0)) return true;
     }
@@ -12458,7 +12457,7 @@ const Humans = {
   // Does it want more of what it's mining? Salt goes into gunpowder as it's
   // mined, so it wants salt while it still has coal to go with it.
   wantsMore(b) {
-    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < STACK;
+    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < GATHER;
     return this.holding(b, b.fetchSet) < b.wantN;
   },
 
@@ -12479,7 +12478,7 @@ const Humans = {
     if (this.stow(b, u)) {
       this.clearCell(t);
       if (u === WOOD) this.fell(t % this.w, (t / this.w) | 0);
-      if (this.holding(b, b.fetchSet) < STACK && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide)) return;
+      if (this.holding(b, b.fetchSet) < GATHER && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide)) return;
     }
     b.job = b.job === 'fetching stone' ? 'building the hut' : 'wandering';
     b.think = 0;
@@ -12610,7 +12609,7 @@ const Humans = {
   },
 };
 
-return { THINK_EVERY, WALK_EVERY, RUN_EVERY, GIVE_UP, BAN_FOR, DANGER_R, BREATH, FRAME_KNEEL, DANGER, FUEL_R, HUT_W, HUT_WALL, DOOR, HAND_DIG, TOOL_DIG, DIG_EVERY, RESOURCES, USEFUL, MINE_R, CRAFT_FIRE_TIME, ARMOUR_HITS, PELLETS, FIRE_EVERY, SEAM_R, WOOD_ONLY, STACK, SCAFFOLD_STACK, HELD_PICKAXE, newBrain, inventoryNote, Humans };
+return { THINK_EVERY, WALK_EVERY, RUN_EVERY, GIVE_UP, BAN_FOR, DANGER_R, BREATH, FRAME_KNEEL, DANGER, FUEL_R, HUT_W, HUT_WALL, DOOR, HAND_DIG, TOOL_DIG, DIG_EVERY, RESOURCES, USEFUL, MINE_R, CRAFT_FIRE_TIME, ARMOUR_HITS, PELLETS, FIRE_EVERY, SEAM_R, WOOD_ONLY, GATHER, HELD_PICKAXE, newBrain, inventoryNote, Humans };
 })();
 
 __modules["src/sim/trees.js"] = (() => {
@@ -12785,7 +12784,7 @@ __modules["src/sim/tunnels.js"] = (() => {
 
 const { DEFS, ID, State, SPECIAL } = __modules["src/sim/elements.js"];
 const { SHAPED } = __modules["src/sim/creatures.js"];
-const { USEFUL, DANGER, HUT_W, WALK_EVERY, SCAFFOLD_STACK, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R } = __modules["src/sim/humans.js"];
+const { USEFUL, DANGER, HUT_W, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R } = __modules["src/sim/humans.js"];
 
 const { POWDER, LIQUID } = State;
 const { WOOD, SCAFFOLDING } = ID;
@@ -12856,10 +12855,9 @@ const Tunnels = {
     return out;
   },
 
-  // Cut 4 scaffolding from a piece of wood in its pack, if it has room for
-  // them: true if it did.
+  // Cut 4 scaffolding from a piece of wood in its pack: true if it had one.
   cutScaffolding(b) {
-    if (this.has(b, SCAFFOLDING) > SCAFFOLD_STACK - SCAFFOLD_CUT || !this.takeOut(b, WOOD)) return false;
+    if (!this.takeOut(b, WOOD)) return false;
     b.items.set(SCAFFOLDING, this.has(b, SCAFFOLDING) + SCAFFOLD_CUT);
     return true;
   },

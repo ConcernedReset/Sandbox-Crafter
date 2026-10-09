@@ -512,7 +512,8 @@ Each frame (60 per second):
    into a Phoenix, the whole bird.
 
    **Humans** (Lightning striking Clay) have a mind of their own. A human
-   carries up to 10 of each thing it picks up. It makes a camp on flat
+   carries as much as it picks up (nothing it digs through is wasted), but
+   sets out to gather 10 of a thing at a time. It makes a camp on flat
    ground, scraping the grass off its fire pit, fetches wood (or coal, peat
    or sawdust) from up to 120 cells away, an armful at a time, and piles it
    beside the camp; with six pieces on the pile it kneels and rubs sticks
@@ -536,7 +537,7 @@ Each frame (60 per second):
    (level, stairs, or a shaft it climbs up and down), lining it with
    **Scaffolding** wherever dirt or sand would fall in, so the ground
    around stays put. It cuts 4 scaffolding from each piece of wood in its
-   pack, and carries up to 40; running short, it goes up for wood and
+   pack; running short, it goes up for wood and
    comes back. Every tunnel joins one
    network the humans share: entrances, junctions, bends and ends, which
    they find their way along, branching off an existing tunnel when that's
