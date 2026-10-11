@@ -15,6 +15,7 @@ import {
   FUEL_R, MINE_R, CAMP_JOIN, CAMP_AWAY_R, HUT_W, HUT_WALL, GATHER,
 } from '../sim/humans.js';
 import { DEFS } from '../sim/elements.js';
+import { AA_CAP } from '../sim/war.js';
 
 export const CAMP_COLORS = ['#f6c344', '#5ec8f2', '#f2708e', '#8be06a', '#c38bf2', '#f29a4b'];
 
@@ -26,9 +27,17 @@ const GOAL = {
   'lighting the fire': ['build', '#f5a142'],
   'building the hut': ['build', '#f5a142'],
   'flattening the camp': ['build', '#f5a142'],
+  'building the helipad': ['build', '#f5a142'],
+  'building the anti-air gun': ['build', '#f5a142'],
+  'building the launcher': ['build', '#f5a142'],
+  'building the helicopter': ['build', '#f5a142'],
+  'loading the anti-air gun': ['build', '#f5a142'],
+  'loading the launcher': ['build', '#f5a142'],
   mining: ['mine', '#e8c547'],
   shooting: ['fight', '#ff4d4d'],
   hunting: ['fight', '#ff4d4d'],
+  raiding: ['fight', '#ff4d4d'],
+  'going home': ['rest', '#6fa8ff'],
   fleeing: ['flee', '#ff5fd2'],
   'resting by the fire': ['rest', '#6fa8ff'],
   sheltering: ['rest', '#6fa8ff'],
@@ -126,6 +135,36 @@ export function aiPlan(world, e) {
     case 'fleeing':
       arrow = [b.fleeDir * e.gy, -b.fleeDir * e.gx];
       break;
+    case 'building the helipad':
+    case 'building the anti-air gun':
+    case 'building the launcher':
+      if (b.war) {
+        const k = world.nextWarCell(b.war);
+        if (k >= 0) target = at(b.war.cells[k]);
+        detail = `${b.war.cells.filter((c) => !world.builtAt(c)).length} to go`;
+      }
+      break;
+    case 'building the helicopter':
+      if (b.war) target = [b.war.hx, b.war.hy];
+      break;
+    case 'loading the anti-air gun':
+      if (b.war) {
+        target = [b.war.px, b.war.py];
+        detail = `${b.war.ammo}/${AA_CAP}`;
+      }
+      break;
+    case 'loading the launcher':
+      if (b.war) target = [b.war.mx, b.war.my];
+      break;
+    case 'raiding':
+      if (b.raid) {
+        target = [b.raid.x, b.raid.y];
+        detail = `Camp ${campNumber(b.raid)}`;
+      }
+      break;
+    case 'going home':
+      if (camp) target = [camp.x, camp.y];
+      break;
     default:
       if (b.goalX >= 0) target = [b.goalX, b.goalY];
   }
@@ -158,8 +197,37 @@ export function campLabel(world, camp) {
   const parts = [`Camp ${campNumber(camp)}`, `${n} human${n === 1 ? '' : 's'}`,
     camp.lit ? `fire ${camp.burned}` : 'no fire yet', hut];
   if (camp.hut?.done) parts.push(camp.flat ? 'level ✓' : 'level …');
+  // Its war machines (war.js), and raids.
+  if (camp.heli && world.creatureById[camp.heli.id] === camp.heli) parts.push(camp.heli.craft.state === 'parked' ? 'heli ✓' : 'heli out');
+  else if (camp.pad) parts.push('heli …');
+  if (camp.aa) parts.push(camp.aa.done ? `AA ${camp.aa.ammo}` : 'AA …');
+  if (camp.launcher) parts.push(camp.launcher.missile ? 'missile ✓' : camp.launcher.done ? 'no missile' : 'launcher …');
+  if (camp.raid) parts.push(`raiding Camp ${campNumber(camp.raid.enemy)}`);
+  else if (camp.raidAt > 0) parts.push(`raid in ${Math.max(0, camp.raidAt - world.tick)}`);
   if (away > 0) parts.push(`${away} away`);
   return parts.join(' · ');
+}
+
+// What a war machine (aircraft.js) is up to: { color, label, target, path }.
+export function craftPlan(world, e) {
+  const k = e.craft, health = `${e.n - e.lost}/${e.n}`;
+  const color = k.camp ? campColor(k.camp) : WANDER[1];
+  if (k.kind === 'missile') {
+    if (k.state !== 'flying') return { color, label: `missile ready`, target: null, path: null };
+    return { color, label: 'missile', target: [Math.round(k.tx), Math.round(k.ty)], path: [[e.x, e.y], [Math.round(k.tx), Math.round(k.ty)]] };
+  }
+  const foe = k.foe && world.creatureById[k.foe.id] === k.foe ? k.foe : null;
+  let what, target = null;
+  switch (k.state) {
+    case 'parked': what = 'on its pad'; break;
+    case 'home': what = 'flying home'; target = [k.homeX, k.homeY]; break;
+    case 'down': what = 'down'; break;
+    default:
+      what = k.goal === k.camp ? 'defending' : `raiding Camp ${campNumber(k.goal)}`;
+      target = foe ? [foe.x, foe.y] : [k.goal.x, k.goal.y];
+  }
+  const at = foe && k.state === 'flying' ? `, at a ${DEFS[foe.kind].name.toLowerCase()}` : '';
+  return { color, label: `helicopter ${what}${at} (${health})`, target, path: target ? [[e.x, e.y], target] : null };
 }
 
 // Trails: where each human has been lately, sampled every few frames.
@@ -283,6 +351,36 @@ export function drawInfluence(ctx, world, v) {
       }
       ctx.lineWidth = v.line;
     }
+    // Its war machines' sites (war.js): solid once built, dashed till then.
+    for (const s of [camp.pad, camp.aa, camp.launcher]) {
+      if (!s) continue;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const c of s.cells) {
+        const [x, y] = cellXY(world, c);
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      }
+      ctx.strokeStyle = color;
+      ctx.setLineDash(s.done ? [] : [3 * v.line, 3 * v.line]);
+      ctx.strokeRect(v.px(x0 - 1.5), v.py(y0 - 1.5), (x1 - x0 + 3) * v.sx, (y1 - y0 + 3) * v.sy);
+      ctx.setLineDash([]);
+    }
+    // A raid under way: an arrow to the camp it's raiding.
+    if (camp.raid && world.camps.includes(camp.raid.enemy)) {
+      const t = camp.raid.enemy, a = Math.atan2(t.y - camp.y, t.x - camp.x), hd = Math.max(8 * v.line, v.sx * 3);
+      const x0 = v.px(camp.x), y0 = v.py(camp.y - 20), x1 = v.px(t.x), y1 = v.py(t.y - 20);
+      ctx.strokeStyle = '#ff4d4d';
+      ctx.lineWidth = v.line * 3;
+      ctx.setLineDash([8 * v.line, 5 * v.line]);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1); ctx.lineTo(x1 - hd * Math.cos(a - 0.5), y1 - hd * Math.sin(a - 0.5));
+      ctx.moveTo(x1, y1); ctx.lineTo(x1 - hd * Math.cos(a + 0.5), y1 - hd * Math.sin(a + 0.5));
+      ctx.stroke();
+      ctx.lineWidth = v.line;
+    }
     // Cells claimed: someone's on the way.
     ctx.strokeStyle = color;
     for (const c of camp.claims) {
@@ -322,8 +420,10 @@ export function drawAI(ctx, world, v, trails) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   for (const e of world.creatures) {
-    if (!e.brain) continue;
-    const plan = aiPlan(world, e);
+    // Humans, and war machines (each with a label).
+    const machine = !e.brain && e.craft && e.grow < 0;
+    if (!e.brain && !machine) continue;
+    const plan = machine ? craftPlan(world, e) : aiPlan(world, e);
     // Where it's been: fading with age.
     const trail = trails?.paths.get(e.id);
     if (trail && trail.length > 1) {
@@ -373,7 +473,8 @@ export function drawAI(ctx, world, v, trails) {
       ctx.lineTo(x1 - h * Math.cos(a + 0.5), y1 - h * Math.sin(a + 0.5));
       ctx.stroke();
     }
-    label(ctx, v, plan.label, v.px(e.x - 8 * e.gx), v.py(e.y - 8 * e.gy), plan.color);
+    const up = machine ? DEFS[e.kind].shape.h + 2 : 8;
+    label(ctx, v, plan.label, v.px(e.x - up * e.gx), v.py(e.y - up * e.gy), plan.color);
   }
   ctx.restore();
 }

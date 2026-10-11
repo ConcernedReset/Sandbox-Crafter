@@ -27,6 +27,7 @@ export const AIRY = Uint8Array.from(DEFS, (d) => (d.id === 0 || (d.displaceable 
 export const GROW_EVERY = 2; // steps per ring of a growing body
 export const GROW_GIVE_UP = 120; // steps a seed, or a blocked ring, waits for room
 export const HEAL_AFTER = 150; // steps without harm for each pixel healed
+export const MEND_EVERY = 30; // steps per pixel a war machine mends, where it's looked after (aircraft.js)
 export const SUFFOCATE_EVERY = 30; // steps per pixel lost out of breath (or water)
 export const HOT_HURT = 60; // °C: a pixel hotter than this, or colder than
 export const COLD_HURT = -15; // this, is damaged (unless the creature is tough)
@@ -45,8 +46,10 @@ export function initCreatures(world) {
   world.creatureById = [null]; // id (the ctype of its cells) -> entity
   world.freeCreatureIds = [];
   world.camps = []; // humans' camps (humans.js)
+  world.campSerial = 0; // the last camp's id
   world.humanMade = new Map(); // cell -> what a human put there (humans.js)
   world.shots = []; // pellet tracers, drawn for a few frames (humans.js)
+  world.flak = []; // anti-air shells in flight (war.js)
   world.footA = new Int32Array(64); // scratch for working out footprints
   world.footB = new Int32Array(64);
 }
@@ -79,6 +82,7 @@ export const Creatures = {
       dry: 0, // steps a swimmer has been out of water
       wades: d.critter.wades,
       brain: null, // a human's (humans.js)
+      craft: null, // a war machine's (aircraft.js)
       shot: false, // hit by gunfire (an animal killed so leaves Meat)
       slot: this.creatures.length, // its place in world.creatures
     };
@@ -291,7 +295,7 @@ export const Creatures = {
       e.pix[p] = BODY;
     }
     if (unborn === 0) { e.grow = -1; return; }
-    if (blocked && ++e.wait > GROW_GIVE_UP) {
+    if (blocked && ++e.wait > GROW_GIVE_UP && e.craft === null) { // (a war machine being built waits)
       const s = e.cells[e.seed];
       if (e.pix[e.seed] !== BODY) { this.removeCreature(e); return; }
       this.removeCreature(e, s);
@@ -437,6 +441,10 @@ export const Creatures = {
   // What's left of the body becomes its remains: ash if it died mostly of
   // heat, otherwise what its kind leaves (lifeEnd), pixel by pixel.
   creatureDies(e) {
+    if (e.craft !== null) {
+      this.craftDies(e); // aircraft.js: a crash, or the missile goes off
+      return;
+    }
     const le = DEFS[e.kind].lifeEnd;
     const burnt = e.burnt * 2 > e.lost;
     for (let p = 0; p < e.n; p++) {
@@ -652,16 +660,27 @@ export const Creatures = {
       this.creatureDies(e);
       return;
     }
-    if (e.lost > 0 && this.tick - e.hurtAt >= HEAL_AFTER) this.healPixel(e);
-    this.orient(e);
+    // A war machine (aircraft.js) keeps its own way up, isn't thrown about
+    // and mends only where it's looked after (a helicopter on its pad).
+    const craft = e.craft;
+    if (e.lost > 0 && (craft === null ? this.tick - e.hurtAt >= HEAL_AFTER : craft.mend && this.tick - e.hurtAt >= MEND_EVERY)) this.healPixel(e);
+    if (craft === null) this.orient(e);
     if (this.portalCells !== 0 && this.portalCreature(e)) return;
     if (e.pushX !== 0 || e.pushY !== 0) {
       this.moveBody(e, e.x + e.pushX, e.y + e.pushY, e.frame, e.facing, e.gx, e.gy);
       e.pushX = 0;
       e.pushY = 0;
     }
+    if (craft !== null) {
+      e.vx = 0;
+      e.vy = 0;
+      this.stepCraft(e);
+      return;
+    }
     if (this.fling(e)) return;
-    if (DEFS[e.kind].critter.moves === 'human') this.stepHuman(e);
+    const moves = DEFS[e.kind].critter.moves;
+    if (moves === 'human') this.stepHuman(e);
+    else if (moves === 'heli' || moves === 'missile') this.removeCreature(e); // no mind of its own (a stray seed)
     else this.stepAnimal(e);
   },
 

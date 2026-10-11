@@ -1,9 +1,10 @@
 // Extra notes for the inspect line about cell i: a wall that lets things
-// through, a time zone, a portal, a creature's health (and what a human is
-// doing).
+// through, a time zone, a portal, a creature's health (and what a human or
+// a war machine is doing), and which of a camp's war machines it's part of.
 
 import { PASS_ORDER } from '../sim/walls.js';
 import { inventoryNote } from '../sim/humans.js';
+import { AA_CAP, MISSILE_POWDER, MISSILE_METAL } from '../sim/war.js';
 
 const SPEED_NAMES = ['', '¼×', '½×', '2×', '4×'];
 
@@ -27,6 +28,21 @@ export function cellNotes(world, i) {
       const inv = inventoryNote(e.brain);
       if (inv) notes.push(inv);
     }
+    if (e.craft) notes.push(craftNote(e.craft));
+  }
+  // Part of a camp's war machine (war.js)?
+  for (const camp of world.camps) {
+    if (camp.aa?.set.has(i)) notes.push(`anti-air gun, gunpowder ${camp.aa.ammo} of ${AA_CAP}`);
+    else if (camp.launcher?.set.has(i)) {
+      const ln = camp.launcher;
+      notes.push(ln.missile ? 'launcher, missile ready' : `launcher, loaded gunpowder ${ln.powder} of ${MISSILE_POWDER}, metal ${ln.metal} of ${MISSILE_METAL}`);
+    } else if (camp.pad?.set.has(i)) notes.push('helipad');
   }
   return notes;
+}
+
+// What a war machine is doing, for the inspect line.
+function craftNote(k) {
+  if (k.kind === 'missile') return k.state === 'flying' ? 'flying' : 'in its tube';
+  return { parked: 'on its pad', flying: 'out fighting', home: 'flying home', down: 'down' }[k.state] ?? k.state;
 }

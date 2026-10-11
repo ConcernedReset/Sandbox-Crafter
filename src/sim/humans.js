@@ -7,9 +7,10 @@
 
 import { DEFS, ID, NUM, State } from './elements.js';
 import { SHAPED, SUFFOCATE_EVERY, BODY, SHARED } from './creatures.js';
+import { HELI_ARMOUR, MISSILE_ARMOUR } from './aircraft.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
-const { COAL, SALT, GUNPOWDER, WOOD } = ID;
+const { COAL, SALT, GUNPOWDER, WOOD, HUMAN } = ID;
 const setOf = (keys) => {
   const s = new Uint8Array(NUM);
   for (const k of keys) s[ID[k]] = 1;
@@ -26,8 +27,10 @@ const SOFT_WALL = 8; // and this thin, if it's all wood or growth (a tree trunk,
 const SOFT = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.key === 'WOOD' || d.cat === 'life') ? 1 : 0));
 const SWIM_CLIMB = 6; // or swims up, getting out of water
 const SWIM_DEPTH = 4; // liquid this deep beside it (above its waist), it swims; shallower, it wades
+const SWIM_TURN = 10; // strokes against a wall before it turns and swims the other way
 export const GIVE_UP = 300; // steps without getting closer before it gives up on a target
 export const BAN_FOR = 1800; // and leaves that target alone
+const NO_WAY_FOR = 300; // steps before it looks again for a way to a place it found none to
 const FELL_MAX = 800; // the most cells of a tree that come down when it's felled
 const TREE = setOf(['WOOD', 'LEAVES']);
 const BAN_R = 5; // (and what's like it this close: the rest of that log is no easier to reach)
@@ -64,12 +67,12 @@ export const HUT_W = 9; // the hut's width
 export const HUT_WALL = 9; // its walls' height
 export const DOOR = 7; // the doorway's height: a cell of headroom (growth, ash or a bump underfoot)
 const HUT_GAP = 4; // the least space between the hut and the pile
-const STONE_R = 120; // how far from the camp it fetches building material
+export const STONE_R = 120; // how far from the camp it fetches building material
 const HUT_R = 40; // how far from the pile it looks for a site for the hut
 const CAMP_MOVE_R = 120; // and, finding none, how far it looks for a better place to camp
 const COLD_AIR = 10; // °C: air this cold sends it to shelter
 const RAIN_R = 20; // as does rain, snow or hail falling this close
-const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
+export const MATERIAL = setOf(['STONE', 'BRICK', 'GRANITE', 'CONCRETE']);
 // Growth it clears away for a building site: plants, leaves, flowers, moss.
 export const CLEARABLE = Uint8Array.from(DEFS, (d) => (d.state === SOLID && d.cat === 'life' && d.strength > 0 && d.strength <= 6 ? 1 : 0));
 export const HAND_DIG = 30; // the strongest solid it digs by hand (sandstone); powders always
@@ -79,17 +82,18 @@ export const DIG_EVERY = 8; // steps per cell dug
 // what it never digs (creatures, dangers, anything that can't be broken).
 const DIG = Uint16Array.from(DEFS, (d) => (d.shape || DANGER[d.id] || d.indestructible ? 0
   : d.state === POWDER ? 1 : d.state === SOLID ? d.strength : 0));
-const METALS = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.cat === 'metal' || d.cat === 'alloy') ? 1 : 0));
+export const METALS = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.cat === 'metal' || d.cat === 'alloy') ? 1 : 0));
 export const RESOURCES = { coal: setOf(['COAL']), salt: setOf(['SALT']), metal: METALS };
 // What it keeps when it digs through it: fuel, salt, metal, building stone.
 export const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' || d.key === 'SCAFFOLDING' ? 1 : 0));
 export const MINE_R = 120; // how far from the camp it looks for coal, salt and metal
+const UNDER_WATER = 20; // and not where there's liquid this close above (under a pond)
 export const CRAFT_FIRE_TIME = 3000; // steps its camp's fire has burned before it crafts
 const PICK_WOOD = 3; // a pickaxe: 3 Wood
 const GUN_METAL = 5, GUN_WOOD = 1; // a gun: 5 metal and a Wood stock
 const ARMOUR_METAL = 8; // armour: 8 metal
 export const ARMOUR_HITS = 10; // hits armour absorbs before it breaks
-const AMMO_LOW = 4; // gunpowder below this, it goes for more
+export const AMMO_LOW = 4; // gunpowder below this, it goes for more
 export const PELLETS = 4; // a shot: 4 pellets in a tight spread
 const SPREAD = 0.035; // radians between pellets
 const FIGHT_R = 40; // it shoots at threats and rivals this close
@@ -129,14 +133,18 @@ export function newBrain() {
     hold: false, // holding on in a tunnel or to a wall (no falling) this step
     climbing: false, // it's climbing a wall
     path: null, // the way it has planned to where it's walking (paths.js)
+    noWay: null, // { key, until }: where it last found no way to, and till when it doesn't look again
     climbTop: -Infinity, // the highest it has climbed on this walk
     awayAt: -1, // when it last went farther than CAMP_AWAY_R from its camp (-1: it's near)
     bailed: 0, // liquid cells bailed out of the spot it's clearing
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
+    raid: null, // the camp it's raiding (war.js)
+    war: null, // the war machine it's building or loading (war.js)
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
     fleeDir: 1,
     shore: 0, // the way to the nearest shore, while swimming
+    swimBlocked: 0, // strokes in a row it couldn't make
     heading: 0, // the way it was last walking (it swims on that way)
     wasJob: 'wandering', // what it was doing before it fell in
     goalX: -1, goalY: -1, // where it's wandering to
@@ -295,7 +303,13 @@ export const Humans = {
     b.pace = 0;
     if (under !== 0 && this.moveBody(e, e.x - e.gx, e.y - e.gy, 0, e.facing, e.gx, e.gy)) return;
     if (b.heading !== 0) {
-      this.stepAcross(e, b.heading, SWIM_CLIMB, false);
+      // Up against a wall too high to climb out at, it turns and swims the
+      // other way (it used to swim into it for ever).
+      if (this.stepAcross(e, b.heading, SWIM_CLIMB, false)) b.swimBlocked = 0;
+      else if (++b.swimBlocked > SWIM_TURN) {
+        b.heading = -b.heading;
+        b.swimBlocked = 0;
+      }
       return;
     }
     if (b.shore === 0 || this.tick % 60 === 0) b.shore = this.findShore(e);
@@ -374,8 +388,16 @@ export const Humans = {
     // Along the way it has planned (paths.js); with no way there at all, it
     // gives up at once. With no plan (it gave up looking, couldn't tell, or
     // the way kept changing under it), it walks straight at it, as below.
+    // (A place it found no way to lately it doesn't look for one to again
+    // straight away: searching is costly.)
+    const key = `${tx},${ty},${near}`;
+    if (b.noWay !== null && b.noWay.key === key && this.tick < b.noWay.until) {
+      this.giveUp(e, b);
+      return false;
+    }
     const way = this.followPath(e, b, tx, ty, near, every, this.digLimit(b));
     if (way === 'unreachable') {
+      b.noWay = { key, until: this.tick + NO_WAY_FOR };
       this.giveUp(e, b);
       return false;
     }
@@ -713,6 +735,7 @@ export const Humans = {
       b.job = 'wandering';
       return;
     }
+    if (this.raidWork(e, b, camp)) return; // war.js: a raid comes before shelter
     if (this.shouldShelter(e, camp)) {
       b.job = 'sheltering';
       return;
@@ -742,6 +765,7 @@ export const Humans = {
       if (!(camp.lit && this.tending(e, camp)) && this.gather(e, b, camp, FUEL, FUEL_R, 'gathering wood')) return;
     }
     if (this.craftWork(e, b, camp)) return;
+    if (this.warWork(e, b, camp)) return; // war.js: the camp's war machines
     // With nothing else to do, now and then it goes hunting.
     if (camp.lit && this.armed(b) && this.has(b, GUNPOWDER) >= AMMO_LOW && this.tick >= b.huntAt) {
       const prey = this.findPrey(e);
@@ -761,7 +785,7 @@ export const Humans = {
   // steps on end (carried off, trapped, or lost its way back)?
   strayed(e, b) {
     const camp = b.camp;
-    if (camp === null || Math.max(Math.abs(e.x - camp.x), Math.abs(e.y - camp.y)) <= CAMP_AWAY_R) {
+    if (camp === null || b.raid !== null || Math.max(Math.abs(e.x - camp.x), Math.abs(e.y - camp.y)) <= CAMP_AWAY_R) {
       b.awayAt = -1;
       return false;
     }
@@ -893,7 +917,9 @@ export const Humans = {
     let best = null, bd = Infinity;
     for (const o of this.creatures) {
       if (o === e || o.grow >= 0) continue;
-      if (!THREAT[o.kind] && !(o.brain !== null && this.rival(b, o.brain))) continue;
+      // (Another camp's helicopter, or its missile, in the air: war.js.)
+      const enemyCraft = o.craft !== null && b.camp !== null && o.craft.camp !== b.camp && this.flying(o);
+      if (!THREAT[o.kind] && !(o.brain !== null && this.rival(b, o.brain)) && !enemyCraft) continue;
       const d = Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y));
       const dc = b.camp === null ? Infinity : Math.max(Math.abs(o.x - b.camp.x), Math.abs(o.y - b.camp.y));
       if (Math.min(d, dc) > FIGHT_R || d > SHOT_R || d >= bd || !this.sees(e, o)) continue;
@@ -903,11 +929,17 @@ export const Humans = {
     return best;
   },
 
+  // Is creature o game to hunt: an animal (not a threat, a human, even one
+  // just born that hasn't had a thought yet, nor a war machine)?
+  prey(o) {
+    return o.brain === null && o.craft === null && !THREAT[o.kind] && o.kind !== HUMAN;
+  },
+
   // An animal within FIGHT_R that it can see: a creature, or null.
   findPrey(e) {
     let best = null, bd = Infinity;
     for (const o of this.creatures) {
-      if (o === e || o.grow >= 0 || o.brain !== null || THREAT[o.kind]) continue;
+      if (o === e || o.grow >= 0 || !this.prey(o)) continue;
       const d = Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y));
       if (d > FIGHT_R || d >= bd || !this.sees(e, o)) continue;
       best = o;
@@ -920,7 +952,7 @@ export const Humans = {
   // of it, but only while nothing else is in the way.
   shootAt(e, b) {
     const o = b.foe === 0 ? null : this.creatureById[b.foe];
-    if (o == null || o.id !== b.foe || !this.armed(b) || (b.job === 'hunting' && this.tick > b.huntUntil)) {
+    if (o == null || o.id !== b.foe || !this.armed(b) || (b.job === 'hunting' && (this.tick > b.huntUntil || !this.prey(o)))) {
       b.foe = 0;
       b.job = 'wandering';
       b.think = 0;
@@ -987,6 +1019,7 @@ export const Humans = {
       o.brain.armour--;
       return;
     }
+    if (o.craft !== null && this.rand() < (o.craft.kind === 'heli' ? HELI_ARMOUR : MISSILE_ARMOUR)) return; // its plating (aircraft.js)
     for (let p = 0; p < o.n; p++) {
       if (o.cells[p] !== c || o.pix[p] !== BODY) continue;
       this.clearCell(c);
@@ -1009,7 +1042,7 @@ export const Humans = {
       case 'mining': return b.tun !== null;
       case 'flattening the camp': return b.target >= 0 && camp.flattener === e.id;
       case 'hunting': return b.foe !== 0 && this.creatureById[b.foe] != null && this.tick <= b.huntUntil;
-      default: return false;
+      default: return this.warCarryingOn(e, b, camp) === true; // war.js's jobs
     }
   },
 
@@ -1219,7 +1252,12 @@ export const Humans = {
 
   // Go into the hut and sit in the middle.
   shelter(e, b) {
-    const camp = b.camp, hut = camp.hut;
+    const camp = b.camp, hut = camp === null ? null : camp.hut;
+    if (hut === null) { // gone (war.js plans it again when its ground goes)
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
     const s = this.campCell(camp, hut.u0 + (HUT_W >> 1), hut.floor);
     if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
   },
@@ -1244,6 +1282,15 @@ export const Humans = {
       case 'shooting':
       case 'hunting': this.shootAt(e, b); break;
       case 'sheltering': this.shelter(e, b); break;
+      // war.js
+      case 'building the helipad':
+      case 'building the anti-air gun':
+      case 'building the launcher': this.warBuild(e, b); break;
+      case 'building the helicopter': this.buildHeli(e, b); break;
+      case 'loading the anti-air gun': this.loadAA(e, b); break;
+      case 'loading the launcher': this.loadLauncher(e, b); break;
+      case 'raiding': this.raidMarch(e, b); break;
+      case 'going home': this.goHome(e, b); break;
       default: this.wander(e, b);
     }
   },
@@ -1259,6 +1306,15 @@ export const Humans = {
       members: new Set(), // the humans' ids
       claims: new Set(), // cells someone is on their way to fetch
       lighter: 0, // who is lighting the fire
+      // War (war.js): its machines' blueprints (and their state), its
+      // helicopter, who's building them, which comes first, raids, births.
+      id: ++this.campSerial,
+      pad: null, aa: null, launcher: null, planRetry: { pad: 0, aa: 0, launcher: 0 },
+      badSites: [], // lawn spans [u0, u1] it couldn't get to work at: not planned on again
+      heli: null, engineer: 0, firstWar: null,
+      raidAt: 0, // when it next raids (0: not yet, -1: raiding now)
+      raid: null, raids: 0, // the raid under way { enemy, until, start, party }, and how many so far
+      birthAt: 0, // when it next gains a human (0: not counting yet)
     };
     this.camps.push(camp);
     return camp;
@@ -1301,7 +1357,7 @@ export const Humans = {
   // The camp within CAMP_JOIN, or a new one on flat dry ground a few cells
   // beside e. null if there's nowhere for one.
   joinOrMakeCamp(e) {
-    let camp = this.camps.find((c) => Math.max(Math.abs(c.x - e.x), Math.abs(c.y - e.y)) <= CAMP_JOIN) ?? null;
+    let camp = this.campFor(e);
     if (camp === null) {
       for (const u of [3, -3, 4, -4, 5, -5, 6, -6]) {
         const x = e.x + u * e.gy, y = e.y - u * e.gx;
@@ -1314,6 +1370,25 @@ export const Humans = {
     }
     if (camp !== null) camp.members.add(e.id);
     return camp;
+  },
+
+  // The camp for a human at e's place: the one whose hut it's in (born
+  // there, say), or else the nearest within CAMP_JOIN; or null.
+  campFor(e) {
+    let best = null, bd = Infinity;
+    for (const c of this.camps) {
+      const h = c.hut;
+      if (h !== null) {
+        const u = (e.x - c.x) * c.gy - (e.y - c.y) * c.gx, v = (e.x - c.x) * c.gx + (e.y - c.y) * c.gy;
+        if (u >= h.u0 && u < h.u0 + HUT_W && v <= h.floor && v >= h.floor - HUT_WALL) return c;
+      }
+      const d = Math.max(Math.abs(c.x - e.x), Math.abs(c.y - e.y));
+      if (d <= CAMP_JOIN && d < bd) {
+        best = c;
+        bd = d;
+      }
+    }
+    return best;
   },
 
   // Flat dry ground for a pile at (x, y): it and the cells either side
@@ -1487,7 +1562,7 @@ export const Humans = {
         const i = y * w + x;
         if (!set[type[i]]) continue;
         const d = Math.abs(x - e.x) + Math.abs(y - e.y);
-        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit) || this.inLawn(x, y)) continue;
+        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit) || this.inLawn(x, y) || this.underWater(x, y)) continue;
         best = i;
         bd = d;
       }
@@ -1495,10 +1570,24 @@ export const Humans = {
     return best;
   },
 
+  // Is there liquid within UNDER_WATER cells above (x, y)? A deposit
+  // under a pond is left alone: a tunnel to it lets the pond in, and
+  // miners end up swimming in a flooded pit.
+  underWater(x, y) {
+    const { downX: gx, downY: gy } = this.gravity;
+    for (let k = 1; k <= UNDER_WATER; k++) {
+      const ax = x - k * gx, ay = y - k * gy;
+      if (!this.inBounds(ax, ay)) return false;
+      const t = this.type[ay * this.w + ax];
+      if (t !== 0 && DEFS[t].state === LIQUID) return true;
+    }
+    return false;
+  },
+
   // Does it want more of what it's mining? Salt goes into gunpowder as it's
   // mined, so it wants salt while it still has coal to go with it.
   wantsMore(b) {
-    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < GATHER;
+    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < Math.max(GATHER, b.wantN);
     return this.holding(b, b.fetchSet) < b.wantN;
   },
 
@@ -1637,24 +1726,31 @@ export const Humans = {
     }
   },
 
+  // Leave cell c alone for a while, and what's like it within BAN_R (the
+  // rest of that log, or seam, is no easier to reach).
+  banNear(b, c) {
+    const t = this.type[c], x0 = c % this.w, y0 = (c / this.w) | 0;
+    for (let y = Math.max(0, y0 - BAN_R); y <= Math.min(this.h - 1, y0 + BAN_R); y++) {
+      for (let x = Math.max(0, x0 - BAN_R); x <= Math.min(this.w - 1, x0 + BAN_R); x++) {
+        const i = y * this.w + x;
+        if (i === c || (t !== 0 && this.type[i] === t)) b.banned.set(i, this.tick + BAN_FOR);
+      }
+    }
+  },
+
   // No closer for GIVE_UP steps: leave that target alone for a while.
   giveUp(e, b) {
     if (b.job === 'mining') b.skip.set(b.mineKey, this.tick + BAN_FOR);
     b.tun = null;
     if (b.target >= 0) {
-      const t = this.type[b.target], x0 = b.target % this.w, y0 = (b.target / this.w) | 0;
-      for (let y = Math.max(0, y0 - BAN_R); y <= Math.min(this.h - 1, y0 + BAN_R); y++) {
-        for (let x = Math.max(0, x0 - BAN_R); x <= Math.min(this.w - 1, x0 + BAN_R); x++) {
-          const i = y * this.w + x;
-          if (i === b.target || (t !== 0 && this.type[i] === t)) b.banned.set(i, this.tick + BAN_FOR);
-        }
-      }
+      this.banNear(b, b.target);
       this.release(b);
     }
     b.goalX = -1;
     b.stuck = 0;
     b.best = Infinity;
     b.climbTop = -Infinity;
+    b.climbing = false; // it lets go of any wall it was clinging to (it can't plan a way from there)
     b.path = null;
     b.job = 'wandering';
     b.think = 0;
@@ -1690,6 +1786,8 @@ export const Humans = {
     camp.members.delete(e.id);
     if (camp.lighter === e.id) camp.lighter = 0;
     if (camp.flattener === e.id) camp.flattener = 0;
+    if (camp.engineer === e.id) camp.engineer = 0;
+    b.raid = null;
     if (camp.members.size === 0) this.camps.splice(this.camps.indexOf(camp), 1);
     b.camp = null;
   },

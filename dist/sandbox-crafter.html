@@ -5170,6 +5170,42 @@ const WORLD_ELEMENTS = [
     desc: 'Makes a camp, gathers wood into a pile and lights a campfire by rubbing sticks, builds a little stone hut beside it to shelter from cold and rain, and runs from fire, lava and acid.',
     hint: 'Lightning striking Clay, as in the old stories of people shaped from clay.',
   }),
+  // Humans' war machines (aircraft.js, war.js): bodies with their own minds
+  // and no pilot. Not discoveries, and not in the palette. The body colour
+  // is the camp's (war.js picks it).
+  critter('HELICOPTER', 'Helicopter', 'Hcp', ['#556b2f', '#6b7280', '#3b5b7a'], {
+    moves: 'heli', tough: true,
+  }, {
+    cat: null, always: true, life: [1000000, 1000000],
+    shape: {
+      frames: [[
+        '......m......',
+        '.....bbbbww..',
+        'b...bbbbbbbw.',
+        'bbbbbbbbbbbbb',
+        '....bbbbbbbb.',
+        '.....s....s..',
+        '...ssssssss..',
+      ]],
+      palette: {
+        b: ['#556b2f', '#6b7280', '#8b6f47', '#3b5b7a', '#7a3b3b', '#4a6a5a'],
+        w: ['#9fd3e8'],
+        m: ['#3a3d42'],
+        s: ['#2e3034'],
+      },
+    },
+    desc: 'A camp\'s helicopter. It waits on its pad and flies out on raids, or up to drive off raiders, with a fast little gun it has to get close to use.',
+  }),
+  critter('MISSILE', 'Missile', 'Msl', ['#e6e6e2', '#c8402e', '#a8382a'], {
+    moves: 'missile', tough: true,
+  }, {
+    cat: null, always: true, life: [1000000, 1000000],
+    shape: {
+      frames: [['.n.', '.b.', '.b.', 'fbf', 'fbf']],
+      palette: { n: ['#c8402e'], b: ['#e6e6e2'], f: ['#a8382a'] },
+    },
+    desc: 'A camp\'s missile: it waits in its launch tube until a raid, then flies at the enemy camp and blows a crater where it lands. Anything that damages it sets it off.',
+  }),
   {
     key: 'CAMPFIRE', name: 'Campfire', sym: 'Cmp', cat: 'energy', state: SOLID, strength: 0,
     colors: ['#ff8a2a', '#ffb03a', '#ff6a1a', '#ffd05a'], density: 1, temp: 45, holdTemp: true, conduct: 0.05,
@@ -9040,6 +9076,7 @@ const AIRY = Uint8Array.from(DEFS, (d) => (d.id === 0 || (d.displaceable && d.st
 const GROW_EVERY = 2; // steps per ring of a growing body
 const GROW_GIVE_UP = 120; // steps a seed, or a blocked ring, waits for room
 const HEAL_AFTER = 150; // steps without harm for each pixel healed
+const MEND_EVERY = 30; // steps per pixel a war machine mends, where it's looked after (aircraft.js)
 const SUFFOCATE_EVERY = 30; // steps per pixel lost out of breath (or water)
 const HOT_HURT = 60; // °C: a pixel hotter than this, or colder than
 const COLD_HURT = -15; // this, is damaged (unless the creature is tough)
@@ -9058,8 +9095,10 @@ function initCreatures(world) {
   world.creatureById = [null]; // id (the ctype of its cells) -> entity
   world.freeCreatureIds = [];
   world.camps = []; // humans' camps (humans.js)
+  world.campSerial = 0; // the last camp's id
   world.humanMade = new Map(); // cell -> what a human put there (humans.js)
   world.shots = []; // pellet tracers, drawn for a few frames (humans.js)
+  world.flak = []; // anti-air shells in flight (war.js)
   world.footA = new Int32Array(64); // scratch for working out footprints
   world.footB = new Int32Array(64);
 }
@@ -9092,6 +9131,7 @@ const Creatures = {
       dry: 0, // steps a swimmer has been out of water
       wades: d.critter.wades,
       brain: null, // a human's (humans.js)
+      craft: null, // a war machine's (aircraft.js)
       shot: false, // hit by gunfire (an animal killed so leaves Meat)
       slot: this.creatures.length, // its place in world.creatures
     };
@@ -9304,7 +9344,7 @@ const Creatures = {
       e.pix[p] = BODY;
     }
     if (unborn === 0) { e.grow = -1; return; }
-    if (blocked && ++e.wait > GROW_GIVE_UP) {
+    if (blocked && ++e.wait > GROW_GIVE_UP && e.craft === null) { // (a war machine being built waits)
       const s = e.cells[e.seed];
       if (e.pix[e.seed] !== BODY) { this.removeCreature(e); return; }
       this.removeCreature(e, s);
@@ -9450,6 +9490,10 @@ const Creatures = {
   // What's left of the body becomes its remains: ash if it died mostly of
   // heat, otherwise what its kind leaves (lifeEnd), pixel by pixel.
   creatureDies(e) {
+    if (e.craft !== null) {
+      this.craftDies(e); // aircraft.js: a crash, or the missile goes off
+      return;
+    }
     const le = DEFS[e.kind].lifeEnd;
     const burnt = e.burnt * 2 > e.lost;
     for (let p = 0; p < e.n; p++) {
@@ -9665,16 +9709,27 @@ const Creatures = {
       this.creatureDies(e);
       return;
     }
-    if (e.lost > 0 && this.tick - e.hurtAt >= HEAL_AFTER) this.healPixel(e);
-    this.orient(e);
+    // A war machine (aircraft.js) keeps its own way up, isn't thrown about
+    // and mends only where it's looked after (a helicopter on its pad).
+    const craft = e.craft;
+    if (e.lost > 0 && (craft === null ? this.tick - e.hurtAt >= HEAL_AFTER : craft.mend && this.tick - e.hurtAt >= MEND_EVERY)) this.healPixel(e);
+    if (craft === null) this.orient(e);
     if (this.portalCells !== 0 && this.portalCreature(e)) return;
     if (e.pushX !== 0 || e.pushY !== 0) {
       this.moveBody(e, e.x + e.pushX, e.y + e.pushY, e.frame, e.facing, e.gx, e.gy);
       e.pushX = 0;
       e.pushY = 0;
     }
+    if (craft !== null) {
+      e.vx = 0;
+      e.vy = 0;
+      this.stepCraft(e);
+      return;
+    }
     if (this.fling(e)) return;
-    if (DEFS[e.kind].critter.moves === 'human') this.stepHuman(e);
+    const moves = DEFS[e.kind].critter.moves;
+    if (moves === 'human') this.stepHuman(e);
+    else if (moves === 'heli' || moves === 'missile') this.removeCreature(e); // no mind of its own (a stray seed)
     else this.stepAnimal(e);
   },
 
@@ -9784,7 +9839,7 @@ const Creatures = {
   },
 };
 
-return { SHAPED, AIRY, GROW_EVERY, GROW_GIVE_UP, HEAL_AFTER, SUFFOCATE_EVERY, HOT_HURT, COLD_HURT, NEWBORN_GRACE, BODY, initCreatures, Creatures };
+return { SHAPED, AIRY, GROW_EVERY, GROW_GIVE_UP, HEAL_AFTER, MEND_EVERY, SUFFOCATE_EVERY, HOT_HURT, COLD_HURT, NEWBORN_GRACE, BODY, initCreatures, Creatures };
 })();
 
 __modules["src/sim/machines.js"] = (() => {
@@ -11165,6 +11220,562 @@ const Sleep = {
 return { CHUNK, SLEEP_AFTER, initSleep, Sleep };
 })();
 
+__modules["src/sim/aircraft.js"] = (() => {
+// Aircraft: a camp's helicopter and its missiles (war.js builds them).
+// Each is a shaped creature (Helicopter, Missile) with no pilot: its mind
+// is `e.craft` (a human's is `e.brain`), stepped by stepCraft in place of
+// an animal's or a human's step. Like any creature, its pixels can be shot
+// away, blasted or burned; a helicopter that loses half comes down in
+// pieces, and a missile that loses one goes off.
+//
+// The helicopter waits on its pad (mending while it's there) until its
+// camp raids another, or raiders come near home; then it flies out at
+// cruising height, comes down over the fight, and shoots at whatever of
+// the enemy's it can see, close up, a round every few steps. It flies home
+// when the raid is over, the fight is, or it's badly hit.
+//
+// A missile sits in its launch tube until a raid; then it flies straight
+// up, turns toward the enemy's hut, speeding up, and blows a crater in
+// whatever it hits (or where it was aimed). It points the way it flies,
+// in eight directions (its "down" is the way it came from).
+//
+// Mixed into World.prototype.
+
+const { DEFS, ID, State, AMBIENT } = __modules["src/sim/elements.js"];
+const { SHAPED, BODY } = __modules["src/sim/creatures.js"];
+
+const { SOLID, POWDER, LIQUID } = State;
+
+const HELI_EVERY = 1; // steps per cell it flies
+const HELI_CRUISE = 14; // the least it flies above the ground on the way somewhere
+const HELI_HOVER = 10; // how far above (and to the side of) what it's shooting at it hovers
+const HELI_SIDE = 8;
+const HELI_GUN_R = 20; // it fires at what's this close
+const HELI_GUN_EVERY = 3; // steps between rounds
+const HELI_SPREAD = 0.06; // radians either way a round may stray
+const HELI_LOOK = 70; // how far from the fight it looks for something to shoot
+const HELI_RETREAT = 0.4; // this much of it shot away, it flies home
+const DEFEND_R = 60; // raiders this close to its camp send it up
+const HELI_STAY = 600; // steps defending with nothing to shoot before it goes home
+const HELI_LOOK_EVERY = 8;
+const MISSILE_SPEED = 2; // cells a step, at full speed
+const MISSILE_ACCEL = 0.08;
+const MISSILE_BOOST = 24; // cells straight up out of the tube
+const MISSILE_TURN = 0.07; // radians a step it can turn
+const NOSE = 4; // how far its nose is ahead of its tail (where it's anchored)
+const APEX = 80; // how high over the higher end of its way it flies
+// Growth (leaves, plants, saplings) a missile tears through.
+const LEAFY = Uint8Array.from(DEFS, (d) => (d.cat === 'life' && (d.state === SOLID || d.state === POWDER) && !d.shape ? 1 : 0));
+const APEX_NEAR = 14; // this near a point of its way, it turns for the next
+const TURN_ROOM = 24; // and its way keeps this far inside the world (room to turn)
+const MISSILE_FUEL = 1500; // steps it flies before it comes down wherever it is
+const MISSILE_HOLD = 120; // steps it waits for its own side to get out of its way
+const HELI_WAIT = 90; // steps a raid's helicopter waits for its missile to get clear
+const HELI_DOWN_FOR = 1200; // steps set down away from its pad before it tries for home again
+const HELI_STALL = 60; // moves within a few cells of one spot: it's boxed in
+const HELI_ESCAPE = 24; // and moves any way it can this many times to get out
+const EDGE = 9; // the least it keeps from the world's edges, going somewhere
+const ESCAPE = [[1, 1], [0, 1], [-1, 1], [1, 0], [-1, 0], [1, -1], [0, -1], [-1, -1]];
+const HELI_ARMOUR = 0.85; // the share of bullets its plating turns (blasts it doesn't)
+const MISSILE_ARMOUR = 0.9; // and a missile's (an anti-air burst is what stops one)
+const MISSILE_TOUGH = 3; // pixels a missile can lose before it goes off
+const CRATER_R = 8; // a missile's crater
+const CRATER_BLAST = 30;
+const WRECK_BLAST = 8; // a helicopter coming down
+
+// The eight directions, as angles' nearest: [dx, dy].
+const DIR8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+function dir8(hx, hy) {
+  const k = Math.round(Math.atan2(hy, hx) / (Math.PI / 4));
+  return DIR8[(k + 8) % 8];
+}
+
+const Aircraft = {
+  // A war machine of kind t (Helicopter or Missile) is built at anchor
+  // (x, y), standing along (gx, gy), facing `facing`: it grows ring by ring
+  // from its middle, as a creature hatches. `look` picks the colour of
+  // palette letters ({ b: 2 }). Its mind is `craft`. The creature, or null
+  // with no room.
+  buildCraft(t, x, y, facing, gx, gy, craft, look = null) {
+    const sh = DEFS[t].shape, f = sh.frames[0], out = this.footA;
+    if (!this.placeCells(t, x, y, 0, facing, gx, gy, out)) return null;
+    const probe = { kind: t, id: -1, wades: false };
+    // Loose stuff, liquid or growth where it goes (scrap, rubble, sand, a
+    // puddle, leaves) is swept aside; anything else, and there's no room.
+    for (let q = 0; q < sh.n; q++) {
+      const c = out[q], u = this.type[c];
+      if (this.roomForBody(probe, c)) continue;
+      if (SHAPED[u] || this.wall[c] !== 0 || !(DEFS[u].state === POWDER || DEFS[u].state === LIQUID || this.loose[c] || this.wild(c))) return null;
+    }
+    for (let q = 0; q < sh.n; q++) if (!this.roomForBody(probe, out[q])) this.makeRoom(out[q], out, sh.n);
+    if (!this.placeCells(t, x, y, 0, facing, gx, gy, out)) return null;
+    const e = this.newCreature(t, x, y, facing, gx, gy);
+    if (e === null) return null;
+    e.craft = craft;
+    if (look !== null) {
+      for (const [letter, k] of Object.entries(look)) {
+        const l = sh.letters.indexOf(letter);
+        if (l >= 0) e.look[l] = k % sh.options[l];
+      }
+    }
+    const p = sh.order[0];
+    for (let q = 0; q < sh.n; q++) e.ring[q] = Math.max(Math.abs(f.dx[q] - f.dx[p]), Math.abs(f.dy[q] - f.dy[p]));
+    e.seed = p;
+    this.placeCells(t, x, y, 0, facing, gx, gy, out);
+    if (this.type[out[p]] !== 0) this.clearCell(out[p]);
+    this.writePixel(e, p, out[p], AMBIENT, 0);
+    e.pix[p] = BODY;
+    return e;
+  },
+
+  // Is creature o still the one we mean (ids are reused at once)?
+  alive(o) {
+    return o !== null && o !== undefined && this.creatureById[o.id] === o;
+  },
+
+  stepCraft(e) {
+    const k = e.craft;
+    if (k.camp !== null && !this.camps.includes(k.camp)) k.camp = null; // its camp is gone
+    if (k.kind === 'heli') this.stepHeli(e, k);
+    else this.stepMissile(e, k);
+  },
+
+  // ---- the helicopter -----------------------------------------------------------
+
+  // Where to go and fight: the camp its own is raiding, or its own with
+  // raiders (or their helicopter) near; null if neither.
+  heliCall(k) {
+    const camp = k.camp;
+    if (camp === null) return null;
+    if (camp.raid !== null && this.camps.includes(camp.raid.enemy)) return camp.raid.enemy;
+    return this.enemyNear(camp, camp.x, camp.y, DEFEND_R) !== null ? camp : null;
+  },
+
+  // Is creature o one of camp's enemies: a human of another camp, or
+  // another camp's aircraft (up and about)?
+  enemyOf(camp, o) {
+    if (o.grow >= 0) return false;
+    if (o.brain !== null) return o.brain.camp !== null && o.brain.camp !== camp;
+    if (o.craft !== null) return o.craft.camp !== camp && this.flying(o);
+    return false;
+  },
+
+  // An aircraft in the air (not parked, nor waiting in its tube)?
+  flying(o) {
+    const k = o.craft;
+    return k !== null && (k.kind === 'heli' ? k.state !== 'parked' : k.state === 'flying');
+  },
+
+  // camp's nearest enemy within r of (x, y): a creature, or null.
+  enemyNear(camp, x, y, r) {
+    let best = null, bd = Infinity;
+    for (const o of this.creatures) {
+      if (!this.enemyOf(camp, o)) continue;
+      const d = Math.max(Math.abs(o.x - x), Math.abs(o.y - y));
+      if (d <= r && d < bd) {
+        best = o;
+        bd = d;
+      }
+    }
+    return best;
+  },
+
+  stepHeli(e, k) {
+    k.mend = k.state === 'parked';
+    if (k.state === 'parked') {
+      if (e.lost > e.n * HELI_RETREAT) return; // mending first
+      const goal = this.heliCall(k);
+      if (goal === null) return;
+      if (goal !== k.camp && this.tick - k.camp.raid.start < HELI_WAIT) return; // the missile goes first
+      k.goal = goal;
+      k.state = 'flying';
+      k.quiet = 0;
+      k.pace = 0;
+    }
+    if (k.camp === null) k.state = 'down';
+    if (k.state === 'down') {
+      // Nowhere to go home to (or no way down onto its pad): it settles
+      // where it is, and now and then tries for home again.
+      if (k.camp !== null && (k.downFor = (k.downFor ?? 0) + 1) > HELI_DOWN_FOR) {
+        k.downFor = 0;
+        k.blocked = 0;
+        k.state = 'home';
+        return;
+      }
+      if (++k.pace >= HELI_EVERY && !this.supported(e)) {
+        k.pace = 0;
+        this.heliMove(e, 0, -1);
+      }
+      return;
+    }
+    const camp = k.camp;
+    if (k.state === 'flying') {
+      const raid = camp.raid;
+      const over = k.goal !== camp ? raid === null || raid.enemy !== k.goal || !this.camps.includes(k.goal) : k.quiet > HELI_STAY;
+      if (over || e.lost > e.n * HELI_RETREAT) {
+        k.state = 'home';
+        k.foe = null;
+      }
+    }
+    if (k.state === 'flying') this.heliFight(e, k);
+    if (k.state === 'home') this.heliHome(e, k);
+  },
+
+  // Over the fight: find something to shoot, hover above and beside it,
+  // and fire when it's close enough and in sight.
+  heliFight(e, k) {
+    const goal = k.goal;
+    if (this.tick % HELI_LOOK_EVERY === 0 || !this.alive(k.foe) || !this.enemyOf(k.camp, k.foe)) {
+      const foe = this.enemyNear(k.camp, goal.x, goal.y, HELI_LOOK);
+      k.foe = foe;
+      if (foe === null && k.goal === k.camp) k.quiet += HELI_LOOK_EVERY;
+      else if (foe !== null) k.quiet = 0;
+    }
+    const foe = this.alive(k.foe) ? k.foe : null;
+    let tx, ty;
+    if (foe !== null) {
+      // Above it, off to the side it's on.
+      const side = this.across(e, e.x - foe.x, e.y - foe.y) >= 0 ? 1 : -1;
+      // (Another helicopter: off to its side at its height, not over it.)
+      [tx, ty] = foe.craft !== null ? this.heliOffset(e, foe.x, foe.y, side * HELI_SIDE * 2, 0) : this.heliOffset(e, foe.x, foe.y, side * HELI_SIDE, HELI_HOVER);
+    } else {
+      [tx, ty] = this.heliOffset(e, goal.x, goal.y, 0, HELI_HOVER + 8);
+    }
+    this.heliToward(e, k, tx, ty);
+    if (foe !== null) this.heliShoot(e, k, foe);
+  },
+
+  // Fly home and set down on its pad.
+  heliHome(e, k) {
+    const camp = k.camp;
+    const du = this.across(e, k.homeX - e.x, k.homeY - e.y), dv = this.upOf(e, k.homeX - e.x, k.homeY - e.y);
+    if (du === 0 && dv === 0) {
+      k.state = 'parked';
+      k.foe = null;
+      if (e.facing !== k.homeFacing) this.moveBody(e, e.x, e.y, 0, k.homeFacing, e.gx, e.gy);
+      return;
+    }
+    if (Math.abs(du) > 0) {
+      // Across at the height it's at (or higher, over what's in the way),
+      // then straight down.
+      const [tx, ty] = this.heliOffset(e, k.homeX, k.homeY, 0, Math.max(HELI_HOVER, -dv));
+      this.heliToward(e, k, Math.abs(du) <= 1 ? k.homeX : tx, Math.abs(du) <= 1 ? k.homeY : ty, true);
+      return;
+    }
+    if (++k.pace < HELI_EVERY) return;
+    k.pace = 0;
+    if (!this.heliMove(e, 0, Math.sign(dv)) && camp !== null && dv < 0) k.blocked = (k.blocked ?? 0) + 1;
+    else k.blocked = 0;
+    if ((k.blocked ?? 0) > 600) { // its pad is buried: it lands where it can (and tries again later)
+      k.state = 'down';
+      k.downFor = 0;
+    }
+  },
+
+  // (dx, dy) across e's down arrow (positive the way facing 1 looks), and
+  // up it.
+  across(e, dx, dy) {
+    return dx * e.gy - dy * e.gx;
+  },
+  upOf(e, dx, dy) {
+    return -(dx * e.gx + dy * e.gy);
+  },
+
+  // The point `u` across and `v` up from (x, y), in e's frame.
+  heliOffset(e, x, y, u, v) {
+    return [x + u * e.gy - v * e.gx, y - u * e.gx - v * e.gy];
+  },
+
+  // How far below e the ground is (cells of open space under its skids),
+  // up to `max`.
+  clearance(e, max) {
+    for (let d = 1; d <= max; d++) {
+      const x = e.x + d * e.gx, y = e.y + d * e.gy;
+      if (!this.inBounds(x, y)) return d - 1;
+      const t = this.type[y * this.w + x];
+      if (t === 0) continue;
+      const s = DEFS[t].state;
+      if (s === SOLID || s === POWDER || s === LIQUID) return d - 1;
+    }
+    return max;
+  },
+
+  // A cell a step (every HELI_EVERY steps) toward (tx, ty): across, and
+  // up or down, keeping well above the ground on the way there; climbing
+  // over whatever's in its way.
+  heliToward(e, k, tx, ty, homing = false) {
+    if (++k.pace < HELI_EVERY) return;
+    k.pace = 0;
+    // Boxed in (another helicopter, a human, an overhang), it shuffles back
+    // and forth on the spot: it gets out of there any way it can for a bit.
+    if ((k.escape ?? 0) > 0) {
+      k.escape--;
+      const s = (this.rand() * 8) | 0;
+      for (let n = 0; n < 8; n++) {
+        const [a, b] = ESCAPE[(s + n) & 7];
+        if (this.heliMove(e, a, b)) break;
+      }
+      return;
+    }
+    // Its way there keeps clear of the world's edges.
+    tx = Math.max(EDGE, Math.min(this.w - 1 - EDGE, tx));
+    ty = Math.max(EDGE, Math.min(this.h - 1 - EDGE, ty));
+    const du = this.across(e, tx - e.x, ty - e.y), dv = this.upOf(e, tx - e.x, ty - e.y);
+    const far = Math.abs(du) > 24;
+    const low = this.clearance(e, HELI_CRUISE + 2);
+    let su = Math.sign(du), sv = Math.sign(dv);
+    // On the way: at cruising height; over the fight: never right down on
+    // the ground.
+    if (far && low < HELI_CRUISE) sv = 1;
+    else if (far && sv < 0 && low <= HELI_CRUISE) sv = 0;
+    else if (!homing && sv < 0 && low <= 4) sv = 0;
+    if (su === 0 && sv === 0) return;
+    this.heliStep(e, su, sv);
+    // Getting nowhere (within a few cells for HELI_STALL moves)?
+    if (Math.abs(e.x - (k.atX ?? e.x)) + Math.abs(e.y - (k.atY ?? e.y)) > 3 || k.atX === undefined) {
+      k.atX = e.x;
+      k.atY = e.y;
+      k.stall = 0;
+    } else if (++k.stall > HELI_STALL) {
+      k.stall = 0;
+      k.escape = HELI_ESCAPE;
+    }
+  },
+
+  // A cell toward (su, sv); with something in the way, up over it, or
+  // straight across; or, boxed in, back the other way, or down.
+  heliStep(e, su, sv) {
+    if (this.heliMove(e, su, sv)) return;
+    const back = su !== 0 ? -su : e.facing;
+    for (const [a, b] of [[su, 1], [0, 1], [su, 0], [back, 1], [back, 0], [0, -1], [su, -1], [back, -1]]) {
+      if ((a !== su || b !== sv) && (a !== 0 || b !== 0) && this.heliMove(e, a, b)) return;
+    }
+  },
+
+  // A cell `du` across and `dv` up (each -1, 0 or 1), turning to face the
+  // way it's going across. False if it couldn't.
+  heliMove(e, du, dv) {
+    const x = e.x + du * e.gy - dv * e.gx, y = e.y - du * e.gx - dv * e.gy;
+    const face = du !== 0 ? du : e.facing;
+    for (const f of face !== e.facing ? [face, e.facing] : [face]) {
+      if (this.moveBody(e, x, y, 0, f, e.gx, e.gy)) return true;
+      // Loose stuff in the way (a leaf caught in its tail, dust, rubble)
+      // is swept aside.
+      if (this.sweepFor(e, x, y, f) && this.moveBody(e, x, y, 0, f, e.gx, e.gy)) return true;
+    }
+    return false;
+  },
+
+  // Sweep what's loose (powders, rubble) or wild (leaves, plants, the wood
+  // of trees: never what humans built) out of the cells e's body would take
+  // at (x, y) facing f: pushed aside, or cleared. False (sweeping nothing)
+  // if anything else is in the way. `leavesOnly`: just growth (a missile
+  // tearing through a tree's crown), which is cleared away.
+  sweepFor(e, x, y, f, leavesOnly = false) {
+    const out = this.footB;
+    if (!this.placeCells(e.kind, x, y, 0, f, e.gx, e.gy, out)) return false;
+    const loose = [];
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = out[p];
+      if (this.roomForBody(e, c)) continue;
+      const t = this.type[c], d = DEFS[t];
+      if (SHAPED[t] || this.wall[c] !== 0) return false;
+      if (leavesOnly ? LEAFY[t] === 0 : !(d.state === POWDER || this.loose[c] || this.wild(c))) return false;
+      loose.push(c);
+    }
+    for (const c of loose) {
+      if (leavesOnly) this.clearCell(c); // torn through
+      else this.makeRoom(c, out, e.n);
+    }
+    return loose.length > 0;
+  },
+
+  // Where its gun is: under its nose.
+  heliMuzzle(e) {
+    const f = e.facing;
+    return [e.x + 5 * f * e.gy - 2 * e.gx, e.y - 5 * f * e.gx - 2 * e.gy];
+  },
+
+  // A round every HELI_GUN_EVERY steps at a random pixel of the foe, when
+  // it's within HELI_GUN_R and nothing else is first on the line.
+  heliShoot(e, k, foe) {
+    if (++k.reload < HELI_GUN_EVERY) return;
+    const [mx, my] = this.heliMuzzle(e);
+    if (Math.max(Math.abs(foe.x - mx), Math.abs(foe.y - my)) > HELI_GUN_R) return;
+    const aim = this.randomCell(foe);
+    if (aim < 0) return;
+    const ax = aim % this.w, ay = (aim / this.w) | 0;
+    if (!this.inBounds(mx, my) || this.lineFirst(e, mx, my, ax, ay) !== foe) return;
+    k.reload = 0;
+    const a = Math.atan2(ay - my, ax - mx) + (this.rand() - 0.5) * 2 * HELI_SPREAD;
+    this.pellet(e, mx, my, Math.cos(a), Math.sin(a));
+  },
+
+  // ---- missiles -----------------------------------------------------------------
+
+  // Send the missile waiting in its tube at (tx, ty).
+  launch(e, tx, ty) {
+    const k = e.craft;
+    if (k.state !== 'flying') {
+      k.state = 'flying';
+      k.fx = e.x;
+      k.fy = e.y;
+      k.hx = -e.gx; // straight up out of the tube
+      k.hy = -e.gy;
+      k.speed = 0.3;
+      k.boost = MISSILE_BOOST;
+      k.fuel = MISSILE_FUEL;
+      k.held = 0;
+    }
+    k.tx = tx;
+    k.ty = ty;
+    // Over the hills and trees between: straight up to APEX over the
+    // higher end of its way (in its tube's frame), across at that height,
+    // and straight down on the target (so only what's right over it is in
+    // the way).
+    const gx = e.gx, gy = e.gy, up = (x, y) => -(x * gx + y * gy);
+    const top = Math.max(up(tx, ty), up(e.x, e.y)) + APEX;
+    const over = (x, y) => [
+      Math.max(TURN_ROOM, Math.min(this.w - 1 - TURN_ROOM, x - gx * (top - up(x, y)))),
+      Math.max(TURN_ROOM, Math.min(this.h - 1 - TURN_ROOM, y - gy * (top - up(x, y)))),
+    ];
+    k.way = [over(e.x, e.y), over(tx, ty)];
+    k.leg = 0;
+  },
+
+  stepMissile(e, k) {
+    if (e.lost >= MISSILE_TOUGH) { // hit hard enough: it goes off
+      this.detonate(e);
+      return;
+    }
+    if (k.state !== 'flying') return;
+    k.speed = Math.min(MISSILE_SPEED, k.speed + MISSILE_ACCEL);
+    if (k.boost > 0) {
+      k.boost -= k.speed;
+    } else {
+      // Turn its nose toward the next point of its way, then the target, a
+      // little at a time.
+      const way = k.way ?? [];
+      if (k.leg < way.length && Math.hypot(way[k.leg][0] - k.fx - NOSE * k.hx, way[k.leg][1] - k.fy - NOSE * k.hy) < APEX_NEAR) k.leg++;
+      const [qx, qy] = k.leg < way.length ? way[k.leg] : [k.tx, k.ty];
+      const want = Math.atan2(qy - k.fy - NOSE * k.hy, qx - k.fx - NOSE * k.hx), now = Math.atan2(k.hy, k.hx);
+      let d = want - now;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      const a = now + Math.max(-MISSILE_TURN, Math.min(MISSILE_TURN, d));
+      k.hx = Math.cos(a);
+      k.hy = Math.sin(a);
+    }
+    k.fx += k.hx * k.speed;
+    k.fy += k.hy * k.speed;
+    if (--k.fuel <= 0) {
+      this.detonate(e);
+      return;
+    }
+    // Its body follows, a cell at a time, pointing the way it flies.
+    const [dx, dy] = dir8(k.hx, k.hy);
+    for (let n = 0; n < 3; n++) {
+      const sx = Math.sign(Math.round(k.fx) - e.x), sy = Math.sign(Math.round(k.fy) - e.y);
+      if (sx === 0 && sy === 0) break;
+      const nx = e.x + sx, ny = e.y + sy;
+      // Leaving its tube and climbing over its own camp, it pushes through
+      // what's loose or growing (sand on its fins, a tree over the tube);
+      // after that it tears through leaves and other growth, and goes off on
+      // anything else it hits.
+      if (!this.moveBody(e, nx, ny, 0, 1, -dx, -dy) && !this.moveBody(e, nx, ny, 0, 1, e.gx, e.gy)
+        && !(this.sweepFor(e, nx, ny, 1, k.boost <= 0 && k.leg > 0) && this.moveBody(e, nx, ny, 0, 1, e.gx, e.gy))) {
+        // Its own side in the way (its helicopter taking off, say): it
+        // waits for it to move, a little while.
+        if (this.ownInWay(e, k, sx, sy) && ++k.held < MISSILE_HOLD) {
+          k.fx = e.x;
+          k.fy = e.y;
+          return;
+        }
+        this.detonate(e); // it hit something (or the edge of the world)
+        return;
+      }
+    }
+    if (e.gx !== -dx || e.gy !== -dy) this.moveBody(e, e.x, e.y, 0, 1, -dx, -dy);
+    if (k.boost <= 0 && Math.hypot(k.tx - k.fx - NOSE * k.hx, k.ty - k.fy - NOSE * k.hy) <= 2) this.detonate(e);
+  },
+
+  // Is a creature of its own camp (a human, or its helicopter) in the way
+  // of missile e moving (sx, sy)?
+  ownInWay(e, k, sx, sy) {
+    const out = this.footA;
+    if (k.camp === null || !this.placeCells(e.kind, e.x + sx, e.y + sy, 0, 1, e.gx, e.gy, out)) return false;
+    for (let p = 0; p < e.n; p++) {
+      const o = this.creatureAt(out[p]);
+      if (o === null || o === e) continue;
+      if ((o.brain !== null && o.brain.camp === k.camp) || (o.craft !== null && o.craft.camp === k.camp)) return true;
+    }
+    return false;
+  },
+
+  // The missile goes off: it's gone, and where its nose was there's a
+  // crater.
+  detonate(e) {
+    const nose = e.pix[0] === BODY ? e.cells[0] : e.y * this.w + e.x;
+    const k = e.craft;
+    if (k.camp !== null && k.camp.launcher !== null && k.camp.launcher.missile === e) k.camp.launcher.missile = null;
+    this.removeCreature(e);
+    this.crater(nose % this.w, (nose / this.w) | 0, CRATER_R);
+  },
+
+  // A crater of radius r at (x, y): the middle blown away (into smoke and a
+  // little fire), the solids round it broken loose to fall as rubble, then
+  // a blast that throws what's loose and hurts what's alive.
+  crater(x, y, r) {
+    const { w, h } = this;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const nx = x + dx, ny = y + dy, d2 = dx * dx + dy * dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || d2 > r * r) continue;
+        const c = ny * w + nx, t = this.type[c];
+        if (t === 0 || SHAPED[t] || this.wall[c] !== 0 || DEFS[t].indestructible) continue;
+        if (d2 <= r * r * 0.45) {
+          this.clearCell(c);
+          const roll = this.rand();
+          if (roll < 0.25) this.spawn(c, ID.SMOKE);
+          else if (roll < 0.33) this.spawn(c, ID.FIRE);
+        } else if (DEFS[t].state === SOLID && this.rand() < 0.7) {
+          this.loose[c] = 1; // rubble
+        }
+      }
+    }
+    this.blast(x, y, CRATER_BLAST);
+  },
+
+  // A war machine dies: a helicopter comes down in pieces (scrap metal,
+  // falling loose, and a small blast); a missile goes off.
+  craftDies(e) {
+    const k = e.craft;
+    if (k.kind === 'missile') {
+      this.detonate(e);
+      return;
+    }
+    if (k.camp !== null && k.camp.heli === e) k.camp.heli = null;
+    for (let p = 0; p < e.n; p++) {
+      if (e.pix[p] !== BODY) continue;
+      const c = e.cells[p];
+      if (this.rand() < 0.6) {
+        this.convert(c, ID.METAL, false, -1);
+        this.loose[c] = 1;
+      } else {
+        this.clearCell(c);
+        if (this.rand() < 0.3) this.spawn(c, ID.SMOKE);
+      }
+    }
+    this.forgetCreature(e);
+    this.blast(e.x, e.y, WRECK_BLAST);
+  },
+};
+
+
+return { HELI_GUN_R, HELI_GUN_EVERY, HELI_RETREAT, DEFEND_R, HELI_ARMOUR, MISSILE_ARMOUR, CRATER_R, Aircraft };
+})();
+
 __modules["src/sim/humans.js"] = (() => {
 // Humans: shaped creatures (creatures.js) with minds of their own. A human
 // makes a camp, gathers fuel into a pile beside it and lights it by
@@ -11175,9 +11786,10 @@ __modules["src/sim/humans.js"] = (() => {
 
 const { DEFS, ID, NUM, State } = __modules["src/sim/elements.js"];
 const { SHAPED, SUFFOCATE_EVERY, BODY, SHARED } = __modules["src/sim/creatures.js"];
+const { HELI_ARMOUR, MISSILE_ARMOUR } = __modules["src/sim/aircraft.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
-const { COAL, SALT, GUNPOWDER, WOOD } = ID;
+const { COAL, SALT, GUNPOWDER, WOOD, HUMAN } = ID;
 const setOf = (keys) => {
   const s = new Uint8Array(NUM);
   for (const k of keys) s[ID[k]] = 1;
@@ -11194,8 +11806,10 @@ const SOFT_WALL = 8; // and this thin, if it's all wood or growth (a tree trunk,
 const SOFT = Uint8Array.from(DEFS, (d) => (d.state === SOLID && (d.key === 'WOOD' || d.cat === 'life') ? 1 : 0));
 const SWIM_CLIMB = 6; // or swims up, getting out of water
 const SWIM_DEPTH = 4; // liquid this deep beside it (above its waist), it swims; shallower, it wades
+const SWIM_TURN = 10; // strokes against a wall before it turns and swims the other way
 const GIVE_UP = 300; // steps without getting closer before it gives up on a target
 const BAN_FOR = 1800; // and leaves that target alone
+const NO_WAY_FOR = 300; // steps before it looks again for a way to a place it found none to
 const FELL_MAX = 800; // the most cells of a tree that come down when it's felled
 const TREE = setOf(['WOOD', 'LEAVES']);
 const BAN_R = 5; // (and what's like it this close: the rest of that log is no easier to reach)
@@ -11252,6 +11866,7 @@ const RESOURCES = { coal: setOf(['COAL']), salt: setOf(['SALT']), metal: METALS 
 // What it keeps when it digs through it: fuel, salt, metal, building stone.
 const USEFUL = Uint8Array.from(DEFS, (d) => (FUEL[d.id] || METALS[d.id] || MATERIAL[d.id] || d.key === 'SALT' || d.key === 'SCAFFOLDING' ? 1 : 0));
 const MINE_R = 120; // how far from the camp it looks for coal, salt and metal
+const UNDER_WATER = 20; // and not where there's liquid this close above (under a pond)
 const CRAFT_FIRE_TIME = 3000; // steps its camp's fire has burned before it crafts
 const PICK_WOOD = 3; // a pickaxe: 3 Wood
 const GUN_METAL = 5, GUN_WOOD = 1; // a gun: 5 metal and a Wood stock
@@ -11297,14 +11912,18 @@ function newBrain() {
     hold: false, // holding on in a tunnel or to a wall (no falling) this step
     climbing: false, // it's climbing a wall
     path: null, // the way it has planned to where it's walking (paths.js)
+    noWay: null, // { key, until }: where it last found no way to, and till when it doesn't look again
     climbTop: -Infinity, // the highest it has climbed on this walk
     awayAt: -1, // when it last went farther than CAMP_AWAY_R from its camp (-1: it's near)
     bailed: 0, // liquid cells bailed out of the spot it's clearing
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
+    raid: null, // the camp it's raiding (war.js)
+    war: null, // the war machine it's building or loading (war.js)
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
     fleeDir: 1,
     shore: 0, // the way to the nearest shore, while swimming
+    swimBlocked: 0, // strokes in a row it couldn't make
     heading: 0, // the way it was last walking (it swims on that way)
     wasJob: 'wandering', // what it was doing before it fell in
     goalX: -1, goalY: -1, // where it's wandering to
@@ -11463,7 +12082,13 @@ const Humans = {
     b.pace = 0;
     if (under !== 0 && this.moveBody(e, e.x - e.gx, e.y - e.gy, 0, e.facing, e.gx, e.gy)) return;
     if (b.heading !== 0) {
-      this.stepAcross(e, b.heading, SWIM_CLIMB, false);
+      // Up against a wall too high to climb out at, it turns and swims the
+      // other way (it used to swim into it for ever).
+      if (this.stepAcross(e, b.heading, SWIM_CLIMB, false)) b.swimBlocked = 0;
+      else if (++b.swimBlocked > SWIM_TURN) {
+        b.heading = -b.heading;
+        b.swimBlocked = 0;
+      }
       return;
     }
     if (b.shore === 0 || this.tick % 60 === 0) b.shore = this.findShore(e);
@@ -11542,8 +12167,16 @@ const Humans = {
     // Along the way it has planned (paths.js); with no way there at all, it
     // gives up at once. With no plan (it gave up looking, couldn't tell, or
     // the way kept changing under it), it walks straight at it, as below.
+    // (A place it found no way to lately it doesn't look for one to again
+    // straight away: searching is costly.)
+    const key = `${tx},${ty},${near}`;
+    if (b.noWay !== null && b.noWay.key === key && this.tick < b.noWay.until) {
+      this.giveUp(e, b);
+      return false;
+    }
     const way = this.followPath(e, b, tx, ty, near, every, this.digLimit(b));
     if (way === 'unreachable') {
+      b.noWay = { key, until: this.tick + NO_WAY_FOR };
       this.giveUp(e, b);
       return false;
     }
@@ -11881,6 +12514,7 @@ const Humans = {
       b.job = 'wandering';
       return;
     }
+    if (this.raidWork(e, b, camp)) return; // war.js: a raid comes before shelter
     if (this.shouldShelter(e, camp)) {
       b.job = 'sheltering';
       return;
@@ -11910,6 +12544,7 @@ const Humans = {
       if (!(camp.lit && this.tending(e, camp)) && this.gather(e, b, camp, FUEL, FUEL_R, 'gathering wood')) return;
     }
     if (this.craftWork(e, b, camp)) return;
+    if (this.warWork(e, b, camp)) return; // war.js: the camp's war machines
     // With nothing else to do, now and then it goes hunting.
     if (camp.lit && this.armed(b) && this.has(b, GUNPOWDER) >= AMMO_LOW && this.tick >= b.huntAt) {
       const prey = this.findPrey(e);
@@ -11929,7 +12564,7 @@ const Humans = {
   // steps on end (carried off, trapped, or lost its way back)?
   strayed(e, b) {
     const camp = b.camp;
-    if (camp === null || Math.max(Math.abs(e.x - camp.x), Math.abs(e.y - camp.y)) <= CAMP_AWAY_R) {
+    if (camp === null || b.raid !== null || Math.max(Math.abs(e.x - camp.x), Math.abs(e.y - camp.y)) <= CAMP_AWAY_R) {
       b.awayAt = -1;
       return false;
     }
@@ -12061,7 +12696,9 @@ const Humans = {
     let best = null, bd = Infinity;
     for (const o of this.creatures) {
       if (o === e || o.grow >= 0) continue;
-      if (!THREAT[o.kind] && !(o.brain !== null && this.rival(b, o.brain))) continue;
+      // (Another camp's helicopter, or its missile, in the air: war.js.)
+      const enemyCraft = o.craft !== null && b.camp !== null && o.craft.camp !== b.camp && this.flying(o);
+      if (!THREAT[o.kind] && !(o.brain !== null && this.rival(b, o.brain)) && !enemyCraft) continue;
       const d = Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y));
       const dc = b.camp === null ? Infinity : Math.max(Math.abs(o.x - b.camp.x), Math.abs(o.y - b.camp.y));
       if (Math.min(d, dc) > FIGHT_R || d > SHOT_R || d >= bd || !this.sees(e, o)) continue;
@@ -12071,11 +12708,17 @@ const Humans = {
     return best;
   },
 
+  // Is creature o game to hunt: an animal (not a threat, a human, even one
+  // just born that hasn't had a thought yet, nor a war machine)?
+  prey(o) {
+    return o.brain === null && o.craft === null && !THREAT[o.kind] && o.kind !== HUMAN;
+  },
+
   // An animal within FIGHT_R that it can see: a creature, or null.
   findPrey(e) {
     let best = null, bd = Infinity;
     for (const o of this.creatures) {
-      if (o === e || o.grow >= 0 || o.brain !== null || THREAT[o.kind]) continue;
+      if (o === e || o.grow >= 0 || !this.prey(o)) continue;
       const d = Math.max(Math.abs(o.x - e.x), Math.abs(o.y - e.y));
       if (d > FIGHT_R || d >= bd || !this.sees(e, o)) continue;
       best = o;
@@ -12088,7 +12731,7 @@ const Humans = {
   // of it, but only while nothing else is in the way.
   shootAt(e, b) {
     const o = b.foe === 0 ? null : this.creatureById[b.foe];
-    if (o == null || o.id !== b.foe || !this.armed(b) || (b.job === 'hunting' && this.tick > b.huntUntil)) {
+    if (o == null || o.id !== b.foe || !this.armed(b) || (b.job === 'hunting' && (this.tick > b.huntUntil || !this.prey(o)))) {
       b.foe = 0;
       b.job = 'wandering';
       b.think = 0;
@@ -12155,6 +12798,7 @@ const Humans = {
       o.brain.armour--;
       return;
     }
+    if (o.craft !== null && this.rand() < (o.craft.kind === 'heli' ? HELI_ARMOUR : MISSILE_ARMOUR)) return; // its plating (aircraft.js)
     for (let p = 0; p < o.n; p++) {
       if (o.cells[p] !== c || o.pix[p] !== BODY) continue;
       this.clearCell(c);
@@ -12177,7 +12821,7 @@ const Humans = {
       case 'mining': return b.tun !== null;
       case 'flattening the camp': return b.target >= 0 && camp.flattener === e.id;
       case 'hunting': return b.foe !== 0 && this.creatureById[b.foe] != null && this.tick <= b.huntUntil;
-      default: return false;
+      default: return this.warCarryingOn(e, b, camp) === true; // war.js's jobs
     }
   },
 
@@ -12387,7 +13031,12 @@ const Humans = {
 
   // Go into the hut and sit in the middle.
   shelter(e, b) {
-    const camp = b.camp, hut = camp.hut;
+    const camp = b.camp, hut = camp === null ? null : camp.hut;
+    if (hut === null) { // gone (war.js plans it again when its ground goes)
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
     const s = this.campCell(camp, hut.u0 + (HUT_W >> 1), hut.floor);
     if (s >= 0 && this.walkTo(e, b, s % this.w, (s / this.w) | 0, 1, WALK_EVERY)) this.pose(e, FRAME_SIT);
   },
@@ -12412,6 +13061,15 @@ const Humans = {
       case 'shooting':
       case 'hunting': this.shootAt(e, b); break;
       case 'sheltering': this.shelter(e, b); break;
+      // war.js
+      case 'building the helipad':
+      case 'building the anti-air gun':
+      case 'building the launcher': this.warBuild(e, b); break;
+      case 'building the helicopter': this.buildHeli(e, b); break;
+      case 'loading the anti-air gun': this.loadAA(e, b); break;
+      case 'loading the launcher': this.loadLauncher(e, b); break;
+      case 'raiding': this.raidMarch(e, b); break;
+      case 'going home': this.goHome(e, b); break;
       default: this.wander(e, b);
     }
   },
@@ -12427,6 +13085,15 @@ const Humans = {
       members: new Set(), // the humans' ids
       claims: new Set(), // cells someone is on their way to fetch
       lighter: 0, // who is lighting the fire
+      // War (war.js): its machines' blueprints (and their state), its
+      // helicopter, who's building them, which comes first, raids, births.
+      id: ++this.campSerial,
+      pad: null, aa: null, launcher: null, planRetry: { pad: 0, aa: 0, launcher: 0 },
+      badSites: [], // lawn spans [u0, u1] it couldn't get to work at: not planned on again
+      heli: null, engineer: 0, firstWar: null,
+      raidAt: 0, // when it next raids (0: not yet, -1: raiding now)
+      raid: null, raids: 0, // the raid under way { enemy, until, start, party }, and how many so far
+      birthAt: 0, // when it next gains a human (0: not counting yet)
     };
     this.camps.push(camp);
     return camp;
@@ -12469,7 +13136,7 @@ const Humans = {
   // The camp within CAMP_JOIN, or a new one on flat dry ground a few cells
   // beside e. null if there's nowhere for one.
   joinOrMakeCamp(e) {
-    let camp = this.camps.find((c) => Math.max(Math.abs(c.x - e.x), Math.abs(c.y - e.y)) <= CAMP_JOIN) ?? null;
+    let camp = this.campFor(e);
     if (camp === null) {
       for (const u of [3, -3, 4, -4, 5, -5, 6, -6]) {
         const x = e.x + u * e.gy, y = e.y - u * e.gx;
@@ -12482,6 +13149,25 @@ const Humans = {
     }
     if (camp !== null) camp.members.add(e.id);
     return camp;
+  },
+
+  // The camp for a human at e's place: the one whose hut it's in (born
+  // there, say), or else the nearest within CAMP_JOIN; or null.
+  campFor(e) {
+    let best = null, bd = Infinity;
+    for (const c of this.camps) {
+      const h = c.hut;
+      if (h !== null) {
+        const u = (e.x - c.x) * c.gy - (e.y - c.y) * c.gx, v = (e.x - c.x) * c.gx + (e.y - c.y) * c.gy;
+        if (u >= h.u0 && u < h.u0 + HUT_W && v <= h.floor && v >= h.floor - HUT_WALL) return c;
+      }
+      const d = Math.max(Math.abs(c.x - e.x), Math.abs(c.y - e.y));
+      if (d <= CAMP_JOIN && d < bd) {
+        best = c;
+        bd = d;
+      }
+    }
+    return best;
   },
 
   // Flat dry ground for a pile at (x, y): it and the cells either side
@@ -12655,7 +13341,7 @@ const Humans = {
         const i = y * w + x;
         if (!set[type[i]]) continue;
         const d = Math.abs(x - e.x) + Math.abs(y - e.y);
-        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit) || this.inLawn(x, y)) continue;
+        if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit) || this.inLawn(x, y) || this.underWater(x, y)) continue;
         best = i;
         bd = d;
       }
@@ -12663,10 +13349,24 @@ const Humans = {
     return best;
   },
 
+  // Is there liquid within UNDER_WATER cells above (x, y)? A deposit
+  // under a pond is left alone: a tunnel to it lets the pond in, and
+  // miners end up swimming in a flooded pit.
+  underWater(x, y) {
+    const { downX: gx, downY: gy } = this.gravity;
+    for (let k = 1; k <= UNDER_WATER; k++) {
+      const ax = x - k * gx, ay = y - k * gy;
+      if (!this.inBounds(ax, ay)) return false;
+      const t = this.type[ay * this.w + ax];
+      if (t !== 0 && DEFS[t].state === LIQUID) return true;
+    }
+    return false;
+  },
+
   // Does it want more of what it's mining? Salt goes into gunpowder as it's
   // mined, so it wants salt while it still has coal to go with it.
   wantsMore(b) {
-    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < GATHER;
+    if (b.mineKey === 'salt') return this.has(b, COAL) > 0 && this.has(b, GUNPOWDER) < Math.max(GATHER, b.wantN);
     return this.holding(b, b.fetchSet) < b.wantN;
   },
 
@@ -12805,24 +13505,31 @@ const Humans = {
     }
   },
 
+  // Leave cell c alone for a while, and what's like it within BAN_R (the
+  // rest of that log, or seam, is no easier to reach).
+  banNear(b, c) {
+    const t = this.type[c], x0 = c % this.w, y0 = (c / this.w) | 0;
+    for (let y = Math.max(0, y0 - BAN_R); y <= Math.min(this.h - 1, y0 + BAN_R); y++) {
+      for (let x = Math.max(0, x0 - BAN_R); x <= Math.min(this.w - 1, x0 + BAN_R); x++) {
+        const i = y * this.w + x;
+        if (i === c || (t !== 0 && this.type[i] === t)) b.banned.set(i, this.tick + BAN_FOR);
+      }
+    }
+  },
+
   // No closer for GIVE_UP steps: leave that target alone for a while.
   giveUp(e, b) {
     if (b.job === 'mining') b.skip.set(b.mineKey, this.tick + BAN_FOR);
     b.tun = null;
     if (b.target >= 0) {
-      const t = this.type[b.target], x0 = b.target % this.w, y0 = (b.target / this.w) | 0;
-      for (let y = Math.max(0, y0 - BAN_R); y <= Math.min(this.h - 1, y0 + BAN_R); y++) {
-        for (let x = Math.max(0, x0 - BAN_R); x <= Math.min(this.w - 1, x0 + BAN_R); x++) {
-          const i = y * this.w + x;
-          if (i === b.target || (t !== 0 && this.type[i] === t)) b.banned.set(i, this.tick + BAN_FOR);
-        }
-      }
+      this.banNear(b, b.target);
       this.release(b);
     }
     b.goalX = -1;
     b.stuck = 0;
     b.best = Infinity;
     b.climbTop = -Infinity;
+    b.climbing = false; // it lets go of any wall it was clinging to (it can't plan a way from there)
     b.path = null;
     b.job = 'wandering';
     b.think = 0;
@@ -12858,12 +13565,14 @@ const Humans = {
     camp.members.delete(e.id);
     if (camp.lighter === e.id) camp.lighter = 0;
     if (camp.flattener === e.id) camp.flattener = 0;
+    if (camp.engineer === e.id) camp.engineer = 0;
+    b.raid = null;
     if (camp.members.size === 0) this.camps.splice(this.camps.indexOf(camp), 1);
     b.camp = null;
   },
 };
 
-return { THINK_EVERY, WALK_EVERY, RUN_EVERY, GIVE_UP, BAN_FOR, DANGER_R, BREATH, FRAME_KNEEL, DANGER, CAMP_JOIN, CAMP_AWAY_R, FUEL_R, HUT_W, HUT_WALL, DOOR, CLEARABLE, HAND_DIG, TOOL_DIG, DIG_EVERY, RESOURCES, USEFUL, MINE_R, CRAFT_FIRE_TIME, ARMOUR_HITS, PELLETS, FIRE_EVERY, SEAM_R, WOOD_ONLY, GATHER, HELD_PICKAXE, newBrain, inventoryNote, Humans };
+return { THINK_EVERY, WALK_EVERY, RUN_EVERY, GIVE_UP, BAN_FOR, DANGER_R, BREATH, FRAME_KNEEL, DANGER, CAMP_JOIN, CAMP_AWAY_R, FUEL_R, HUT_W, HUT_WALL, DOOR, STONE_R, MATERIAL, CLEARABLE, HAND_DIG, TOOL_DIG, DIG_EVERY, METALS, RESOURCES, USEFUL, MINE_R, CRAFT_FIRE_TIME, ARMOUR_HITS, AMMO_LOW, PELLETS, FIRE_EVERY, SEAM_R, WOOD_ONLY, GATHER, HELD_PICKAXE, newBrain, inventoryNote, Humans };
 })();
 
 __modules["src/sim/trees.js"] = (() => {
@@ -13056,6 +13765,7 @@ const TUNNEL_GAP = 4; // solid cells kept between a new run and other tunnels (c
 const START_R = 8; // except this near where it branches off
 const SEAM_START_R = 5; // or, going on along a seam, this near where it is (not back alongside its own run)
 const PLAN_TRIES = 30; // the cheapest plans it checks for clearance
+const DEPOSIT_TRIES = 4; // deposits it tries to plan a tunnel to before it gives up on that resource a while
 const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
 const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
 
@@ -13499,15 +14209,22 @@ const Tunnels = {
   },
 
   // Set off to mine `key` (a RESOURCES key) until it holds `goal`: plan a
-  // tunnel to the nearest deposit. Lining first (TUNNEL_LINING in hand: it
-  // gathers wood for it; it goes with less only if there's no more to be
-  // had).
+  // tunnel to the nearest deposit it can. Lining first (TUNNEL_LINING in
+  // hand: it gathers wood for it; it goes with less only if there's no more
+  // to be had).
   // False if there's no way (it skips that one a while).
   startMining(e, b, camp, key, goal) {
     if ((b.skip.get(key) ?? 0) > this.tick) return false;
     const set = RESOURCES[key];
-    const t = this.findDeposit(e, camp, set, this.digLimit(b));
-    const plan = t < 0 ? null : this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
+    // The nearest deposit it can plan a tunnel to (one it can't is left
+    // alone a while, and the next nearest tried).
+    let t = -1, plan = null;
+    for (let k = 0; k < DEPOSIT_TRIES && plan === null; k++) {
+      t = this.findDeposit(e, camp, set, this.digLimit(b));
+      if (t < 0) break;
+      plan = this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
+      if (plan === null) this.banNear(b, t);
+    }
     if (plan === null) {
       b.skip.set(key, this.tick + BAN_FOR);
       return false;
@@ -14015,6 +14732,9 @@ const MOVE = { start: 0, walk: 1, dig: 2, climb: 3 };
 const MAX_REPLANS = 6; // plans for one target before it walks straight at it instead
 const WALL_EVERY = 12, DIG_EVERY = 8; // steps a cell climbed, and a cell dug (humans.js)
 const NO_POSE = 255;
+// War machines (aircraft.js): a body it can't walk through, as solid as
+// rock (other creatures move, and humans walk through each other).
+const MACHINE = Uint8Array.from(DEFS, (d) => (d.critter && (d.critter.moves === 'heli' || d.critter.moves === 'missile') ? 1 : 0));
 
 // A body of this kind: the cells it can cover, as [across, up] from its
 // feet, facing either way in either walking frame (so whatever it's in,
@@ -14119,7 +14839,7 @@ const Paths = {
 
   // Is cell (x, y) solid (or powder): in a body's way, and ground to stand on?
   solidAt(x, y) {
-    return this.inBounds(x, y) && this.builtAt(y * this.w + x);
+    return this.inBounds(x, y) && (this.builtAt(y * this.w + x) || MACHINE[this.type[y * this.w + x]] === 1);
   },
 
   // Room for body `body` with its feet at (x, y): nothing solid, and
@@ -14142,7 +14862,7 @@ const Paths = {
       const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
       if (!this.inBounds(cx, cy)) return false;
       const t = this.type[cy * this.w + cx];
-      if (t === 0 || SHAPED[t]) continue;
+      if (t === 0 || (SHAPED[t] && !MACHINE[t])) continue;
       if (DANGER[t]) return false;
       const s = DEFS[t].state;
       if (s === SOLID || s === POWDER) return false;
@@ -14196,7 +14916,7 @@ const Paths = {
         if (this.isInside(cx, cy) && this.onBoards(x, y)) return 2;
         continue;
       }
-      if (SHAPED[t]) continue;
+      if (SHAPED[t] && !MACHINE[t]) continue;
       const s = DEFS[t].state;
       if (s === SOLID || s === POWDER) return 2;
       if (s === LIQUID && !DANGER[t]) wet = true;
@@ -14235,6 +14955,7 @@ const Paths = {
       const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
       if (!this.inBounds(cx, cy)) return -1;
       const c = cy * this.w + cx, t = this.type[c];
+      if (MACHINE[t]) return -1; // not a war machine either
       if (t === 0 || SHAPED[t] || body.has[(k + dk + 32) * 64 + up + du + 32] === 1) continue;
       if (DANGER[t]) return -1;
       if (!this.builtAt(c)) continue;
@@ -14470,6 +15191,995 @@ const Paths = {
 return { PATH_NODES, MOVE, bodyOf, Paths };
 })();
 
+__modules["src/sim/war.js"] = (() => {
+// War: what a settled camp builds once its humans are armed, and its raids
+// on other camps (humans.js runs the humans; aircraft.js flies the
+// helicopter and the missiles).
+//
+// Building: one human at a time (camp.engineer), with its own gun and
+// armour, builds the camp's war machines in order: a helicopter (its pad on
+// the hut's roof, or on the lawn if the roof has no room above it) or an
+// anti-air gun first (camp.firstWar, picked at random), then the other,
+// then a missile launcher at the far end of the lawn. Stone it fetches,
+// metal it mines (as for its gun). A helicopter is 10 metal brought to its
+// pad; it builds itself there. The anti-air gun is kept loaded with
+// gunpowder; the launcher is loaded with gunpowder and metal, and a
+// missile is made in its tube. Anything destroyed is built again, the hut
+// too (from scratch somewhere else if its ground is gone).
+//
+// The anti-air gun shoots at anything that flies near the camp (another
+// camp's missiles first, then its helicopters, phoenixes, birds, and
+// insects): slow shells, aimed ahead of where the target is going, that
+// burst near the distance they were set for: not very accurate. Never at
+// anything low over the camp or near its own people.
+//
+// Raids: from the camp's first war machine on, every 5 to 10 minutes it
+// sends a quarter of its people (armed ones, never the engineer), its
+// helicopter and its missile against the nearest other camp. Raiders walk
+// there and fight (their usual shooting), and come home when the raid is
+// over.
+//
+// Births: a camp with its hut up (or none to be had) and its fire burning
+// gains a human every BIRTH_EVERY steps (born in the hut), up to POP_CAP.
+//
+// Mixed into World.prototype.
+
+const { DEFS, ID, State } = __modules["src/sim/elements.js"];
+const { SHAPED } = __modules["src/sim/creatures.js"];
+const { HUT_W, HUT_WALL, WALK_EVERY, MATERIAL, METALS, AMMO_LOW, STONE_R } = __modules["src/sim/humans.js"];
+
+const { SOLID, POWDER, LIQUID } = State;
+const { GUNPOWDER, COAL, HUMAN, HELICOPTER, MISSILE, SMOKE, WOOD } = ID;
+
+const HELI_METAL = 10; // metal for a helicopter
+const AA_CAP = 20; // gunpowder the anti-air gun holds, a shell each
+const AA_LOW = 8; // it's topped up when it has less than this
+const MISSILE_POWDER = 4, MISSILE_METAL = 2; // what a missile takes
+const AA_R = 100; // how far it shoots
+const AA_UP = 6; // only at what's at least this high above the gun
+const AA_SAFE = 8; // and no nearer the middle of any of its own people than this (a burst reaches 4)
+const AA_EVERY = 30; // steps between shells
+const AA_TURN = 0.15; // radians a step the barrel turns
+const AA_AIMED = 0.08; // and how near the aim it has to be to fire
+const AA_JITTER = 0.035; // radians either way a shell may go off its aim
+const AA_FUSE_ERR = 0.12; // and how far out its fuse may be (a share of it)
+const AA_LOOK = 6; // steps between looks for something better to shoot at
+const AA_SCAN = 30; // and between looks round for insects
+const SHELL_SPEED = 2.5; // cells a step
+const FLAK_BLAST = 6; // a shell's burst
+const FLAK_R = 3; // insects this close to it are killed
+const BARREL = 4; // the barrel's length (drawn)
+const RAID_MIN = 18000, RAID_MAX = 36000; // steps between raids: 5 to 10 minutes
+const RAID_FOR = 5000; // the longest a raid goes on
+const RAID_SHARE = 0.25; // of the camp's people go
+const RAID_RETRY = 1200; // nobody to raid, or to go: it tries again this much later
+const RAID_NEAR = 10; // raiders make for this close to the enemy's fire
+const HOME_NEAR = 10; // and come home to this close to their own
+const BIRTH_EVERY = 3000; // steps between births in a camp
+const POP_CAP = 10; // and the most people a camp grows to
+const PLAN_RETRY = 600; // a war machine with nowhere to go: it looks again this much later
+const CHORES_EVERY = 60; // steps between a camp's checks on births, its hut and raids
+const BUILD_EVERY = 6; // steps per cell built
+const SKY = 12; // rows of open sky (but for wild growth) a helipad needs over it
+const PIT_U = 6, PIT_UP = 12; // the fire pit kept clear of growth: columns either side, rows up
+// Growth (plants, leaves, saplings, moss...) and the wood of trees: cleared
+// from a war machine's site.
+const GROWTH = Uint8Array.from(DEFS, (d) => (d.cat === 'life' && (d.state === SOLID || d.state === POWDER) && !d.shape ? 1 : 0));
+const FIRE = Uint8Array.from(DEFS, (d) => (d.key === 'FIRE' || d.key === 'CAMPFIRE' ? 1 : 0));
+// Insects that fly: single cells, not creatures with bodies.
+const FLIER = Uint8Array.from(DEFS, (d) => (d.critter && !d.shape && d.critter.moves === 'fly' ? 1 : 0));
+const BLOCKED = { blocked: true }; // (aaSight: something not alive in the way)
+
+const War = {
+  // ---- the camp's chores: births, the hut, raids, the anti-air gun ---------------
+
+  // Once a step: shells in flight, every camp's anti-air gun, and (once a
+  // second, each camp on its own beat) births, hut repairs and raids.
+  stepWar() {
+    if (this.flak.length !== 0) this.stepFlak();
+    for (const camp of this.camps) {
+      const aa = camp.aa;
+      if (aa !== null) {
+        aa.done = this.nextWarCell(aa) < 0;
+        if (aa.done) this.stepAA(camp, aa);
+      }
+      if ((this.tick + camp.id) % CHORES_EVERY === 0) this.campChores(camp);
+    }
+  },
+
+  campChores(camp) {
+    const hut = camp.hut;
+    // The fire pit is kept clear of growth: a sapling there grows into a
+    // tree that walls one side of the camp off from the other.
+    for (let v = 0; v >= -PIT_UP; v--) {
+      for (let u = -PIT_U; u <= PIT_U; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && GROWTH[this.type[c]] === 1 && !this.madeByHuman(c)) this.clearCell(c);
+      }
+    }
+    // Births.
+    if ((camp.noHut || (hut !== null && hut.done)) && this.canCraft(camp) && camp.members.size < POP_CAP && this.burning(camp)) {
+      if (camp.birthAt === 0) camp.birthAt = this.tick + BIRTH_EVERY;
+      else if (this.tick >= camp.birthAt && this.bear(camp)) camp.birthAt = this.tick + BIRTH_EVERY;
+    }
+    // A damaged hut is mended; one whose ground has gone is built again
+    // somewhere else (and the lawn levelled round it).
+    if (hut !== null && hut.done && this.nextHutCell(hut) >= 0) {
+      let floor = 0;
+      for (let u = hut.u0; u < hut.u0 + HUT_W; u++) {
+        for (let v = hut.floor + 1; v <= hut.floor + 3; v++) { // (a hut may stand on a slope 2 cells high)
+          const c = this.campCell(camp, u, v);
+          if (c >= 0 && this.builtAt(c)) {
+            floor++;
+            break;
+          }
+        }
+      }
+      if (floor >= HUT_W - 2) {
+        hut.done = false;
+      } else {
+        camp.hut = null;
+        camp.hutFails = 0;
+        camp.flat = false;
+        camp.flattener = 0;
+        if (camp.pad !== null && camp.pad.roof) camp.pad = null;
+      }
+    }
+    // Raids: the clock starts with the camp's first war machine.
+    if (camp.raid !== null) {
+      if (this.raidOver(camp)) this.endRaid(camp);
+    } else if (camp.raidAt === 0) {
+      if (this.alive(camp.heli) || (camp.aa !== null && camp.aa.done)) camp.raidAt = this.tick + this.raidGap();
+    } else if (this.tick >= camp.raidAt && !this.startRaid(camp)) {
+      camp.raidAt = this.tick + RAID_RETRY;
+    }
+  },
+
+  raidGap() {
+    return RAID_MIN + Math.floor(this.rand() * (RAID_MAX - RAID_MIN));
+  },
+
+  // A human born in the camp's hut (or by its fire, with no hut): a seed
+  // of one on its floor, which grows (and joins the camp when it first
+  // thinks). True if there was room.
+  bear(camp) {
+    const hut = camp.hut;
+    // In the hut, or (a camp that does without one) a few cells from its
+    // fire, either side: where there's room for a body.
+    const spots = hut !== null ? [4, 3, 5, 2, 6].map((k) => [hut.u0 + k, hut.floor])
+      : [5, -5, 7, -7, 9, -9, 11, -11].map((u) => [u, (this.groundAt(camp, u) ?? 1) - 1]);
+    for (const [u, v] of spots) {
+      const c = this.campCell(camp, u, v);
+      if (c >= 0 && this.type[c] === 0 && this.roomForBaby(c % this.w, (c / this.w) | 0, camp.gx, camp.gy)) {
+        this.spawn(c, HUMAN);
+        return true;
+      }
+    }
+    return false;
+  },
+
+  // Nothing but air (or gas) in the 3x6 box over (x, y): room for a body to
+  // grow.
+  roomForBaby(x, y, gx, gy) {
+    for (let up = 0; up < 6; up++) {
+      for (let k = -1; k <= 1; k++) {
+        const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
+        if (!this.inBounds(cx, cy)) return false;
+        const t = this.type[cy * this.w + cx];
+        if (t !== 0 && DEFS[t].state !== State.GAS) return false;
+      }
+    }
+    return true;
+  },
+
+  // ---- raids --------------------------------------------------------------------
+
+  // The nearest other camp with anyone in it, or null.
+  nearestRival(camp) {
+    let best = null, bd = Infinity;
+    for (const c of this.camps) {
+      if (c === camp || c.members.size === 0) continue;
+      const d = Math.max(Math.abs(c.x - camp.x), Math.abs(c.y - camp.y));
+      if (d < bd) {
+        best = c;
+        bd = d;
+      }
+    }
+    return best;
+  },
+
+  // Where a missile is aimed at camp c: its hut's roof, or its fire.
+  aimPoint(c) {
+    const cell = c.hut !== null ? this.campCell(c, c.hut.u0 + (HUT_W >> 1), c.hut.floor - HUT_WALL) : this.campCell(c, 0, -2);
+    return cell >= 0 ? [cell % this.w, (cell / this.w) | 0] : [c.x, c.y];
+  },
+
+  // Send a quarter of the camp (rounded up; armed humans, not the
+  // engineer, nearest the enemy first), its helicopter and its missile
+  // against the nearest other camp. False if there's nobody to raid, or
+  // nothing to raid with.
+  startRaid(camp) {
+    const enemy = this.nearestRival(camp);
+    if (enemy === null) return false;
+    const want = Math.ceil(camp.members.size * RAID_SHARE);
+    const pick = [];
+    for (const id of camp.members) {
+      const o = this.creatureById[id];
+      if (!o || o.brain === null || o.grow >= 0 || id === camp.engineer) continue;
+      const b = o.brain;
+      if (!this.armed(b) || this.has(b, GUNPOWDER) < AMMO_LOW || b.raid !== null) continue;
+      if (b.job === 'swimming' || b.job === 'fleeing' || this.isInside(o.x, o.y)) continue;
+      pick.push(o);
+    }
+    const far = (o) => Math.max(Math.abs(o.x - enemy.x), Math.abs(o.y - enemy.y));
+    pick.sort((a, c) => far(a) - far(c));
+    const party = pick.slice(0, want);
+    const ln = camp.launcher;
+    const missile = ln !== null && this.alive(ln.missile) && ln.missile.grow < 0 ? ln.missile : null;
+    const heli = this.alive(camp.heli) && camp.heli.grow < 0 ? camp.heli : null;
+    if (party.length === 0 && missile === null && heli === null) return false;
+    for (const o of party) {
+      const b = o.brain;
+      this.release(b);
+      b.tun = null;
+      b.raid = enemy;
+      b.job = 'raiding';
+      b.think = 0;
+      b.path = null;
+      b.goalX = -1;
+      b.stuck = 0;
+      b.best = Infinity;
+      b.climbing = false;
+    }
+    camp.raid = { enemy, until: this.tick + RAID_FOR, start: this.tick, party: party.map((o) => o.id) };
+    camp.raidAt = -1;
+    camp.raids++;
+    if (missile !== null) {
+      const [tx, ty] = this.aimPoint(enemy);
+      this.launch(missile, tx + Math.round((this.rand() - 0.5) * 6), ty);
+      ln.missile = null; // on its way: the launcher can be loaded again
+    }
+    return true;
+  },
+
+  // Is camp's raid over: its time up, the enemy camp gone, or nobody (nor
+  // its helicopter) still at it?
+  raidOver(camp) {
+    const r = camp.raid;
+    if (this.tick >= r.until || !this.camps.includes(r.enemy)) return true;
+    if (this.tick - r.start < 300) return false;
+    const heli = camp.heli;
+    if (this.alive(heli) && heli.craft.state === 'flying' && heli.craft.goal === r.enemy) return false;
+    return !r.party.some((id) => this.creatureById[id]?.brain?.raid === r.enemy);
+  },
+
+  endRaid(camp) {
+    camp.raid = null;
+    camp.raidAt = this.tick + this.raidGap();
+  },
+
+  // A raider's part, ahead of everything else it might do: making for the
+  // enemy's camp while the raid is on (its fights it picks as usual), then
+  // home. True if that gave it a job.
+  raidWork(e, b, camp) {
+    if (b.raid === null) return false;
+    const r = camp.raid;
+    if (r !== null && r.enemy === b.raid && this.camps.includes(b.raid) && this.armed(b)) {
+      b.job = 'raiding';
+      return true;
+    }
+    b.raid = null;
+    b.awayAt = -1; // from now on it can stray, if it never gets home
+    b.path = null;
+    b.job = 'going home';
+    return true;
+  },
+
+  raidMarch(e, b) {
+    const enemy = b.raid;
+    if (enemy === null || !this.camps.includes(enemy)) {
+      b.think = 0;
+      return;
+    }
+    if (this.walkTo(e, b, enemy.x, enemy.y, RAID_NEAR, WALK_EVERY)) this.pose(e, 0);
+  },
+
+  goHome(e, b) {
+    const camp = b.camp;
+    if (camp === null || this.walkTo(e, b, camp.x, camp.y, HOME_NEAR, WALK_EVERY)) {
+      b.job = 'wandering';
+      b.think = 0;
+    }
+  },
+
+  // ---- blueprints ---------------------------------------------------------------
+
+  // A war machine's blueprint: its cells, in the order they're built, what
+  // each is made of ('stone' or 'metal'), and where its builder stands.
+  blueprint(name, camp, parts, extra) {
+    const cells = [], mats = [], us = [];
+    for (const [u, v, m] of parts) {
+      const c = this.campCell(camp, u, v);
+      if (c < 0) return null;
+      cells.push(c);
+      mats.push(m);
+      us.push(u);
+    }
+    return { name, cells, mats, us, set: new Set(cells), done: false, waitUntil: 0, tries: 0, ...extra };
+  },
+
+  // The next cell of blueprint s still to build (its index), or -1.
+  nextWarCell(s) {
+    for (let k = 0; k < s.cells.length; k++) if (!this.builtAt(s.cells[k])) return k;
+    return -1;
+  },
+
+  // The camp's blueprint for `what` ('pad', 'aa' or 'launcher'), planning
+  // it if it has none yet: or null (nowhere for it, for now).
+  warPlan(camp, what) {
+    if (camp[what] !== null) return camp[what];
+    if (this.tick < camp.planRetry[what]) return null;
+    const plan = what === 'pad' ? this.planPad(camp) : what === 'aa' ? this.planAA(camp) : this.planLauncher(camp);
+    if (plan === null) camp.planRetry[what] = this.tick + PLAN_RETRY;
+    camp[what] = plan;
+    return plan;
+  },
+
+  // Is cell c clear for building in (or for a body): empty, a gas or a
+  // flame, wild growth or wood (cleared away when it's built), or a
+  // creature passing by?
+  clearForBuilding(c) {
+    const t = this.type[c];
+    if (t === 0 || SHAPED[t] || this.wild(c)) return true;
+    const s = DEFS[t].state;
+    return s !== SOLID && s !== POWDER && s !== LIQUID;
+  },
+
+  // Is cell c growth, or wood nobody put there (a tree)?
+  wild(c) {
+    const t = this.type[c];
+    return (GROWTH[t] === 1 || t === WOOD) && !this.madeByHuman(c);
+  },
+
+  // Clear the wild growth and wood out of the box u0..u1, v0..v1 (v0 the
+  // lower) of the camp's frame: room for a war machine to be built, and to
+  // fly out.
+  clearWild(camp, u0, u1, v0, v1) {
+    for (let v = v0; v >= v1; v--) {
+      for (let u = u0; u <= u1; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && this.type[c] !== 0 && this.wild(c)) this.clearCell(c);
+      }
+    }
+  },
+
+  // Where its pad goes: on the hut's roof (a row of stone a cell wider
+  // than the hut either side), with room for a helicopter above (once wild
+  // growth is cleared); or else at the far end of the lawn.
+  planPad(camp) {
+    const hut = camp.hut, v = hut.floor - HUT_WALL - 1;
+    let room = true;
+    for (let u = hut.u0 - 3; u <= hut.u0 + HUT_W + 2 && room; u++) {
+      for (let vv = v; vv >= v - SKY && room; vv--) {
+        const c = this.campCell(camp, u, vv);
+        room = c >= 0 && this.clearForBuilding(c);
+      }
+    }
+    if (room) {
+      const parts = [];
+      for (let k = 0; k <= HUT_W + 1; k++) parts.push([hut.u0 - 1 + k, v, 'stone']);
+      const at = this.campCell(camp, hut.u0 + (HUT_W >> 1), v - 1);
+      const s = this.blueprint('helipad', camp, parts, { roof: true, u0: hut.u0 - 1, w: HUT_W + 2, base: v });
+      if (s !== null && at >= 0) return { ...s, hx: at % this.w, hy: (at / this.w) | 0, facing: hut.side };
+    }
+    const W = 13, site = this.findSite(camp, W, SKY, true);
+    if (site === null) return null;
+    const { u0, base } = site, parts = this.supports(site, 1, W - 2);
+    for (let k = 1; k < W - 1; k++) parts.push([u0 + k, base, 'stone']);
+    const at = this.campCell(camp, u0 + (W >> 1), base - 1);
+    const s = this.blueprint('helipad', camp, parts, { roof: false, u0, w: W, base });
+    return s === null || at < 0 ? null : { ...s, hx: at % this.w, hy: (at / this.w) | 0, facing: 1 };
+  },
+
+  // The anti-air gun: a stone base 5 wide, a metal mount 3 wide on it, and
+  // the barrel (drawn) pivoting above the mount. Near the hut.
+  planAA(camp) {
+    const W = 5, site = this.findSite(camp, W, 7, false);
+    if (site === null) return null;
+    const { u0, base } = site, parts = this.supports(site, 0, W - 1);
+    for (let k = 0; k < W; k++) parts.push([u0 + k, base, 'stone']);
+    for (let k = 1; k < W - 1; k++) parts.push([u0 + k, base - 1, 'metal']);
+    const p = this.campCell(camp, u0 + 2, base - 2);
+    const s = this.blueprint('anti-air gun', camp, parts, { roof: false, u0, w: W, base });
+    if (s === null || p < 0) return null;
+    return {
+      ...s, px: p % this.w, py: (p / this.w) | 0,
+      ammo: 0, filling: true, reload: 0, aim: Math.atan2(-camp.gy, -camp.gx), target: null, track: null, shots: 0,
+    };
+  },
+
+  // The launcher: a tube of two metal walls 6 high, 3 apart, on a floor;
+  // the missile is made in it. At the far end of the lawn (it's too tall
+  // to walk over).
+  planLauncher(camp) {
+    const W = 5, site = this.findSite(camp, W, 14, true);
+    if (site === null) return null;
+    const { u0, base } = site, parts = this.supports(site, 0, W - 1);
+    for (let v = base; v > base - 6; v--) parts.push([u0, v, 'metal'], [u0 + W - 1, v, 'metal']);
+    const m = this.campCell(camp, u0 + 2, base);
+    const s = this.blueprint('launcher', camp, parts, { roof: false, u0, w: W, base });
+    if (s === null || m < 0) return null;
+    return { ...s, mx: m % this.w, my: (m / this.w) | 0, powder: 0, metal: 0, missile: null };
+  },
+
+  // Stone to fill the dips under a site's columns k0..k1 (counted from its
+  // first), up to the row it's built on: [u, v, 'stone'], bottom first.
+  supports(site, k0, k1) {
+    const parts = [];
+    for (let k = k0; k <= k1; k++) {
+      for (let v = site.ground[k] - 1; v > site.base; v--) parts.push([site.u0 + k, v, 'stone']);
+    }
+    return parts;
+  },
+
+  // A site near the hut for something W columns wide and H high: ground
+  // within 2 cells of the lawn's level all the way across (its dips are
+  // filled), room above it, clear of the fire, the places to rest by it,
+  // the hut and the other war machines; on the lawn if it can be, and
+  // nearest the hut, or (`far`) as far from it as can be. { u0, base (the
+  // row it's built on), ground (each column's ground row) }, or null.
+  findSite(camp, W, H, far) {
+    const hut = camp.hut, l = this.lawn(camp);
+    if (hut === null || l === null) return null;
+    const rest = -hut.side; // the side of the fire it rests on
+    const busy = [[-6, 6], [Math.min(rest * 3, rest * 12), Math.max(rest * 3, rest * 12)], [hut.u0 - 2, hut.u0 + HUT_W + 1]];
+    for (const s of [camp.pad, camp.aa, camp.launcher]) if (s !== null && !s.roof) busy.push([s.u0 - 2, s.u0 + s.w + 1]);
+    const mid = hut.u0 + (HUT_W >> 1);
+    let best = null, bs = Infinity;
+    for (let u0 = l.u0 - 12; u0 + W - 1 <= l.u1 + 12; u0++) {
+      const u1 = u0 + W - 1;
+      if (busy.some(([a, b]) => u0 <= b && u1 >= a) || camp.badSites.some(([a, b]) => u0 <= b && u1 >= a)) continue;
+      const d = Math.abs(u0 + (W >> 1) - mid);
+      const score = (u0 >= l.u0 && u1 <= l.u1 ? 0 : 1000) + (far ? -d : d);
+      if (score >= bs) continue;
+      const site = this.siteAt(camp, u0, W, H, l.level);
+      if (site === null) continue;
+      best = site;
+      bs = score;
+    }
+    return best;
+  },
+
+  siteAt(camp, u0, W, H, level) {
+    const ground = [];
+    let top = Infinity;
+    for (let k = 0; k < W; k++) {
+      const g = this.groundAt(camp, u0 + k);
+      if (g === null || Math.abs(g - level) > 2) return null;
+      const c = this.campCell(camp, u0 + k, g);
+      if (c < 0 || this.isInside(c % this.w, (c / this.w) | 0)) return null;
+      ground.push(g);
+      top = Math.min(top, g);
+    }
+    const base = top - 1;
+    for (let k = 0; k < W; k++) {
+      for (let v = ground[k] - 1; v >= base - H; v--) {
+        const c = this.campCell(camp, u0 + k, v);
+        if (c < 0 || !this.clearForBuilding(c)) return null;
+      }
+    }
+    return { u0, base, ground };
+  },
+
+  // Where to stand to build cell k of s (or to work at s, k -1): in the
+  // hut for its roof; beside it, on the side nearer e, on the ground.
+  standFor(camp, s, k, e) {
+    if (s.roof) {
+      const hut = camp.hut;
+      if (hut === null) return -1;
+      const u = k < 0 ? hut.u0 + (HUT_W >> 1) : Math.min(hut.u0 + HUT_W - 3, Math.max(hut.u0 + 2, s.us[k]));
+      return this.campCell(camp, u, hut.floor);
+    }
+    const spot = (u) => {
+      const g = this.groundAt(camp, u);
+      return this.campCell(camp, u, (g ?? s.base + 1) - 1);
+    };
+    const a = spot(s.u0 - 3), b = spot(s.u0 + s.w + 2); // (clear of it, even a cell off)
+    if (a < 0) return b;
+    if (b < 0) return a;
+    const d = (c) => Math.abs((c % this.w) - e.x) + Math.abs(((c / this.w) | 0) - e.y);
+    return d(a) <= d(b) ? a : b;
+  },
+
+  // ---- the engineer ---------------------------------------------------------------
+
+  // Is the camp ready for war machines: its hut up, its lawn level, its
+  // fire burned long enough to craft?
+  warReady(camp) {
+    return camp.hut !== null && camp.hut.done && camp.flat && this.canCraft(camp);
+  },
+
+  // Its camp's war machines, for a human with its own gun and armour: if
+  // nobody else is the engineer, the next thing to build, load or fetch for
+  // (going on to the next machine when one can't be got on with). True if
+  // that gave it a job.
+  warWork(e, b, camp) {
+    if (b.weapon === 0 || b.armour === 0 || !this.warReady(camp)) {
+      if (camp.engineer === e.id) camp.engineer = 0; // (someone else can take it on)
+      return false;
+    }
+    if (camp.engineer !== 0 && camp.engineer !== e.id) {
+      const o = this.creatureById[camp.engineer];
+      if (o && o.brain !== null && o.brain.camp === camp) return false;
+      camp.engineer = 0;
+    }
+    if (camp.firstWar === null) camp.firstWar = this.rand() < 0.5 ? 'heli' : 'aa';
+    const order = camp.firstWar === 'aa' ? ['aa', 'heli', 'launcher'] : ['heli', 'aa', 'launcher'];
+    for (const what of order) {
+      // The launcher only once the other two are up (or have nowhere to go):
+      // not with the metal it's been getting for the helicopter, say.
+      if (what === 'launcher' && !((this.alive(camp.heli) || camp.pad === null) && (camp.aa === null || camp.aa.done))) break;
+      if (this.warStep(e, b, camp, what) === 'busy') {
+        camp.engineer = e.id;
+        return true;
+      }
+    }
+    if (camp.engineer === e.id) camp.engineer = 0;
+    return false;
+  },
+
+  // The next thing to do for one war machine: 'busy' (that's its job now),
+  // 'done' (nothing needed) or 'stuck' (needed, but not now).
+  warStep(e, b, camp, what) {
+    if (what === 'heli') {
+      const pad = this.warPlan(camp, 'pad');
+      if (pad === null) return 'stuck';
+      const r = this.buildStep(e, b, camp, pad);
+      if (r !== 'done') return r;
+      if (this.alive(camp.heli)) {
+        // A new pad (the hut was built again somewhere else): it moves there.
+        const k = camp.heli.craft;
+        if (k.homeX !== pad.hx || k.homeY !== pad.hy || k.homeFacing !== pad.facing) {
+          k.homeX = pad.hx;
+          k.homeY = pad.hy;
+          k.homeFacing = pad.facing;
+          if (k.state === 'parked' || k.state === 'down') {
+            k.state = 'home';
+            k.blocked = 0;
+            k.pace = 0;
+          }
+        }
+        return 'done';
+      }
+      if (this.tick < pad.waitUntil) return 'stuck';
+      if (this.holding(b, METALS) >= HELI_METAL) return this.warJob(b, pad, 'building the helicopter');
+      return this.startMining(e, b, camp, 'metal', HELI_METAL) ? 'busy' : 'stuck';
+    }
+    if (what === 'aa') {
+      const aa = this.warPlan(camp, 'aa');
+      if (aa === null) return 'stuck';
+      const r = this.buildStep(e, b, camp, aa);
+      if (r !== 'done') return r;
+      if (aa.ammo < AA_LOW) aa.filling = true;
+      if (aa.ammo >= AA_CAP) aa.filling = false;
+      if (!aa.filling) return 'done';
+      const spare = this.has(b, GUNPOWDER) - AMMO_LOW, need = AA_CAP - aa.ammo;
+      if (spare >= need || spare >= 6) return this.warJob(b, aa, 'loading the anti-air gun');
+      return this.powderFor(e, b, camp, need);
+    }
+    const ln = this.warPlan(camp, 'launcher');
+    if (ln === null) return 'stuck';
+    const r = this.buildStep(e, b, camp, ln);
+    if (r !== 'done') return r;
+    if (this.alive(ln.missile) || this.tick < ln.waitUntil) return 'done';
+    const metal = MISSILE_METAL - ln.metal, powder = MISSILE_POWDER - ln.powder;
+    if (metal > 0 && this.holding(b, METALS) < metal) return this.startMining(e, b, camp, 'metal', metal) ? 'busy' : 'stuck';
+    if (powder > 0 && this.has(b, GUNPOWDER) - AMMO_LOW < powder) return this.powderFor(e, b, camp, powder);
+    return this.warJob(b, ln, 'loading the launcher');
+  },
+
+  warJob(b, s, job) {
+    b.war = s;
+    b.job = job;
+    b.pace = 0;
+    return 'busy';
+  },
+
+  // The next cell of s: build it, with the stone or metal in hand, or go
+  // and get some.
+  buildStep(e, b, camp, s) {
+    if (this.tick < s.waitUntil) return 'stuck'; // (it couldn't get to it lately)
+    const k = this.nextWarCell(s);
+    if (k < 0) {
+      s.done = true;
+      return 'done';
+    }
+    s.done = false;
+    if (s.mats[k] === 'stone') {
+      if (this.holding(b, MATERIAL) > 0) return this.warJob(b, s, `building the ${s.name}`);
+      return this.gather(e, b, camp, MATERIAL, STONE_R, 'fetching stone', true) ? 'busy' : 'stuck';
+    }
+    if (this.holding(b, METALS) > 0) return this.warJob(b, s, `building the ${s.name}`);
+    let need = 0;
+    for (let j = k; j < s.cells.length; j++) if (s.mats[j] === 'metal' && !this.builtAt(s.cells[j])) need++;
+    return this.startMining(e, b, camp, 'metal', need) ? 'busy' : 'stuck';
+  },
+
+  // Mine coal and salt for `need` gunpowder over the AMMO_LOW it keeps for
+  // its own gun.
+  powderFor(e, b, camp, need) {
+    const want = AMMO_LOW + need, pairs = Math.ceil((want - this.has(b, GUNPOWDER)) / 2);
+    if (this.has(b, COAL) < pairs) return this.startMining(e, b, camp, 'coal', pairs) ? 'busy' : 'stuck';
+    return this.startMining(e, b, camp, 'salt', want) ? 'busy' : 'stuck';
+  },
+
+  // Does war job `job` carry on (carryingOn)? null if it isn't one.
+  warCarryingOn(e, b, camp) {
+    // (Still one of the camp's: a roof pad goes with its hut.)
+    const s = b.war !== null && (b.war === camp.pad || b.war === camp.aa || b.war === camp.launcher) ? b.war : null;
+    switch (b.job) {
+      case 'building the helipad':
+      case 'building the anti-air gun':
+      case 'building the launcher': {
+        if (s === null || camp.engineer !== e.id) return false;
+        const k = this.nextWarCell(s);
+        return k >= 0 && this.holding(b, s.mats[k] === 'metal' ? METALS : MATERIAL) > 0;
+      }
+      case 'building the helicopter':
+        return s !== null && camp.engineer === e.id && !this.alive(camp.heli) && this.holding(b, METALS) >= HELI_METAL;
+      case 'loading the anti-air gun':
+        return s !== null && camp.engineer === e.id && s.ammo < AA_CAP && this.has(b, GUNPOWDER) > AMMO_LOW;
+      case 'loading the launcher':
+        return s !== null && camp.engineer === e.id && !this.alive(s.missile);
+      case 'raiding': return b.raid !== null;
+      case 'going home': return Math.max(Math.abs(e.x - camp.x), Math.abs(e.y - camp.y)) > HOME_NEAR;
+      default: return null;
+    }
+  },
+
+  // Walk to where it works at s (for cell k): true once it's there.
+  atWork(e, b, s, k) {
+    const camp = b.camp, c = camp === null ? -1 : this.standFor(camp, s, k, e);
+    if (c < 0) {
+      b.job = 'wandering';
+      b.think = 0;
+      return false;
+    }
+    if (this.walkTo(e, b, c % this.w, (c / this.w) | 0, 1, WALK_EVERY)) return true;
+    if (b.job === 'wandering') {
+      // It gave up getting there: that machine waits a while (it gets on
+      // with another); one it can never get to, with nothing built yet, is
+      // planned again somewhere else.
+      s.waitUntil = this.tick + PLAN_RETRY;
+      // (Counted once from each place it tried from: from where it rests,
+      // say, the way can be shut a while by its own fire pile.)
+      if (s.failX === undefined || Math.abs(e.x - s.failX) + Math.abs(e.y - s.failY) > 12) {
+        s.fails = (s.fails ?? 0) + 1;
+        s.failX = e.x;
+        s.failY = e.y;
+      }
+      const key = s === camp.pad ? 'pad' : s === camp.aa ? 'aa' : s === camp.launcher ? 'launcher' : null;
+      if (key !== null && s.fails >= 3 && this.nextWarCell(s) === 0 && !(key === 'pad' && this.alive(camp.heli))) {
+        if (!s.roof) camp.badSites.push([s.u0, s.u0 + s.w - 1]); // (not there again)
+        camp[key] = null;
+      }
+    }
+    return false;
+  },
+
+  // Build the next cell of its war machine with what it carries.
+  warBuild(e, b) {
+    const camp = b.camp, s = b.war;
+    const k = s === null || camp === null || (s !== camp.pad && s !== camp.aa && s !== camp.launcher) ? -1 : this.nextWarCell(s);
+    if (k < 0) {
+      if (s !== null) s.done = true;
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    if (!this.atWork(e, b, s, k)) return;
+    this.pose(e, 0);
+    if (++b.pace < BUILD_EVERY) return;
+    b.pace = 0;
+    const c = s.cells[k], t = this.type[c];
+    if (t !== 0 && SHAPED[t]) { // wait for it to move (liquid it builds into)
+      if (this.ownCell(e, c)) this.stepAcross(e, this.across(e, e.x - (c % this.w), e.y - ((c / this.w) | 0)) >= 0 ? 1 : -1, 2, false); // (itself: it steps back)
+      return;
+    }
+    const m = this.takeAny(b, s.mats[k] === 'metal' ? METALS : MATERIAL);
+    if (m === 0) {
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    this.putDown(c, m);
+  },
+
+  // Bring its metal to the pad: a helicopter builds itself there.
+  buildHeli(e, b) {
+    const camp = b.camp, pad = b.war;
+    if (camp === null || pad === null || pad !== camp.pad || this.alive(camp.heli) || this.holding(b, METALS) < HELI_METAL) {
+      b.job = 'wandering';
+      b.think = 0;
+      return;
+    }
+    if (!this.atWork(e, b, pad, -1)) return;
+    this.pose(e, 0);
+    if (++b.pace < BUILD_EVERY) return;
+    b.pace = 0;
+    // Wild growth over the pad is cleared (room to fly out); anything
+    // else in the way, it waits a while.
+    this.clearWild(camp, pad.u0 - 2, pad.u0 + pad.w + 1, pad.base - 1, pad.base - SKY);
+    const craft = {
+      kind: 'heli', camp, state: 'parked', mend: true, homeX: pad.hx, homeY: pad.hy, homeFacing: pad.facing,
+      goal: null, foe: null, reload: 0, quiet: 0, pace: 0, blocked: 0, downFor: 0,
+    };
+    const heli = this.buildCraft(HELICOPTER, pad.hx, pad.hy, pad.facing, camp.gx, camp.gy, craft, { b: camp.id - 1 });
+    if (heli === null) {
+      if (++pad.tries > 10) { // something solid in the way: later
+        pad.tries = 0;
+        pad.waitUntil = this.tick + PLAN_RETRY;
+        b.job = 'wandering';
+        b.think = 0;
+      }
+      return;
+    }
+    for (let k = 0; k < HELI_METAL; k++) this.takeAny(b, METALS);
+    camp.heli = heli;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Load the anti-air gun with the gunpowder it can spare.
+  loadAA(e, b) {
+    const aa = b.war;
+    if (aa === null || !this.atWork(e, b, aa, -1)) return;
+    this.pose(e, 0);
+    while (aa.ammo < AA_CAP && this.has(b, GUNPOWDER) > AMMO_LOW && this.takeOut(b, GUNPOWDER)) aa.ammo++;
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // Load the launcher with gunpowder and metal; with enough of both, a
+  // missile is made in its tube.
+  loadLauncher(e, b) {
+    const ln = b.war, camp = b.camp;
+    if (ln === null || camp === null || !this.atWork(e, b, ln, -1)) return;
+    this.pose(e, 0);
+    while (ln.metal < MISSILE_METAL && this.takeAny(b, METALS) !== 0) ln.metal++;
+    while (ln.powder < MISSILE_POWDER && this.has(b, GUNPOWDER) > AMMO_LOW && this.takeOut(b, GUNPOWDER)) ln.powder++;
+    if (ln.metal >= MISSILE_METAL && ln.powder >= MISSILE_POWDER && !this.alive(ln.missile)) {
+      this.clearWild(camp, ln.u0 + 1, ln.u0 + ln.w - 2, ln.base, ln.base - 14); // its way out
+      const craft = { kind: 'missile', camp, state: 'loaded', mend: false };
+      const m = this.buildCraft(MISSILE, ln.mx, ln.my, 1, camp.gx, camp.gy, craft);
+      if (m !== null) {
+        ln.missile = m;
+        ln.metal = 0;
+        ln.powder = 0;
+      } else {
+        ln.waitUntil = this.tick + PLAN_RETRY; // something in the tube
+      }
+    }
+    b.job = 'wandering';
+    b.think = 0;
+  },
+
+  // ---- the anti-air gun ---------------------------------------------------------
+
+  // Pick a target, turn the barrel toward where it will be when a shell
+  // gets there, and fire when it's on.
+  stepAA(camp, aa) {
+    aa.reload++;
+    if (this.tick % AA_LOOK === 0 || !this.aaStill(camp, aa)) aa.target = this.aaTarget(camp, aa);
+    const tg = aa.target;
+    if (tg === null) {
+      aa.track = null;
+      return;
+    }
+    // Where it is, and how fast it's going (smoothed).
+    const x = tg.o !== null ? tg.o.x - 2 * tg.o.gx : tg.x, y = tg.o !== null ? tg.o.y - 2 * tg.o.gy : tg.y;
+    const tr = aa.track;
+    if (tr !== null && tr.o === tg.o && tr.t === tg.t) {
+      tr.vx = 0.6 * tr.vx + 0.4 * (x - tr.x);
+      tr.vy = 0.6 * tr.vy + 0.4 * (y - tr.y);
+      tr.x = x;
+      tr.y = y;
+    } else {
+      aa.track = { o: tg.o, t: tg.t, x, y, vx: 0, vy: 0 };
+    }
+    const { vx, vy } = aa.track;
+    // Lead it: where it will be by the time a shell has flown there.
+    let px = x, py = y;
+    for (let n = 0; n < 3; n++) {
+      const t = Math.hypot(px - aa.px, py - aa.py) / SHELL_SPEED;
+      px = x + vx * t;
+      py = y + vy * t;
+    }
+    const want = Math.atan2(py - aa.py, px - aa.px);
+    let d = want - aa.aim;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    aa.aim += Math.max(-AA_TURN, Math.min(AA_TURN, d));
+    if (Math.abs(d) > AA_AIMED || aa.reload < AA_EVERY || aa.ammo <= 0 || this.nearOwn(camp, px, py)) return;
+    aa.reload = 0;
+    aa.ammo--;
+    aa.shots++;
+    const a = want + (this.rand() - 0.5) * 2 * AA_JITTER;
+    const dist = Math.hypot(px - aa.px, py - aa.py);
+    const fuse = Math.max(2, (dist / SHELL_SPEED) * (1 + (this.rand() - 0.5) * 2 * AA_FUSE_ERR));
+    const cx = Math.cos(a), cy = Math.sin(a);
+    this.flak.push({ x: aa.px + 0.5 + cx * 2, y: aa.py + 0.5 + cy * 2, vx: cx * SHELL_SPEED, vy: cy * SHELL_SPEED, fuse, lx: aa.px, ly: aa.py });
+    const s = this.spawnNear(aa.px, aa.py, SMOKE);
+    if (s >= 0) this.temp[s] = 45;
+  },
+
+  // Is any of camp's people within AA_SAFE of (x, y)?
+  // Is any of camp's people (measured from the middle of its body), or its
+  // missile waiting in its tube or helicopter on its pad, within AA_SAFE of
+  // (x, y)?
+  nearOwn(camp, x, y) {
+    const near = (o, up) => Math.max(Math.abs(o.x - up * o.gx - x), Math.abs(o.y - up * o.gy - y)) <= AA_SAFE;
+    for (const id of camp.members) {
+      const o = this.creatureById[id];
+      if (o && near(o, 3)) return true;
+    }
+    const m = camp.launcher === null ? null : camp.launcher.missile;
+    if (this.alive(m) && near(m, 2)) return true;
+    return this.alive(camp.heli) && camp.heli.craft.state === 'parked' && near(camp.heli, 3);
+  },
+
+  // How high (x, y) is above the gun, in its camp's frame.
+  aboveGun(camp, aa, x, y) {
+    return -((x - aa.px) * camp.gx + (y - aa.py) * camp.gy);
+  },
+
+  // Is its target still there, and still one to shoot at? (An insect,
+  // a cell that flits about: found again if it moved a cell.)
+  aaStill(camp, aa) {
+    const tg = aa.target;
+    if (tg === null) return true;
+    if (tg.o !== null) return this.alive(tg.o) && (tg.o.craft === null || this.flying(tg.o));
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = tg.x + dx, y = tg.y + dy;
+        if (this.inBounds(x, y) && this.type[y * this.w + x] === tg.t) {
+          tg.x = x;
+          tg.y = y;
+          return true;
+        }
+      }
+    }
+    return false;
+  },
+
+  // The thing to shoot at: another camp's missile in flight, then its
+  // helicopter in the air, then a phoenix, then any other flier, then
+  // insects; nearest first, within AA_R, high enough, away from its own
+  // people, and in sight. { o: creature, or null for an insect at (x, y)
+  // of type t }, or null.
+  aaTarget(camp, aa) {
+    let best = null, bs = Infinity;
+    for (const o of this.creatures) {
+      if (o.grow >= 0) continue;
+      let rank;
+      if (o.craft !== null) {
+        if (o.craft.camp === camp || !this.flying(o)) continue;
+        rank = o.craft.kind === 'missile' ? 0 : 1;
+      } else if (o.brain === null && DEFS[o.kind].critter.moves === 'fly') {
+        rank = o.kind === ID.PHOENIX ? 2 : 3;
+      } else {
+        continue;
+      }
+      const d = Math.max(Math.abs(o.x - aa.px), Math.abs(o.y - aa.py));
+      const s = rank * 1000 + d;
+      // (Near its own: judged where it would aim, the middle of the body.)
+      if (d > AA_R || s >= bs || this.aboveGun(camp, aa, o.x, o.y) < AA_UP || this.nearOwn(camp, o.x - 2 * o.gx, o.y - 2 * o.gy)) continue;
+      const c = this.aimAt(o);
+      if (c < 0 || this.aaSight(aa.px, aa.py, c % this.w, (c / this.w) | 0) !== o) continue;
+      best = { o, x: o.x, y: o.y, t: 0 };
+      bs = s;
+    }
+    if (best !== null || this.tick % AA_SCAN !== 0) return best;
+    // Insects: the nearest in sight.
+    let bd = Infinity;
+    const { w, h, type } = this;
+    for (let y = Math.max(0, aa.py - AA_R); y <= Math.min(h - 1, aa.py + AA_R); y++) {
+      for (let x = Math.max(0, aa.px - AA_R); x <= Math.min(w - 1, aa.px + AA_R); x++) {
+        const t = type[y * w + x];
+        if (FLIER[t] === 0) continue;
+        const d = Math.max(Math.abs(x - aa.px), Math.abs(y - aa.py));
+        if (d >= bd || this.aboveGun(camp, aa, x, y) < AA_UP || this.nearOwn(camp, x, y) || this.aaSight(aa.px, aa.py, x, y) !== null) continue;
+        best = { o: null, x, y, t };
+        bd = d;
+      }
+    }
+    return best;
+  },
+
+  // What the gun sees first on the line from (x0, y0) toward (x1, y1),
+  // up to just before it: a creature, BLOCKED (anything else in the way
+  // but leaves and other growth, which shells fly through), or null (the
+  // way is clear).
+  aaSight(x0, y0, x1, y1) {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let k = 1; k <= n; k++) {
+      const x = Math.round(x0 + ((x1 - x0) * k) / n), y = Math.round(y0 + ((y1 - y0) * k) / n);
+      const c = y * this.w + x;
+      if (this.shellPasses(c)) continue;
+      const o = this.creatureAt(c);
+      if (o !== null) return o;
+      if (k < n) return BLOCKED;
+    }
+    return null;
+  },
+
+  // Does a shell fly through cell c: empty, a gas or flame, or growth?
+  shellPasses(c) {
+    const t = this.type[c];
+    if (t === 0 || GROWTH[t] === 1) return true;
+    if (SHAPED[t]) return false;
+    const s = DEFS[t].state;
+    return s !== SOLID && s !== POWDER && s !== LIQUID;
+  },
+
+  // Shells fly on until their fuse runs out, or they hit something; then
+  // they burst.
+  stepFlak() {
+    const f = this.flak;
+    for (let k = f.length - 1; k >= 0; k--) {
+      const s = f[k];
+      s.lx = s.x;
+      s.ly = s.y;
+      let hit = false, gone = false;
+      for (let n = 0; n < 3 && !hit; n++) {
+        s.x += s.vx / 3;
+        s.y += s.vy / 3;
+        const x = Math.floor(s.x), y = Math.floor(s.y);
+        if (!this.inBounds(x, y)) {
+          gone = true;
+          break;
+        }
+        if (!this.shellPasses(y * this.w + x)) hit = true;
+      }
+      if (!gone && (hit || --s.fuse <= 0)) {
+        this.flakBurst(Math.floor(s.x), Math.floor(s.y));
+        gone = true;
+      }
+      if (gone) f.splice(k, 1);
+    }
+  },
+
+  // A shell bursts at (x, y): a small blast (it hurts what's alive near
+  // it), insects caught in it killed, and a puff of smoke.
+  flakBurst(x, y) {
+    x = Math.max(0, Math.min(this.w - 1, x));
+    y = Math.max(0, Math.min(this.h - 1, y));
+    this.blast(x, y, FLAK_BLAST);
+    for (let dy = -FLAK_R; dy <= FLAK_R; dy++) {
+      for (let dx = -FLAK_R; dx <= FLAK_R; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (this.inBounds(nx, ny) && FLIER[this.type[ny * this.w + nx]]) this.clearCell(ny * this.w + nx);
+      }
+    }
+    const c = y * this.w + x;
+    if (this.type[c] === 0) this.spawn(c, SMOKE);
+  },
+
+  // Is the camp's fire burning?
+  burning(camp) {
+    for (let v = 0; v >= -4; v--) {
+      for (let u = -2; u <= 2; u++) {
+        const c = this.campCell(camp, u, v);
+        if (c >= 0 && FIRE[this.type[c]]) return true;
+      }
+    }
+    return false;
+  },
+};
+
+return { HELI_METAL, AA_CAP, AA_LOW, MISSILE_POWDER, AA_R, AA_EVERY, SHELL_SPEED, BARREL, RAID_MIN, RAID_FOR, RAID_SHARE, BIRTH_EVERY, POP_CAP, War };
+})();
+
 __modules["src/sim/world.js"] = (() => {
 // The particle simulation. The world is a grid where every cell holds at
 // most one particle; per-cell data lives in parallel typed arrays so the
@@ -14511,6 +16221,8 @@ const { Trees } = __modules["src/sim/trees.js"];
 const { Tunnels, initTunnels } = __modules["src/sim/tunnels.js"];
 const { Grounds } = __modules["src/sim/grounds.js"];
 const { Paths } = __modules["src/sim/paths.js"];
+const { Aircraft } = __modules["src/sim/aircraft.js"];
+const { War } = __modules["src/sim/war.js"];
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -14930,6 +16642,7 @@ class World {
     }
     if (this.zoneBox !== null) this.fastPasses(fromBottom);
     if (this.creatures.length !== 0) this.stepCreatures(); // shaped creatures (creatures.js)
+    if (this.camps.length !== 0 || this.flak.length !== 0) this.stepWar(); // camps at war (war.js)
     for (let a = 0; a < next.length; a++) if (air.solid[a] >= SEAL_COUNT) next[a] = 1;
     air.next = air.blocked;
     air.blocked = next;
@@ -16007,7 +17720,7 @@ class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Paths, Trees);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Paths, Trees, Aircraft, War);
 
 return { VOID_TOP, World, MIN_TEMP };
 })();
@@ -16028,6 +17741,7 @@ __modules["src/render/ai-overlay.js"] = (() => {
 
 const { FUEL_R, MINE_R, CAMP_JOIN, CAMP_AWAY_R, HUT_W, HUT_WALL, GATHER } = __modules["src/sim/humans.js"];
 const { DEFS } = __modules["src/sim/elements.js"];
+const { AA_CAP } = __modules["src/sim/war.js"];
 
 const CAMP_COLORS = ['#f6c344', '#5ec8f2', '#f2708e', '#8be06a', '#c38bf2', '#f29a4b'];
 
@@ -16039,9 +17753,17 @@ const GOAL = {
   'lighting the fire': ['build', '#f5a142'],
   'building the hut': ['build', '#f5a142'],
   'flattening the camp': ['build', '#f5a142'],
+  'building the helipad': ['build', '#f5a142'],
+  'building the anti-air gun': ['build', '#f5a142'],
+  'building the launcher': ['build', '#f5a142'],
+  'building the helicopter': ['build', '#f5a142'],
+  'loading the anti-air gun': ['build', '#f5a142'],
+  'loading the launcher': ['build', '#f5a142'],
   mining: ['mine', '#e8c547'],
   shooting: ['fight', '#ff4d4d'],
   hunting: ['fight', '#ff4d4d'],
+  raiding: ['fight', '#ff4d4d'],
+  'going home': ['rest', '#6fa8ff'],
   fleeing: ['flee', '#ff5fd2'],
   'resting by the fire': ['rest', '#6fa8ff'],
   sheltering: ['rest', '#6fa8ff'],
@@ -16139,6 +17861,36 @@ function aiPlan(world, e) {
     case 'fleeing':
       arrow = [b.fleeDir * e.gy, -b.fleeDir * e.gx];
       break;
+    case 'building the helipad':
+    case 'building the anti-air gun':
+    case 'building the launcher':
+      if (b.war) {
+        const k = world.nextWarCell(b.war);
+        if (k >= 0) target = at(b.war.cells[k]);
+        detail = `${b.war.cells.filter((c) => !world.builtAt(c)).length} to go`;
+      }
+      break;
+    case 'building the helicopter':
+      if (b.war) target = [b.war.hx, b.war.hy];
+      break;
+    case 'loading the anti-air gun':
+      if (b.war) {
+        target = [b.war.px, b.war.py];
+        detail = `${b.war.ammo}/${AA_CAP}`;
+      }
+      break;
+    case 'loading the launcher':
+      if (b.war) target = [b.war.mx, b.war.my];
+      break;
+    case 'raiding':
+      if (b.raid) {
+        target = [b.raid.x, b.raid.y];
+        detail = `Camp ${campNumber(b.raid)}`;
+      }
+      break;
+    case 'going home':
+      if (camp) target = [camp.x, camp.y];
+      break;
     default:
       if (b.goalX >= 0) target = [b.goalX, b.goalY];
   }
@@ -16171,8 +17923,37 @@ function campLabel(world, camp) {
   const parts = [`Camp ${campNumber(camp)}`, `${n} human${n === 1 ? '' : 's'}`,
     camp.lit ? `fire ${camp.burned}` : 'no fire yet', hut];
   if (camp.hut?.done) parts.push(camp.flat ? 'level ✓' : 'level …');
+  // Its war machines (war.js), and raids.
+  if (camp.heli && world.creatureById[camp.heli.id] === camp.heli) parts.push(camp.heli.craft.state === 'parked' ? 'heli ✓' : 'heli out');
+  else if (camp.pad) parts.push('heli …');
+  if (camp.aa) parts.push(camp.aa.done ? `AA ${camp.aa.ammo}` : 'AA …');
+  if (camp.launcher) parts.push(camp.launcher.missile ? 'missile ✓' : camp.launcher.done ? 'no missile' : 'launcher …');
+  if (camp.raid) parts.push(`raiding Camp ${campNumber(camp.raid.enemy)}`);
+  else if (camp.raidAt > 0) parts.push(`raid in ${Math.max(0, camp.raidAt - world.tick)}`);
   if (away > 0) parts.push(`${away} away`);
   return parts.join(' · ');
+}
+
+// What a war machine (aircraft.js) is up to: { color, label, target, path }.
+function craftPlan(world, e) {
+  const k = e.craft, health = `${e.n - e.lost}/${e.n}`;
+  const color = k.camp ? campColor(k.camp) : WANDER[1];
+  if (k.kind === 'missile') {
+    if (k.state !== 'flying') return { color, label: `missile ready`, target: null, path: null };
+    return { color, label: 'missile', target: [Math.round(k.tx), Math.round(k.ty)], path: [[e.x, e.y], [Math.round(k.tx), Math.round(k.ty)]] };
+  }
+  const foe = k.foe && world.creatureById[k.foe.id] === k.foe ? k.foe : null;
+  let what, target = null;
+  switch (k.state) {
+    case 'parked': what = 'on its pad'; break;
+    case 'home': what = 'flying home'; target = [k.homeX, k.homeY]; break;
+    case 'down': what = 'down'; break;
+    default:
+      what = k.goal === k.camp ? 'defending' : `raiding Camp ${campNumber(k.goal)}`;
+      target = foe ? [foe.x, foe.y] : [k.goal.x, k.goal.y];
+  }
+  const at = foe && k.state === 'flying' ? `, at a ${DEFS[foe.kind].name.toLowerCase()}` : '';
+  return { color, label: `helicopter ${what}${at} (${health})`, target, path: target ? [[e.x, e.y], target] : null };
 }
 
 // Trails: where each human has been lately, sampled every few frames.
@@ -16296,6 +18077,36 @@ function drawInfluence(ctx, world, v) {
       }
       ctx.lineWidth = v.line;
     }
+    // Its war machines' sites (war.js): solid once built, dashed till then.
+    for (const s of [camp.pad, camp.aa, camp.launcher]) {
+      if (!s) continue;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const c of s.cells) {
+        const [x, y] = cellXY(world, c);
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      }
+      ctx.strokeStyle = color;
+      ctx.setLineDash(s.done ? [] : [3 * v.line, 3 * v.line]);
+      ctx.strokeRect(v.px(x0 - 1.5), v.py(y0 - 1.5), (x1 - x0 + 3) * v.sx, (y1 - y0 + 3) * v.sy);
+      ctx.setLineDash([]);
+    }
+    // A raid under way: an arrow to the camp it's raiding.
+    if (camp.raid && world.camps.includes(camp.raid.enemy)) {
+      const t = camp.raid.enemy, a = Math.atan2(t.y - camp.y, t.x - camp.x), hd = Math.max(8 * v.line, v.sx * 3);
+      const x0 = v.px(camp.x), y0 = v.py(camp.y - 20), x1 = v.px(t.x), y1 = v.py(t.y - 20);
+      ctx.strokeStyle = '#ff4d4d';
+      ctx.lineWidth = v.line * 3;
+      ctx.setLineDash([8 * v.line, 5 * v.line]);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1); ctx.lineTo(x1 - hd * Math.cos(a - 0.5), y1 - hd * Math.sin(a - 0.5));
+      ctx.moveTo(x1, y1); ctx.lineTo(x1 - hd * Math.cos(a + 0.5), y1 - hd * Math.sin(a + 0.5));
+      ctx.stroke();
+      ctx.lineWidth = v.line;
+    }
     // Cells claimed: someone's on the way.
     ctx.strokeStyle = color;
     for (const c of camp.claims) {
@@ -16335,8 +18146,10 @@ function drawAI(ctx, world, v, trails) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   for (const e of world.creatures) {
-    if (!e.brain) continue;
-    const plan = aiPlan(world, e);
+    // Humans, and war machines (each with a label).
+    const machine = !e.brain && e.craft && e.grow < 0;
+    if (!e.brain && !machine) continue;
+    const plan = machine ? craftPlan(world, e) : aiPlan(world, e);
     // Where it's been: fading with age.
     const trail = trails?.paths.get(e.id);
     if (trail && trail.length > 1) {
@@ -16386,12 +18199,13 @@ function drawAI(ctx, world, v, trails) {
       ctx.lineTo(x1 - h * Math.cos(a + 0.5), y1 - h * Math.sin(a + 0.5));
       ctx.stroke();
     }
-    label(ctx, v, plan.label, v.px(e.x - 8 * e.gx), v.py(e.y - 8 * e.gy), plan.color);
+    const up = machine ? DEFS[e.kind].shape.h + 2 : 8;
+    label(ctx, v, plan.label, v.px(e.x - up * e.gx), v.py(e.y - up * e.gy), plan.color);
   }
   ctx.restore();
 }
 
-return { CAMP_COLORS, goalOf, campNumber, campColor, aiPlan, campLabel, AITrails, viewOf, drawInfluence, drawAI };
+return { CAMP_COLORS, goalOf, campNumber, campColor, aiPlan, campLabel, craftPlan, AITrails, viewOf, drawInfluence, drawAI };
 })();
 
 __modules["src/render/renderer.js"] = (() => {
@@ -16414,6 +18228,7 @@ const { PASS } = __modules["src/sim/walls.js"];
 const { portalHues } = __modules["src/sim/portals.js"];
 const { SHAPED, BODY } = __modules["src/sim/creatures.js"];
 const { HELD_PICKAXE, HELD_GUN } = __modules["src/sim/humans.js"];
+const { BARREL } = __modules["src/sim/war.js"];
 const { SHAPE_COLORS } = __modules["src/sim/shapes.js"];
 const { AITrails, viewOf, drawInfluence, drawAI } = __modules["src/render/ai-overlay.js"];
 
@@ -16646,6 +18461,59 @@ function paintHumans(world, pixels, palRGB) {
     } else {
       const q = b.held * SHADES * 3;
       put(1, up, pack(palRGB[q], palRGB[q + 1], palRGB[q + 2]));
+    }
+  }
+}
+
+// War machines over the picture (war.js, aircraft.js): anti-air shells in
+// flight (a bright head on a short streak), each anti-air gun's barrel
+// pointing where it aims, a helicopter's rotor (a still blade on its pad, a
+// spinning one in the air), and a flying missile's flame. Only over open
+// space (or gas): a blade doesn't cover the hut it's parked on.
+const SHELL_RGB = [255, 246, 214];
+const BARREL_PX = pack(62, 66, 72), ROTOR_PX = pack(40, 42, 46);
+const FLAME_PX = [pack(255, 214, 96), pack(255, 128, 44)];
+const ROTOR_SPIN = [6, 3, 1, 3]; // the blade's reach either side of the hub, frame by frame
+function paintWar(world, pixels) {
+  const { w, h, type } = world;
+  const open = (i) => type[i] === 0 || DEFS[type[i]].state === State.GAS;
+  const put = (x, y, px) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = y * w + x;
+    if (open(i)) pixels[i] = px;
+  };
+  const blend = (x, y, rgb, a) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = y * w + x, c = pixels[i];
+    const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+    pixels[i] = pack((r + (rgb[0] - r) * a) | 0, (g + (rgb[1] - g) * a) | 0, (b + (rgb[2] - b) * a) | 0);
+  };
+  for (const s of world.flak) {
+    const n = Math.max(1, Math.round(Math.max(Math.abs(s.x - s.lx), Math.abs(s.y - s.ly))));
+    for (let k = 0; k < n; k++) {
+      blend(Math.floor(s.lx + ((s.x - s.lx) * k) / n), Math.floor(s.ly + ((s.y - s.ly) * k) / n), SHELL_RGB, 0.25 + (0.4 * k) / n);
+    }
+    blend(Math.floor(s.x), Math.floor(s.y), SHELL_RGB, 1);
+  }
+  for (const camp of world.camps) {
+    const aa = camp.aa;
+    if (aa === null || !aa.done) continue;
+    const cx = Math.cos(aa.aim), cy = Math.sin(aa.aim);
+    for (let k = 0; k < BARREL; k++) put(aa.px + Math.round(cx * k), aa.py + Math.round(cy * k), BARREL_PX);
+  }
+  for (const e of world.creatures) {
+    const k = e.craft;
+    if (k === null || e.grow >= 0) continue;
+    const rx = e.gy * e.facing, ry = -e.gx * e.facing;
+    const at = (dx, dy) => [e.x + dx * rx + dy * e.gx, e.y + dx * ry + dy * e.gy];
+    if (k.kind === 'heli') {
+      const top = -DEFS[e.kind].shape.h; // the row over its mast
+      const reach = k.state === 'parked' ? 5 : ROTOR_SPIN[(world.tick >> 1) & 3];
+      for (let dx = -reach; dx <= reach; dx++) put(...at(dx, top), ROTOR_PX);
+    } else if (k.state === 'flying') {
+      // Behind its tail (its "down" is the way it came from).
+      put(e.x + e.gx, e.y + e.gy, FLAME_PX[world.tick & 1]);
+      if ((world.tick & 2) !== 0) put(e.x + 2 * e.gx, e.y + 2 * e.gy, FLAME_PX[1]);
     }
   }
 }
@@ -17248,6 +19116,7 @@ class Renderer {
       }
     }
     paintHumans(world, pixels, this.palRGB);
+    paintWar(world, pixels);
   }
 
   // Turn the gas layer into an image, blurred (here, unless the canvas blurs
@@ -17329,7 +19198,7 @@ class Renderer {
   }
 }
 
-return { heatRGB, zoneTint, portalRGB, glowBlur, SOFT, paintHumans, Renderer };
+return { heatRGB, zoneTint, portalRGB, glowBlur, SOFT, paintHumans, paintWar, Renderer };
 })();
 
 __modules["src/game/tree.js"] = (() => {
@@ -18731,6 +20600,44 @@ function wilderness(world) {
   for (const x of [95, 125, 155]) set(x, ground(x) - 8, ID.HUMAN);
 }
 
+// ---- two tribes ----------------------------------------------------------------
+
+// Two bands of humans at opposite ends of rolling hills, with a wooded
+// ridge between: each side has its own forest, logs and boulders, and more
+// coal, salt and metal underground than the Wilderness, enough for war
+// machines (war.js). Once settled and armed, each raids the other.
+function twoTribes(world) {
+  const { w, h, put, set, rect, disc } = tools(world);
+  const rolled = rolling(h, 60, 6, 3, 1.2);
+  const ground = (x) => rolled(x) - Math.round(Math.max(0, 16 - Math.abs(x - w / 2) * 0.35));
+  for (let x = 0; x < w; x++) {
+    const g = ground(x);
+    for (let y = g; y < h; y++) put(x, y, y < g + 2 ? ID.GRASS : y > h - 20 ? ID.STONE : ID.DIRT);
+  }
+  for (const side of [0, 1]) {
+    const X = (x) => (side === 0 ? x : w - 1 - x);
+    // Buried: coal, salt, metal and copper (deep enough to leave the lawn
+    // be), [x0, x1, depth from, depth to, element].
+    for (const [x0, x1, d0, d1, t] of [
+      [12, 40, 12, 16, ID.COAL], [80, 102, 11, 15, ID.SALT], [104, 126, 13, 17, ID.METAL],
+      [10, 30, 20, 24, ID.METAL], [40, 58, 22, 25, ID.COPPER], [130, 146, 12, 15, ID.COAL],
+    ]) {
+      for (let x = x0; x <= x1; x++) for (let y = ground(X(x)) + d0; y <= ground(X(x)) + d1; y++) set(X(x), y, t);
+    }
+    for (const x of [14, 28, 92, 108, 124, 140, 156]) put(X(x), ground(X(x)) - 1, ID.SAPLING);
+    for (const [x0, len] of [[34, 8], [112, 7]]) {
+      const a = Math.min(X(x0), X(x0 + len));
+      rect(a, ground(a) - 3, a + len, ground(a) - 1, ID.WOOD, false);
+    }
+    for (const [cx, r] of [[22, 5], [134, 6]]) disc(X(cx), ground(X(cx)) - r + 1, r, ID.STONE, false);
+    for (let x = 6; x < 170; x += 21) put(X(x), ground(X(x)) - 1, ID.FLOWER);
+    // Three humans.
+    for (const x of [50, 62, 74]) set(X(x), ground(X(x)) - 8, ID.HUMAN);
+  }
+  // Trees along the ridge.
+  for (const x of [170, 186, 200, 214, 230]) put(x, ground(x) - 1, ID.SAPLING);
+}
+
 // ---- the element gallery -------------------------------------------------------
 
 // Every element in the table, each in its own little walled cell, in table
@@ -19187,6 +21094,7 @@ function machines(world) {
 const SCENES = [
   { key: 'start', name: 'Starting area', build: startingArea },
   { key: 'wilderness', name: 'Wilderness (for humans)', build: wilderness },
+  { key: 'tribes', name: 'Two tribes (for humans, at war)', build: twoTribes },
   { key: 'creatures', name: 'Creatures', build: creatures, showcase: true },
   { key: 'gallery', name: 'Every element (stress test)', build: gallery, showcase: true },
   { key: 'lab', name: 'Physics lab', build: physicsLab, showcase: true },
@@ -19214,11 +21122,12 @@ return { SCENES, loadScene, loadDemoScene };
 
 __modules["src/game/cell-notes.js"] = (() => {
 // Extra notes for the inspect line about cell i: a wall that lets things
-// through, a time zone, a portal, a creature's health (and what a human is
-// doing).
+// through, a time zone, a portal, a creature's health (and what a human or
+// a war machine is doing), and which of a camp's war machines it's part of.
 
 const { PASS_ORDER } = __modules["src/sim/walls.js"];
 const { inventoryNote } = __modules["src/sim/humans.js"];
+const { AA_CAP, MISSILE_POWDER, MISSILE_METAL } = __modules["src/sim/war.js"];
 
 const SPEED_NAMES = ['', '¼×', '½×', '2×', '4×'];
 
@@ -19242,8 +21151,23 @@ function cellNotes(world, i) {
       const inv = inventoryNote(e.brain);
       if (inv) notes.push(inv);
     }
+    if (e.craft) notes.push(craftNote(e.craft));
+  }
+  // Part of a camp's war machine (war.js)?
+  for (const camp of world.camps) {
+    if (camp.aa?.set.has(i)) notes.push(`anti-air gun, gunpowder ${camp.aa.ammo} of ${AA_CAP}`);
+    else if (camp.launcher?.set.has(i)) {
+      const ln = camp.launcher;
+      notes.push(ln.missile ? 'launcher, missile ready' : `launcher, loaded gunpowder ${ln.powder} of ${MISSILE_POWDER}, metal ${ln.metal} of ${MISSILE_METAL}`);
+    } else if (camp.pad?.set.has(i)) notes.push('helipad');
   }
   return notes;
+}
+
+// What a war machine is doing, for the inspect line.
+function craftNote(k) {
+  if (k.kind === 'missile') return k.state === 'flying' ? 'flying' : 'in its tube';
+  return { parked: 'on its pad', flying: 'out fighting', home: 'flying home', down: 'down' }[k.state] ?? k.state;
 }
 
 return { cellNotes };

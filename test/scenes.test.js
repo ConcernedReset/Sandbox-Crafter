@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { DEFS, ID, COLLECTIBLE } from '../src/sim/elements.js';
 import { SCENES, loadScene } from '../src/game/scenes.js';
 import { makeWorld, run, countOf } from './helpers.js';
+import { CAMP_AWAY_R, MINE_R } from '../src/sim/humans.js';
 
 const scene = (key, steps = 0) => {
   const w = makeWorld(400, 240, 9);
@@ -84,6 +85,28 @@ test('the wilderness has humans, with wood and stone within their reach', () => 
   run(w, 300);
   for (let i = 0; i < w.type.length; i++) {
     if (w.type[i] === ID.WATER) assert.ok(i % w.w >= 165 && i % w.w <= 235, 'the pond keeps its water');
+  }
+});
+
+test('two tribes: three humans at each end, far apart, with wood, stone, coal, salt and metal in reach of each', () => {
+  const w = scene('tribes', 20);
+  const people = w.creatures.filter((e) => e.kind === ID.HUMAN);
+  assert.equal(people.length, 6);
+  const left = people.filter((e) => e.x < w.w / 2), right = people.filter((e) => e.x >= w.w / 2);
+  assert.equal(left.length, 3);
+  assert.equal(right.length, 3);
+  assert.ok(Math.min(...right.map((e) => e.x)) - Math.max(...left.map((e) => e.x)) > CAMP_AWAY_R, 'too far apart to share a camp');
+  const within = (t, side, r) => {
+    let n = 0;
+    const x0 = side.reduce((s, e) => s + e.x, 0) / side.length;
+    for (let i = 0; i < w.type.length; i++) if (w.type[i] === t && Math.abs((i % w.w) - x0) <= r) n++;
+    return n;
+  };
+  for (const side of [left, right]) {
+    for (const [t, least] of [['STONE', 60], ['COAL', 150], ['SALT', 80], ['METAL', 150]]) {
+      assert.ok(within(ID[t], side, MINE_R) >= least, `${t} near each tribe`);
+    }
+    assert.ok(within(ID.SAPLING, side, 100) + within(ID.WOOD, side, 100) > 5, 'trees to come');
   }
 });
 

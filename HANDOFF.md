@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,670 tests, all passing, in about a minute (most of it the human situations)
+npm test    # node --test: about 1,730 tests, all passing, in two or three minutes (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -45,6 +45,8 @@ else; `test/build.test.js` checks the bundle runs.
 | `src/sim/gravity.js` | Gravity settings and the per-air-block gravity table; the Newtonian solver (`Solver`) |
 | `src/sim/fft.js` | Radix-2 FFT used by the Newtonian solver |
 | `src/render/renderer.js` | Draws the grid, the Gas and Glow effects, particles, minimap; heat and pressure views |
+| `src/sim/war.js` | Humans' war: building the helipad, anti-air gun and missile launcher (the engineer), the anti-air gun and its shells, raids, births, mending the hut |
+| `src/sim/aircraft.js` | The helicopter and missiles: shaped creatures with minds of their own (`e.craft`): flying, shooting, craters |
 | `src/sim/paths.js` | Overland route planning for humans: A* over the places a body can stand or hang (`findPath`), following the plan move by move (`followPath`, `planWay`) |
 | `src/render/ai-overlay.js` | Show spheres of influence / Show AI data: camp ranges, huts, lawns, tunnels, claims, members (`drawInfluence`); each human's trail, route, target and goal label (`aiPlan`, `drawAI`, `AITrails`), drawn on the canvas after the picture (`Renderer.showInfluence`, `showAI`) |
 | `src/render/tree-view.js` | Draws the recipe tree under the game; drag, zoom and click handling |
@@ -242,8 +244,10 @@ else; `test/build.test.js` checks the bundle runs.
   place it walked to, never one it's yet to climb to) it plans again, up
   to `MAX_REPLANS` (6), then walks straight at it. Progress (for
   `GIVE_UP`) is only reaching further along than ever. `findPath`
-  returns null (no way: the target is given up on at once) only when the
-  human's own spot fits the body model; with `PATH_NODES` (8000) places
+  returns null (no way: the target is given up on at once, and `walkTo`
+  doesn't search for that place again for `NO_WAY_FOR` (300) steps,
+  `brain.noWay`: a job with no target cell to ban could otherwise search
+  every step) only when the human's own spot fits the body model; with `PATH_NODES` (8000) places
   looked at, or in a box `MARGIN` (60) round it and the target, it gives
   up looking (undefined: walk straight at it). Room and footing are
   remembered for the length of a search (`pathMemo`). A typical search
@@ -268,6 +272,134 @@ else; `test/build.test.js` checks the bundle runs.
   skipped for `BAN_FOR` (`brain.skip`). Dig strength comes from `DIG` (1
   for powders, else the solid's strength) against `digLimit` (30 by hand,
   150 with the pickaxe).
+- **War** (`war.js`, `aircraft.js`): after `craftWork`, `warWork` gives a
+  human with its own gun and armour the camp's war machines, one human at
+  a time (`camp.engineer`, cleared in `leaveCamp`), once `warReady` (hut
+  done, lawn flat, `canCraft`). Order: `camp.firstWar` ('heli' or 'aa',
+  picked with `rand` on first use), the other, then the launcher; a
+  machine it can't get on with (`warStep` 'stuck') is skipped for the next.
+  Blueprints live on the camp (`camp.pad`, `camp.aa`, `camp.launcher`,
+  planned by `warPlan`, retried after `PLAN_RETRY`): `{ name, cells, mats
+  ('stone'|'metal'), us, set, done, u0, w, base, ... }`, built bottom-up
+  with `putDown` (so `madeByHuman` protects them). The pad goes on the hut
+  roof if `SKY` rows over it are clear but for wild growth (`wild`: growth,
+  or wood nobody put there; cleared when the helicopter is built), else
+  `findSite` on the lawn: ground within 2 of the lawn level (dips filled
+  by `supports`), clear of the fire, the rest spots, the hut and each
+  other; the gun nearest the hut, the launcher and a lawn pad farthest.
+  Jobs: 'building the helipad / anti-air gun / launcher' (`warBuild`),
+  'building the helicopter' (`buildHeli`, `HELI_METAL` 10), 'loading the
+  anti-air gun' (`loadAA`, to `AA_CAP` 20 when under `AA_LOW` 8),
+  'loading the launcher' (`loadLauncher`: `MISSILE_POWDER` 4 +
+  `MISSILE_METAL` 2 makes a missile in the tube); stone is fetched
+  ('fetching stone', which `chooseWork` then routes here), metal and
+  coal/salt mined (`powderFor`; `wantsMore` for salt now honours
+  `wantN`). `warCarryingOn` keeps them going. Builders stand 3 cells off a
+  ground machine (`standFor`), and step back if their own body is in the
+  cell they're building; liquid in a cell is built over. A machine whose work spot
+  the engineer gives up getting to waits `PLAN_RETRY` (`waitUntil`, which
+  `buildStep` honours, so it gets on with another); one never reached
+  from three different places (12 cells apart: from where it rests, the
+  way can be shut a while) with nothing built is planned again elsewhere
+  (`camp.badSites` keeps it off that span). The launcher waits until the
+  other two are up or have nowhere to go (it would spend the helicopter's
+  metal). `campChores` also keeps the fire pit clear of growth (`PIT_U`
+  either side, `PIT_UP` up): a sapling by the pile grew into a tree that,
+  with the pile, cut the camp's hut side off from where everyone rests.
+  Aircraft are shaped creatures (Helicopter, Missile: `cat: null`,
+  `always`) with a mind in `e.craft` (never `e.brain`), built by
+  `buildCraft` (loose stuff, liquid or growth in the footprint is swept
+  aside first; they grow ring by ring, and wait if blocked) and stepped by
+  `stepCraft` instead of the animal step: no `orient`, no `fling`, mending
+  only while `craft.mend` (on the pad, `MEND_EVERY` 30). `creatureDies`
+  hands them to `craftDies` (a helicopter falls as loose Metal scrap with a
+  small blast; a missile `detonate`s). Helicopter (`stepHeli`): 'parked'
+  until `heliCall` (its camp raiding, or an enemy within `DEFEND_R` of
+  home; on a raid it waits `HELI_WAIT` for the missile), 'flying'
+  (`heliFight`: hover `HELI_HOVER` over and `HELI_SIDE` beside the
+  nearest enemy, `pellet` every `HELI_GUN_EVERY` (3) within `HELI_GUN_R`
+  (20); cruise `HELI_CRUISE` over the ground), 'home' when the raid ends,
+  the defence goes quiet, or it's `HELI_RETREAT` hurt; 'down' with no camp.
+  Pellets bounce off it `HELI_ARMOUR` of the time (a missile,
+  `MISSILE_ARMOUR`: an anti-air burst is what stops one). Moving (`heliMove`), it
+  sweeps aside (`sweepFor`) powders, rubble and wild growth or tree wood in
+  its way (a leaf or a branch caught in the gaps of its shape used to pin
+  it), and `heliToward` tries every way out before giving up a step
+  (`heliStep`); boxed in (another helicopter, a human, an overhang:
+  `HELI_STALL` moves without getting 3 cells from one spot) it moves any
+  way it can for `HELI_ESCAPE` moves; its targets keep `EDGE` from the
+  world's edges. Set down away from its pad ('down'), it tries for home
+  again after `HELI_DOWN_FOR`. Missile
+  (`stepMissile`): 'loaded'; `launch` sends it up `MISSILE_BOOST`, then
+  along `k.way`: straight up to `APEX` (80) over the higher end of its
+  way, across at that height, and straight down on the target (a
+  diagonal dive ran into the trees round the camps); its way keeps
+  `TURN_ROOM` inside the world. It turns its nose (`NOSE` ahead of its
+  anchored tail) at most `MISSILE_TURN` a step, speeding to 2 a step and
+  pointing in 8 directions (its gx/gy is the way it came from). Leaving
+  its tube it sweeps aside loose stuff and growth (sand on its fins);
+  after that it tears through growth (`sweepFor` with `leavesOnly`) and
+  goes off on anything else it hits (but waits up to `MISSILE_HOLD` for
+  its own side to move); losing `MISSILE_TOUGH` (3) pixels sets it off;
+  `crater` clears the middle, breaks solids loose round it, then a `blast`
+  of 30. Paths treat Helicopter and Missile cells as solid (`MACHINE` in
+  paths.js). Anti-air (`stepAA`, every step for a built gun): a target
+  every `AA_LOOK` (`aaTarget`: another camp's flying missile, then
+  helicopter, phoenix, other shaped fliers, then single-cell insects by a
+  grid scan every `AA_SCAN`; within `AA_R` (100), `AA_UP` above the gun,
+  judged where it would aim, not within `AA_SAFE` of the middle of any of
+  its own people, nor its own missile in its tube or parked helicopter
+  (`nearOwn`), in sight by
+  `aaSight`, which, like the shells (`shellPasses`), goes through leaves
+  and other growth: camps sit in forests), tracked and led; the
+  barrel turns `AA_TURN` a step; a shell (`world.flak`, `SHELL_SPEED` 2.5,
+  fuse set for the distance give or take `AA_FUSE_ERR`, aim give or take
+  `AA_JITTER`) every `AA_EVERY` (30) for one gunpowder; `stepFlak` bursts
+  it (`flakBurst`: a blast of 6, insects near it killed) at its fuse or on
+  hitting anything. `stepWar` runs from `World.step` whenever there are
+  camps or shells (not only with creatures). Raids (`campChores`, once a
+  second per camp): the clock (`camp.raidAt`) starts with the first war
+  machine, `raidGap` `RAID_MIN`..`RAID_MAX` (18,000-36,000 steps);
+  `startRaid` against `nearestRival`: `ceil(members * RAID_SHARE)` armed
+  members (not the engineer, not in a tunnel) get `brain.raid`, the
+  missile is launched at `aimPoint` (the enemy hut's roof) and the
+  helicopter follows; with no rival or nothing to send it tries again
+  after `RAID_RETRY`. Raiders: `raidWork` (before sheltering in
+  `chooseWork`) keeps 'raiding' (`raidMarch` to `RAID_NEAR` of the
+  enemy's fire; the fighting comes from `think`'s `findFoe`), then 'going
+  home'; `strayed` ignores a raider. `raidOver`: `RAID_FOR` up, the enemy
+  gone, or nobody (nor the helicopter) still at it. `findFoe` also takes
+  another camp's flying aircraft. Births (`campChores`): hut done (or
+  `noHut`), `canCraft`, fire `burning`, under `POP_CAP` (10): a Human seed
+  in the hut (or by the fire) every `BIRTH_EVERY` (3,000) where a body has
+  room (`bear`, `roomForBaby`); on its first thought it joins the camp
+  whose hut it's in, or else the nearest within `CAMP_JOIN` (`campFor`,
+  which `joinOrMakeCamp` uses: it used to take the first in the list). An
+  engineer that loses its gun or armour gives the role up. A done hut missing cells is mended (`hut.done = false`), or,
+  its floor gone, planned again (`camp.hut = null`, and the lawn and a
+  roof pad with it: `camp.hut` can now go back to null, so anything reading
+  it must check, as `shelter` does). A living helicopter is sent to its
+  camp's current pad (`warStep`), and `warCarryingOn`, `warBuild` and
+  `buildHeli` drop a blueprint the camp no longer has. A helicopter
+  fighting another holds off to its side at its height (over it, the two
+  jammed). Five older bugs this showed up: `giveUp` now lets go of a wall
+  (`climbing = false`; a human clinging in a tree crown, with every plan
+  unreachable, held on for ever); `prey` never counts a human (a newborn
+  has no brain until its first step, and was hunted); `startMining`
+  tries the next nearest deposit (up to `DEPOSIT_TRIES`, banning each it
+  can't plan a tunnel to with `banNear`) instead of giving up on a
+  resource whenever the nearest is out of reach; a swimmer up against
+  a wall it can't climb out at turns round after `SWIM_TURN` strokes
+  (`swimBlocked`; it swam into the pond's high side for ever, half a grown
+  camp at once); and `findDeposit` skips deposits with liquid within
+  `UNDER_WATER` (20) above (`underWater`: a tunnel to the coal under the
+  Wilderness pond let the pond in, and its miners swam in the flooded pit
+  for good).
+  Overlay: `craftPlan` labels aircraft, `campLabel` shows the machines
+  and the raid clock, `drawInfluence` boxes the sites and draws a raid
+  arrow; the renderer's `paintWar` draws shells, barrels, rotors and a
+  missile's flame; `cellNotes` names machine parts. Tested in
+  `test/war.test.js`. Keep it game-only, like the gun.
 - **Tunnels** (`tunnels.js`): mining digs tunnels. A spot is where a
   human's feet go; its inside is the 3x6 body box. `workSpot` lines first
   (`looseRound`: powders with the inside below or diagonally below are
@@ -362,7 +494,9 @@ else; `test/build.test.js` checks the bundle runs.
   `pressurize`). A showcase sets `world.recording = false`, so `record`
   discovers nothing until `clearAll` (the Clear button) or a play world.
   `test/scenes.test.js` loads and runs every one; keep each scene's checks
-  there when changing it.
+  there when changing it. **Two tribes** (`twoTribes`) is the war world:
+  three humans at each end (`X` mirrors the left half), a ridge between,
+  and enough coal, salt and metal on each side for war machines.
 - **Trees** (`trees.js`): a Sapling falls like a powder until it lands on
   soil, then its ctype holds its looks (shape, leaf scheme, crown
   thickness, thick trunk, height; see the top of the file) and its life the

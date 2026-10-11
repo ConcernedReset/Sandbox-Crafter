@@ -30,6 +30,7 @@ const TUNNEL_GAP = 4; // solid cells kept between a new run and other tunnels (c
 const START_R = 8; // except this near where it branches off
 const SEAM_START_R = 5; // or, going on along a seam, this near where it is (not back alongside its own run)
 const PLAN_TRIES = 30; // the cheapest plans it checks for clearance
+const DEPOSIT_TRIES = 4; // deposits it tries to plan a tunnel to before it gives up on that resource a while
 const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
 const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
 
@@ -473,15 +474,22 @@ export const Tunnels = {
   },
 
   // Set off to mine `key` (a RESOURCES key) until it holds `goal`: plan a
-  // tunnel to the nearest deposit. Lining first (TUNNEL_LINING in hand: it
-  // gathers wood for it; it goes with less only if there's no more to be
-  // had).
+  // tunnel to the nearest deposit it can. Lining first (TUNNEL_LINING in
+  // hand: it gathers wood for it; it goes with less only if there's no more
+  // to be had).
   // False if there's no way (it skips that one a while).
   startMining(e, b, camp, key, goal) {
     if ((b.skip.get(key) ?? 0) > this.tick) return false;
     const set = RESOURCES[key];
-    const t = this.findDeposit(e, camp, set, this.digLimit(b));
-    const plan = t < 0 ? null : this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
+    // The nearest deposit it can plan a tunnel to (one it can't is left
+    // alone a while, and the next nearest tried).
+    let t = -1, plan = null;
+    for (let k = 0; k < DEPOSIT_TRIES && plan === null; k++) {
+      t = this.findDeposit(e, camp, set, this.digLimit(b));
+      if (t < 0) break;
+      plan = this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
+      if (plan === null) this.banNear(b, t);
+    }
     if (plan === null) {
       b.skip.set(key, this.tick + BAN_FOR);
       return false;

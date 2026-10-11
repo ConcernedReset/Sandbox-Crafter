@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
 import { loadScene } from '../src/game/scenes.js';
-import { makeWorld, fillRect, countOf } from './helpers.js';
+import { makeWorld, fillRect, countOf, run } from './helpers.js';
 
 const SEEDS = [1, 2, 3];
 
@@ -444,4 +444,24 @@ test('a human stepping off a shared cell hands it straight to the other (no gap 
   assert.ok(w.moveBody(owner, owner.x + 4, owner.y, 0, 1, owner.gx, owner.gy) || w.moveBody(owner, owner.x - 4, owner.y, 0, -1, owner.gx, owner.gy), 'one steps away');
   for (let p = 0; p < sharer.n; p++) if (sharer.pix[p] === 0) assert.equal(w.ctype[sharer.cells[p]], sharer.id, 'every pixel drawn at once');
   assert.equal(shared(sharer), 0, 'nothing left shared');
+});
+
+test('a swimmer up against a wall too high to climb out at turns round and swims for the other shore', () => {
+  const w = makeWorld(160, 70, 1);
+  fillRect(w, 0, 60, 159, 69, ID.STONE);
+  fillRect(w, 0, 30, 39, 59, ID.STONE); // a wall 16 above the water on the left
+  fillRect(w, 100, 46, 159, 59, ID.STONE); // a low bank on the right
+  fillRect(w, 40, 46, 99, 59, ID.WATER);
+  run(w, 40);
+  w.spawn(48 * w.w + 44, ID.HUMAN);
+  run(w, 40);
+  const e = w.creatures.find((c) => c.kind === ID.HUMAN);
+  e.brain.heading = -1; // it was walking left
+  e.brain.think = 1e9; // (and has nothing else on its mind)
+  let f = 0;
+  for (; f < 3000 && !(e.x >= 100 && e.brain.job !== 'swimming'); f++) {
+    e.brain.think = 1e9;
+    w.step();
+  }
+  assert.ok(e.x >= 100, `out on the far bank (at ${e.x},${e.y} after ${f}, ${e.brain.job})`);
 });

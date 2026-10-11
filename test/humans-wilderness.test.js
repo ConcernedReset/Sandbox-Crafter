@@ -14,9 +14,13 @@ test('Wilderness humans go from a campfire to armour', () => {
   loadScene(w, 'wilderness');
   const armoured = () => w.creatures.some((e) => e.brain?.armour > 0);
   let f = 0;
+  w.step();
+  const first = w.creatures.filter((e) => e.kind === ID.HUMAN);
   for (; f < 14000 && !armoured(); f++) w.step();
   const people = w.creatures.filter((e) => e.brain);
   assert.ok(armoured(), `armour in ${f} steps: ${people.map((e) => `${e.brain.job} t${e.brain.tool}w${e.brain.weapon}`).join(', ')}`);
-  assert.equal(people.length, 3, 'nobody died');
+  assert.equal(first.length, 3);
+  for (const e of first) assert.equal(w.creatureById[e.id], e, 'nobody died');
+  assert.ok(people.length >= 3, 'and the camp has grown, or not yet (births: war.js)');
   assert.ok(w.type.some((t) => t === ID.SCAFFOLDING), 'tunnels lined with scaffolding');
 });

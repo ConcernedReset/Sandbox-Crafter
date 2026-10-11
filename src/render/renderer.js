@@ -17,6 +17,7 @@ import { PASS } from '../sim/walls.js';
 import { portalHues } from '../sim/portals.js';
 import { SHAPED, BODY } from '../sim/creatures.js';
 import { HELD_PICKAXE, HELD_GUN } from '../sim/humans.js';
+import { BARREL } from '../sim/war.js';
 import { SHAPE_COLORS } from '../sim/shapes.js';
 import { AITrails, viewOf, drawInfluence, drawAI } from './ai-overlay.js';
 
@@ -249,6 +250,59 @@ export function paintHumans(world, pixels, palRGB) {
     } else {
       const q = b.held * SHADES * 3;
       put(1, up, pack(palRGB[q], palRGB[q + 1], palRGB[q + 2]));
+    }
+  }
+}
+
+// War machines over the picture (war.js, aircraft.js): anti-air shells in
+// flight (a bright head on a short streak), each anti-air gun's barrel
+// pointing where it aims, a helicopter's rotor (a still blade on its pad, a
+// spinning one in the air), and a flying missile's flame. Only over open
+// space (or gas): a blade doesn't cover the hut it's parked on.
+const SHELL_RGB = [255, 246, 214];
+const BARREL_PX = pack(62, 66, 72), ROTOR_PX = pack(40, 42, 46);
+const FLAME_PX = [pack(255, 214, 96), pack(255, 128, 44)];
+const ROTOR_SPIN = [6, 3, 1, 3]; // the blade's reach either side of the hub, frame by frame
+export function paintWar(world, pixels) {
+  const { w, h, type } = world;
+  const open = (i) => type[i] === 0 || DEFS[type[i]].state === State.GAS;
+  const put = (x, y, px) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = y * w + x;
+    if (open(i)) pixels[i] = px;
+  };
+  const blend = (x, y, rgb, a) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = y * w + x, c = pixels[i];
+    const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+    pixels[i] = pack((r + (rgb[0] - r) * a) | 0, (g + (rgb[1] - g) * a) | 0, (b + (rgb[2] - b) * a) | 0);
+  };
+  for (const s of world.flak) {
+    const n = Math.max(1, Math.round(Math.max(Math.abs(s.x - s.lx), Math.abs(s.y - s.ly))));
+    for (let k = 0; k < n; k++) {
+      blend(Math.floor(s.lx + ((s.x - s.lx) * k) / n), Math.floor(s.ly + ((s.y - s.ly) * k) / n), SHELL_RGB, 0.25 + (0.4 * k) / n);
+    }
+    blend(Math.floor(s.x), Math.floor(s.y), SHELL_RGB, 1);
+  }
+  for (const camp of world.camps) {
+    const aa = camp.aa;
+    if (aa === null || !aa.done) continue;
+    const cx = Math.cos(aa.aim), cy = Math.sin(aa.aim);
+    for (let k = 0; k < BARREL; k++) put(aa.px + Math.round(cx * k), aa.py + Math.round(cy * k), BARREL_PX);
+  }
+  for (const e of world.creatures) {
+    const k = e.craft;
+    if (k === null || e.grow >= 0) continue;
+    const rx = e.gy * e.facing, ry = -e.gx * e.facing;
+    const at = (dx, dy) => [e.x + dx * rx + dy * e.gx, e.y + dx * ry + dy * e.gy];
+    if (k.kind === 'heli') {
+      const top = -DEFS[e.kind].shape.h; // the row over its mast
+      const reach = k.state === 'parked' ? 5 : ROTOR_SPIN[(world.tick >> 1) & 3];
+      for (let dx = -reach; dx <= reach; dx++) put(...at(dx, top), ROTOR_PX);
+    } else if (k.state === 'flying') {
+      // Behind its tail (its "down" is the way it came from).
+      put(e.x + e.gx, e.y + e.gy, FLAME_PX[world.tick & 1]);
+      if ((world.tick & 2) !== 0) put(e.x + 2 * e.gx, e.y + 2 * e.gy, FLAME_PX[1]);
     }
   }
 }
@@ -851,6 +905,7 @@ export class Renderer {
       }
     }
     paintHumans(world, pixels, this.palRGB);
+    paintWar(world, pixels);
   }
 
   // Turn the gas layer into an image, blurred (here, unless the canvas blurs

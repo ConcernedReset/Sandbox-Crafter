@@ -165,10 +165,13 @@ back to system ones; progress is saved per file location.)
   back after about three seconds of quick frames; the menu shows where it
   is ("Auto (Medium)"). Gas and Glow are your own choice at every level.
 - **World** (in the `⋯` menu) clears the world and loads a ready-made one.
-  Two are for playing: the **Starting area** (rolling dirt, a sand dune and a
-  stone-lined pond) and the **Wilderness**, hills to make a home in, with
+  Three are for playing: the **Starting area** (rolling dirt, a sand dune and a
+  stone-lined pond), the **Wilderness**, hills to make a home in, with
   saplings that grow into a forest, logs, boulders, a coal seam, a pond with
-  fish, and three humans. Five are showcases: **Creatures** (a pond full of
+  fish, and three humans, and **Two tribes**, three humans at each end of
+  rolling hills with a wooded ridge between, each with its own forest,
+  boulders and plenty of coal, salt and metal underground: once they're
+  settled and armed they go to war. Five are showcases: **Creatures** (a pond full of
   swimmers, a meadow full of insects, frogs and snails, birds, a caged
   phoenix and two humans), **Every element** (each in its own little walled
   cell, a stress test), the **Physics lab** (portals, time zones, sieving
@@ -603,6 +606,42 @@ Each frame (60 per second):
    (a pickaxe, a gun), and armour turns its shirt grey. Hover over a
    creature to see its health, and what a human is doing and carrying. The
    Wilderness has coal, salt and metal buried in it.
+
+   A camp whose hut is up (or that does without one) and whose fire is
+   burning **grows**: a new human
+   is born in the hut every 3,000 steps (under a minute), up to 10. Once a
+   human has its own gun and armour, one at a time builds the camp's **war
+   machines**: a **helicopter** or an **anti-air gun** first (each camp
+   picks), then the other, then a **missile launcher**. The helicopter's
+   pad is a row of stone on the hut's roof (or, with no room above the roof,
+   on the lawn); 10 metal brought to it and a helicopter builds itself
+   there, pixel by pixel. The anti-air gun is a stone base with a metal
+   mount and a barrel that turns to aim; it holds 20 gunpowder, one a shell,
+   and the builder keeps it topped up. The launcher, at the far end of the
+   lawn, is a tube of two metal walls; loaded with 4 gunpowder and 2 metal it
+   makes a **missile** inside it, a body 5 long with a 2-cell fin either
+   side of its tail. Anything destroyed is built again, the hut too.
+   The anti-air gun shoots at anything that flies within 100 cells (another
+   camp's missiles first, then its helicopters, phoenixes, birds and
+   insects), never at anything low over the camp or near its own people. Its
+   shells take time to get there, aimed ahead of where the target is going,
+   and burst in a small blast at about the distance they were set for: not
+   very accurate. The helicopter needs no pilot, fuel or ammunition: it
+   fires a round every 3 steps but only from within 20 cells, so it has to
+   come in close, and its plating turns most bullets (a blast it doesn't;
+   a missile's too, so the anti-air gun is what stops one).
+   It mends on its pad. Badly hit, it flies home; shot down, it comes down
+   in pieces. A camp's first war machine starts its **raid** clock: every 5
+   to 10 minutes it sends a quarter of its people (armed ones; never the
+   builder), its helicopter and its missile against the nearest other camp.
+   The raiders walk there and fight, and come home when the raid is over;
+   the helicopter drives off raiders at home too. The missile flies straight
+   up, high over the hills and trees, comes straight down on the enemy's
+   hut and blows a crater where it hits, breaking stone and brick into
+   rubble; it tears through leaves, but a hard hit on the way
+   (or in its tube) sets it off. With the AI view on, helicopters and
+   missiles are labelled with what they're doing, and each camp's label
+   shows its war machines and when it next raids.
 9. **Trees**: a **Sapling** (Seed + Fertilizer) dropped on dirt, mud, grass
    or sand takes root and grows: its trunk climbs to a height of its own (15
    to 45, two cells wide when it's tall), a few branches sprout leaves, and

@@ -141,6 +141,44 @@ function wilderness(world) {
   for (const x of [95, 125, 155]) set(x, ground(x) - 8, ID.HUMAN);
 }
 
+// ---- two tribes ----------------------------------------------------------------
+
+// Two bands of humans at opposite ends of rolling hills, with a wooded
+// ridge between: each side has its own forest, logs and boulders, and more
+// coal, salt and metal underground than the Wilderness, enough for war
+// machines (war.js). Once settled and armed, each raids the other.
+function twoTribes(world) {
+  const { w, h, put, set, rect, disc } = tools(world);
+  const rolled = rolling(h, 60, 6, 3, 1.2);
+  const ground = (x) => rolled(x) - Math.round(Math.max(0, 16 - Math.abs(x - w / 2) * 0.35));
+  for (let x = 0; x < w; x++) {
+    const g = ground(x);
+    for (let y = g; y < h; y++) put(x, y, y < g + 2 ? ID.GRASS : y > h - 20 ? ID.STONE : ID.DIRT);
+  }
+  for (const side of [0, 1]) {
+    const X = (x) => (side === 0 ? x : w - 1 - x);
+    // Buried: coal, salt, metal and copper (deep enough to leave the lawn
+    // be), [x0, x1, depth from, depth to, element].
+    for (const [x0, x1, d0, d1, t] of [
+      [12, 40, 12, 16, ID.COAL], [80, 102, 11, 15, ID.SALT], [104, 126, 13, 17, ID.METAL],
+      [10, 30, 20, 24, ID.METAL], [40, 58, 22, 25, ID.COPPER], [130, 146, 12, 15, ID.COAL],
+    ]) {
+      for (let x = x0; x <= x1; x++) for (let y = ground(X(x)) + d0; y <= ground(X(x)) + d1; y++) set(X(x), y, t);
+    }
+    for (const x of [14, 28, 92, 108, 124, 140, 156]) put(X(x), ground(X(x)) - 1, ID.SAPLING);
+    for (const [x0, len] of [[34, 8], [112, 7]]) {
+      const a = Math.min(X(x0), X(x0 + len));
+      rect(a, ground(a) - 3, a + len, ground(a) - 1, ID.WOOD, false);
+    }
+    for (const [cx, r] of [[22, 5], [134, 6]]) disc(X(cx), ground(X(cx)) - r + 1, r, ID.STONE, false);
+    for (let x = 6; x < 170; x += 21) put(X(x), ground(X(x)) - 1, ID.FLOWER);
+    // Three humans.
+    for (const x of [50, 62, 74]) set(X(x), ground(X(x)) - 8, ID.HUMAN);
+  }
+  // Trees along the ridge.
+  for (const x of [170, 186, 200, 214, 230]) put(x, ground(x) - 1, ID.SAPLING);
+}
+
 // ---- the element gallery -------------------------------------------------------
 
 // Every element in the table, each in its own little walled cell, in table
@@ -597,6 +635,7 @@ function machines(world) {
 export const SCENES = [
   { key: 'start', name: 'Starting area', build: startingArea },
   { key: 'wilderness', name: 'Wilderness (for humans)', build: wilderness },
+  { key: 'tribes', name: 'Two tribes (for humans, at war)', build: twoTribes },
   { key: 'creatures', name: 'Creatures', build: creatures, showcase: true },
   { key: 'gallery', name: 'Every element (stress test)', build: gallery, showcase: true },
   { key: 'lab', name: 'Physics lab', build: physicsLab, showcase: true },

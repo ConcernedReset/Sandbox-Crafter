@@ -907,6 +907,42 @@ export const WORLD_ELEMENTS = [
     desc: 'Makes a camp, gathers wood into a pile and lights a campfire by rubbing sticks, builds a little stone hut beside it to shelter from cold and rain, and runs from fire, lava and acid.',
     hint: 'Lightning striking Clay, as in the old stories of people shaped from clay.',
   }),
+  // Humans' war machines (aircraft.js, war.js): bodies with their own minds
+  // and no pilot. Not discoveries, and not in the palette. The body colour
+  // is the camp's (war.js picks it).
+  critter('HELICOPTER', 'Helicopter', 'Hcp', ['#556b2f', '#6b7280', '#3b5b7a'], {
+    moves: 'heli', tough: true,
+  }, {
+    cat: null, always: true, life: [1000000, 1000000],
+    shape: {
+      frames: [[
+        '......m......',
+        '.....bbbbww..',
+        'b...bbbbbbbw.',
+        'bbbbbbbbbbbbb',
+        '....bbbbbbbb.',
+        '.....s....s..',
+        '...ssssssss..',
+      ]],
+      palette: {
+        b: ['#556b2f', '#6b7280', '#8b6f47', '#3b5b7a', '#7a3b3b', '#4a6a5a'],
+        w: ['#9fd3e8'],
+        m: ['#3a3d42'],
+        s: ['#2e3034'],
+      },
+    },
+    desc: 'A camp\'s helicopter. It waits on its pad and flies out on raids, or up to drive off raiders, with a fast little gun it has to get close to use.',
+  }),
+  critter('MISSILE', 'Missile', 'Msl', ['#e6e6e2', '#c8402e', '#a8382a'], {
+    moves: 'missile', tough: true,
+  }, {
+    cat: null, always: true, life: [1000000, 1000000],
+    shape: {
+      frames: [['.n.', '.b.', '.b.', 'fbf', 'fbf']],
+      palette: { n: ['#c8402e'], b: ['#e6e6e2'], f: ['#a8382a'] },
+    },
+    desc: 'A camp\'s missile: it waits in its launch tube until a raid, then flies at the enemy camp and blows a crater where it lands. Anything that damages it sets it off.',
+  }),
   {
     key: 'CAMPFIRE', name: 'Campfire', sym: 'Cmp', cat: 'energy', state: SOLID, strength: 0,
     colors: ['#ff8a2a', '#ffb03a', '#ff6a1a', '#ffd05a'], density: 1, temp: 45, holdTemp: true, conduct: 0.05,

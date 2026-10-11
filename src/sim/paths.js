@@ -31,6 +31,9 @@ export const MOVE = { start: 0, walk: 1, dig: 2, climb: 3 };
 const MAX_REPLANS = 6; // plans for one target before it walks straight at it instead
 const WALL_EVERY = 12, DIG_EVERY = 8; // steps a cell climbed, and a cell dug (humans.js)
 const NO_POSE = 255;
+// War machines (aircraft.js): a body it can't walk through, as solid as
+// rock (other creatures move, and humans walk through each other).
+const MACHINE = Uint8Array.from(DEFS, (d) => (d.critter && (d.critter.moves === 'heli' || d.critter.moves === 'missile') ? 1 : 0));
 
 // A body of this kind: the cells it can cover, as [across, up] from its
 // feet, facing either way in either walking frame (so whatever it's in,
@@ -135,7 +138,7 @@ export const Paths = {
 
   // Is cell (x, y) solid (or powder): in a body's way, and ground to stand on?
   solidAt(x, y) {
-    return this.inBounds(x, y) && this.builtAt(y * this.w + x);
+    return this.inBounds(x, y) && (this.builtAt(y * this.w + x) || MACHINE[this.type[y * this.w + x]] === 1);
   },
 
   // Room for body `body` with its feet at (x, y): nothing solid, and
@@ -158,7 +161,7 @@ export const Paths = {
       const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
       if (!this.inBounds(cx, cy)) return false;
       const t = this.type[cy * this.w + cx];
-      if (t === 0 || SHAPED[t]) continue;
+      if (t === 0 || (SHAPED[t] && !MACHINE[t])) continue;
       if (DANGER[t]) return false;
       const s = DEFS[t].state;
       if (s === SOLID || s === POWDER) return false;
@@ -212,7 +215,7 @@ export const Paths = {
         if (this.isInside(cx, cy) && this.onBoards(x, y)) return 2;
         continue;
       }
-      if (SHAPED[t]) continue;
+      if (SHAPED[t] && !MACHINE[t]) continue;
       const s = DEFS[t].state;
       if (s === SOLID || s === POWDER) return 2;
       if (s === LIQUID && !DANGER[t]) wet = true;
@@ -251,6 +254,7 @@ export const Paths = {
       const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
       if (!this.inBounds(cx, cy)) return -1;
       const c = cy * this.w + cx, t = this.type[c];
+      if (MACHINE[t]) return -1; // not a war machine either
       if (t === 0 || SHAPED[t] || body.has[(k + dk + 32) * 64 + up + du + 32] === 1) continue;
       if (DANGER[t]) return -1;
       if (!this.builtAt(c)) continue;
