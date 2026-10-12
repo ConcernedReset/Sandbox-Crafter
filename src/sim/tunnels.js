@@ -17,9 +17,9 @@ import {
 const { POWDER, LIQUID } = State;
 const { WOOD, SCAFFOLDING } = ID;
 const SCAFFOLD_CUT = 4; // scaffolding cut from each piece of wood
-const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
+export const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
 const BOX_UP = 6; // a spot's box: 3 wide, 6 tall
-const NEW_COST = 4; // digging a new spot of tunnel counts as walking this many
+export const NEW_COST = 4; // digging a new spot of tunnel counts as walking this many
 const SHAFT_COST = 1.5; // and climbing a spot of shaft as this many
 const CLIMB_EVERY = 6; // steps per spot climbed up or down a shaft
 export const TUNNEL_LINING = 24; // lining it wants in hand before it tunnels: scaffolding, and 4 for each wood
@@ -676,7 +676,11 @@ export const Tunnels = {
       this.endTunnel(b);
       return;
     }
-    if (t.legs.length === 0 || !b.fetchSet[this.type[t.ty * this.w + t.tx]]) {
+    if (t.legs.length === 0 || (!t.sap && !b.fetchSet[this.type[t.ty * this.w + t.tx]])) {
+      if (t.sap) { // a tunneller's, at its end (grudges.js)
+        this.sapArrived(e, b);
+        return;
+      }
       const n = this.wantsMore(b) ? this.findDeposit(e, b.camp, b.fetchSet, this.digLimit(b), SEAM_R) : -1;
       if (n < 0) {
         this.endTunnel(b);
@@ -694,7 +698,7 @@ export const Tunnels = {
       t.ty = (n / this.w) | 0;
       t.legs = legs;
     }
-    if (++b.pace < DIG_EVERY) return;
+    if (++b.pace < (t.every ?? DIG_EVERY)) return;
     b.pace = 0;
     const leg = t.legs[0], x = e.x + leg.dx, y = e.y + leg.dy;
     const r = this.workSpot(e, b, x, y);
@@ -719,6 +723,7 @@ export const Tunnels = {
     b.stuck = 0;
     b.bailed = 0;
     this.growTunnel(t, x, y, leg.dx, leg.dy);
+    if (t.sap) this.sapDug(e, x, y, leg.dx, leg.dy);
     if (--leg.n === 0) t.legs.shift();
   },
 

@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,730 tests, all passing, in two or three minutes (most of it the human situations)
+npm test    # node --test: about 1,750 tests, all passing, in two or three minutes (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -47,6 +47,7 @@ else; `test/build.test.js` checks the bundle runs.
 | `src/render/renderer.js` | Draws the grid, the Gas and Glow effects, particles, minimap; heat and pressure views |
 | `src/sim/war.js` | Humans' war: building the helipad, anti-air gun and missile launcher (the engineer), the anti-air gun and its shells, raids, births, mending the hut |
 | `src/sim/aircraft.js` | The helicopter and missiles: shaped creatures with minds of their own (`e.craft`): flying, shooting, craters |
+| `src/sim/grudges.js` | Each camp's anger at the others, hitting back (a raid, or a tunneller's C4 under the enemy hut, wired home to a plunger), and charges going off |
 | `src/sim/paths.js` | Overland route planning for humans: A* over the places a body can stand or hang (`findPath`), following the plan move by move (`followPath`, `planWay`) |
 | `src/render/ai-overlay.js` | Show spheres of influence / Show AI data: camp ranges, huts, lawns, tunnels, claims, members (`drawInfluence`); each human's trail, route, target and goal label (`aiPlan`, `drawAI`, `AITrails`), drawn on the canvas after the picture (`Renderer.showInfluence`, `showAI`) |
 | `src/render/tree-view.js` | Draws the recipe tree under the game; drag, zoom and click handling |
@@ -400,6 +401,84 @@ else; `test/build.test.js` checks the bundle runs.
   arrow; the renderer's `paintWar` draws shells, barrels, rotors and a
   missile's flame; `cellNotes` names machine parts. Tested in
   `test/war.test.js`. Keep it game-only, like the gun.
+- **Grudges** (`grudges.js`): `camp.anger` (0..`ANGER_MAX` 100) at
+  `camp.grudge` (the camp that last angered it), raised by `anger(camp,
+  by, n)`: `pelletHits` now takes the shooter (a human's or a
+  helicopter's camp) and calls `struck` (`ANGER_HIT` 2, and
+  `brain.hitBy`/`hitAt`); `forgetCreature` calls `mourn` (dead within
+  `KILL_WINDOW` of such a hit: `ANGER_KILL` 25); `detonate` calls
+  `missileLanded` (`ANGER_MISSILE` 50 to camps within `ANGER_NEAR_R`);
+  a charge going off, `ANGER_BLAST` 60. `campAnger` runs from
+  `campChores` (once a second): each enemy human / flying helicopter
+  within `ANGER_R` (80) adds 1 / 2 and sets `camp.enemyAt`; with none
+  it cools `ANGER_COOL` (0.25), but not from full. At full and
+  `CALM_FOR` (1,800 steps) after the last enemy near, `hitBack`: with
+  `wmdReady` (a grown helicopter or loaded missile) `startRaid(camp,
+  enemy)` (which now takes the target; anger to 0); else `startSap`
+  picks a tunneller (a pickaxe, not the engineer, not raiding) into
+  `camp.sap`: `{ id, enemy, side, stage, ... }`. `sapWork` (in
+  `chooseWork` right after `raidWork`) runs it by stage: 'gathering'
+  (`sapGather`: gunpowder kneaded into `SAP_C4` (8) C4 items at
+  `SAP_POWDER` (2) each, keeping `AMMO_LOW` for its gun; by the fire,
+  camp-mates within `POOL_R` hand over theirs over `AMMO_LOW`
+  (`sapPool`; not the engineer or raiders); then `sapPlan` and metal for
+  the wire estimated from the plan, `WIRE_PER_METAL` 20),
+  'digging' (`sapDigWork`: wood for lining under `TUNNEL_LINING`, from
+  as far as `SAP_WOOD_R`, but after `WOOD_TRIES` trips with no spot dug
+  it digs with what it has; more lining in hand counts as headway for
+  `SAP_STALL`; then `b.tun` with
+  `sap: true` and `every: SAP_DIG_EVERY` (4), job 'tunnelling', which
+  tunnels.js's `tunnelGo`/`tunnelDig` dig as for mining but call
+  `sapDug` per spot and `sapArrived` at the end; `sapPlan` continues
+  from `s.endX/endY`, or takes the cheapest start whose run passes
+  `pathClear` (`PLAN_TRIES` per depth): a spot on its own camp's tunnels
+  (`netDistances` from its entrances within `OWN_R` and nearer it than
+  the enemy, plus `NEW_COST` a spot dug) or a new entrance on the enemy
+  side; to `sapTarget`: `SAP_DEPTH` (10) under the enemy hut's middle,
+  or the next of `DEPTHS`, down to 42, below the miners' tunnels (in
+  Two tribes, 36: nothing shallower kept clear of them, not even a run
+  that only touched them). In Two
+  tribes the near entrances were all too close to the camp's own mine
+  workings; planning only from new entrances found no way at all),
+  'charging' (`sapCharge`: `chargeCells`, the cells against its spot
+  farthest ahead, filled a cell every `PLACE_EVERY` with `putDown`;
+  then a charge in `world.charges`), 'wiring' (`sapWire`: out through
+  `leaveTunnel`, then `walkTo` the `plungerSpot` (`PLUNGER_U` past the
+  lawn, out to `PLUNGER_FAR` more, on the side it came out, else the
+  other: ground with no tunnel under it; the plunger 3 cells nearer the
+  camp); with no such spot (a camp's ground cratered by raids) or no way
+  there, `plungerHere` puts it at the wire's end where it stands; `layWire` lays Copper under or
+  beside its feet as it moves, joined to the end so far by `joinWire`,
+  the cheapest short run (Dijkstra with a bucket per cost) through
+  `wireOK` cells, or open air at `AIR_COST` (round a cratered tunnel
+  mouth the wire is strung across the gap; ground-only, it broke there),
+  never a tunnel's inside; a cell of wire per 1/20 metal; `putDown`, so `madeByHuman`
+  keeps miners off it, and lining it replaces loses `LINED`), 'firing'
+  (`sapFire`: kneel `SAP_PRESS`, `sparkAt` the plunger cell; the spark
+  runs along the copper and `updateSpark` ignites the C4). Anything it
+  can't get on with just now (`powderFor`/`startMining` 'stuck', no
+  wood, no plan) makes it wait by the fire `SAP_WAIT` (`sapWait`); it
+  gives up (`endSap(camp, true)`: anger back to full, `sapRetry` after
+  `SAP_RETRY`) after `SAP_GATHER_FOR` gathering, `SAP_STALL` without a
+  spot dug, `SAP_FOR` in all, `SAP_FIZZLE` after pushing with no bang,
+  or if it dies or leaves (`leaveCamp`); `strayed` ignores it, and
+  `startRaid` never takes it. `stepCharges` (from `stepWar`, which now
+  also runs while there are charges): a charge any of whose cells isn't C4
+  any more is blown `BLOW_DELAY` later (`blowCharge`: `crater`s from
+  the charge up to the hut's floor, at most `BLOW_STEP` apart:
+  `BLOW_CHARGE`, `BLOW_MID`, `BLOW_TOP`; whatever set it off).
+  `leaveCamp` no longer splices a camp that's already gone
+  (`splice(-1)` dropped another). Overlay: `campLabel` shows anger and
+  the tunnel stage, `aiPlan` the tunneller's jobs, `paintWar` the
+  plunger, `cellNotes` the charge, wire and plunger. Tested in
+  `test/grudges.test.js` (camp helpers shared with war.test.js in
+  `test/camps.js`). Game-only, like the rest of the war. In Two tribes
+  long runs (6 seeds, 100,000 steps) camps hit back with raids in every
+  seed, but no tunnel bomb went off: tunnellers were sent, and one dug
+  201 spots, packed its charge and wired it back to the surface, but late
+  on the camps run short of salt (gunpowder), metal and wood within reach,
+  and the ground round them is cratered by raids (the plunger spot and
+  the wire's way out). The test field shows the whole job working.
 - **Tunnels** (`tunnels.js`): mining digs tunnels. A spot is where a
   human's feet go; its inside is the 3x6 body box. `workSpot` lines first
   (`looseRound`: powders with the inside below or diagonally below are

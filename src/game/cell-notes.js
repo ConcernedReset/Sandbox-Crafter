@@ -1,6 +1,7 @@
 // Extra notes for the inspect line about cell i: a wall that lets things
 // through, a time zone, a portal, a creature's health (and what a human or
-// a war machine is doing), and which of a camp's war machines it's part of.
+// a war machine is doing), which of a camp's war machines it's part of, and
+// a tunnel bomb's charge, wire or plunger.
 
 import { PASS_ORDER } from '../sim/walls.js';
 import { inventoryNote } from '../sim/humans.js';
@@ -37,6 +38,12 @@ export function cellNotes(world, i) {
       const ln = camp.launcher;
       notes.push(ln.missile ? 'launcher, missile ready' : `launcher, loaded gunpowder ${ln.powder} of ${MISSILE_POWDER}, metal ${ln.metal} of ${MISSILE_METAL}`);
     } else if (camp.pad?.set.has(i)) notes.push('helipad');
+    if (camp.sap?.plug?.cells.includes(i)) notes.push(camp.sap.firedAt >= 0 ? 'plunger, pushed' : 'plunger, for a tunnel bomb');
+  }
+  // A tunnel bomb (grudges.js)?
+  for (const ch of world.charges) {
+    if (ch.cells.includes(i)) notes.push('tunnel bomb: C4 under an enemy hut');
+    else if (ch.wire.has(i)) notes.push('wire from a tunnel bomb to its plunger');
   }
   return notes;
 }

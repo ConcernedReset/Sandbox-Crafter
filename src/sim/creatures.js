@@ -50,6 +50,7 @@ export function initCreatures(world) {
   world.humanMade = new Map(); // cell -> what a human put there (humans.js)
   world.shots = []; // pellet tracers, drawn for a few frames (humans.js)
   world.flak = []; // anti-air shells in flight (war.js)
+  world.charges = []; // tunnel bombs laid (grudges.js)
   world.footA = new Int32Array(64); // scratch for working out footprints
   world.footB = new Int32Array(64);
 }
@@ -95,6 +96,7 @@ export const Creatures = {
   // Drop e from the lists (its cells are left as they are).
   forgetCreature(e) {
     if (e.brain !== null) { // humans.js
+      this.mourn(e); // (grudges.js)
       this.dropInventory(e);
       this.leaveCamp(e);
     }

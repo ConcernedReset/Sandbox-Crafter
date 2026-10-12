@@ -139,6 +139,7 @@ export function newBrain() {
     bailed: 0, // liquid cells bailed out of the spot it's clearing
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     raid: null, // the camp it's raiding (war.js)
+    hitBy: null, hitAt: 0, // the camp whose bullet last hit it, and when (grudges.js)
     war: null, // the war machine it's building or loading (war.js)
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
@@ -736,6 +737,7 @@ export const Humans = {
       return;
     }
     if (this.raidWork(e, b, camp)) return; // war.js: a raid comes before shelter
+    if (this.sapWork(e, b, camp)) return; // grudges.js: and a tunnel job
     if (this.shouldShelter(e, camp)) {
       b.job = 'sheltering';
       return;
@@ -785,7 +787,7 @@ export const Humans = {
   // steps on end (carried off, trapped, or lost its way back)?
   strayed(e, b) {
     const camp = b.camp;
-    if (camp === null || b.raid !== null || Math.max(Math.abs(e.x - camp.x), Math.abs(e.y - camp.y)) <= CAMP_AWAY_R) {
+    if (camp === null || b.raid !== null || this.isSapper(e) || Math.max(Math.abs(e.x - camp.x), Math.abs(e.y - camp.y)) <= CAMP_AWAY_R) {
       b.awayAt = -1;
       return false;
     }
@@ -1000,7 +1002,7 @@ export const Humans = {
       if (t !== 0 && !this.ownCell(e, c)) {
         const o = this.creatureAt(c);
         if (o !== null) {
-          this.pelletHits(o, c);
+          this.pelletHits(o, c, e);
           break;
         }
         const s = DEFS[t].state;
@@ -1012,9 +1014,12 @@ export const Humans = {
     this.shots.push({ x0, y0, x1: cx, y1: cy, ttl: TRACER });
   },
 
-  // A pellet hits creature o at cell c: armour takes it half the time;
-  // otherwise that pixel is lost.
-  pelletHits(o, c) {
+  // A pellet fired by e hits creature o at cell c: armour takes it half the
+  // time; otherwise that pixel is lost. One of another camp's angers o's
+  // camp (grudges.js).
+  pelletHits(o, c, e = null) {
+    const by = e === null ? null : e.brain !== null ? e.brain.camp : e.craft !== null ? e.craft.camp : null;
+    if (by !== null && o.brain !== null && o.brain.camp !== null && o.brain.camp !== by) this.struck(o, by);
     if (o.brain !== null && o.brain.armour > 0 && this.rand() < 0.5) {
       o.brain.armour--;
       return;
@@ -1291,6 +1296,11 @@ export const Humans = {
       case 'loading the launcher': this.loadLauncher(e, b); break;
       case 'raiding': this.raidMarch(e, b); break;
       case 'going home': this.goHome(e, b); break;
+      // grudges.js
+      case 'tunnelling': this.sapTunnel(e, b); break;
+      case 'placing the charge': this.sapCharge(e, b); break;
+      case 'laying wire': this.sapWire(e, b); break;
+      case 'detonating': this.sapFire(e, b); break;
       default: this.wander(e, b);
     }
   },
@@ -1315,6 +1325,10 @@ export const Humans = {
       raidAt: 0, // when it next raids (0: not yet, -1: raiding now)
       raid: null, raids: 0, // the raid under way { enemy, until, start, party }, and how many so far
       birthAt: 0, // when it next gains a human (0: not counting yet)
+      // Grudges (grudges.js): how angry it is and with whom, when an enemy
+      // was last near, its tunnel job, and how it has hit back.
+      anger: 0, grudge: null, enemyAt: 0,
+      sap: null, sapRetry: 0, strikes: 0, sapsDone: 0, sapsFailed: 0,
     };
     this.camps.push(camp);
     return camp;
@@ -1787,8 +1801,10 @@ export const Humans = {
     if (camp.lighter === e.id) camp.lighter = 0;
     if (camp.flattener === e.id) camp.flattener = 0;
     if (camp.engineer === e.id) camp.engineer = 0;
+    if (camp.sap !== null && camp.sap.id === e.id) this.endSap(camp, true);
     b.raid = null;
-    if (camp.members.size === 0) this.camps.splice(this.camps.indexOf(camp), 1);
+    const k = this.camps.indexOf(camp); // (a camp gone already isn't there: splice(-1) would drop another)
+    if (camp.members.size === 0 && k >= 0) this.camps.splice(k, 1);
     b.camp = null;
   },
 };

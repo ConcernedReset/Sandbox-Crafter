@@ -257,12 +257,15 @@ export function paintHumans(world, pixels, palRGB) {
 // War machines over the picture (war.js, aircraft.js): anti-air shells in
 // flight (a bright head on a short streak), each anti-air gun's barrel
 // pointing where it aims, a helicopter's rotor (a still blade on its pad, a
-// spinning one in the air), and a flying missile's flame. Only over open
-// space (or gas): a blade doesn't cover the hut it's parked on.
+// spinning one in the air), a flying missile's flame, and a tunneller's
+// plunger (grudges.js: a box on the ground with a T-handle, pushed down
+// once it has been pushed). Only over open space (or gas): a blade doesn't
+// cover the hut it's parked on.
 const SHELL_RGB = [255, 246, 214];
 const BARREL_PX = pack(62, 66, 72), ROTOR_PX = pack(40, 42, 46);
 const FLAME_PX = [pack(255, 214, 96), pack(255, 128, 44)];
 const ROTOR_SPIN = [6, 3, 1, 3]; // the blade's reach either side of the hub, frame by frame
+const PLUNGER_BOX = pack(176, 48, 38), PLUNGER_HANDLE = pack(46, 48, 52);
 export function paintWar(world, pixels) {
   const { w, h, type } = world;
   const open = (i) => type[i] === 0 || DEFS[type[i]].state === State.GAS;
@@ -289,6 +292,18 @@ export function paintWar(world, pixels) {
     if (aa === null || !aa.done) continue;
     const cx = Math.cos(aa.aim), cy = Math.sin(aa.aim);
     for (let k = 0; k < BARREL; k++) put(aa.px + Math.round(cx * k), aa.py + Math.round(cy * k), BARREL_PX);
+  }
+  for (const camp of world.camps) {
+    const p = camp.sap?.plug;
+    if (!p) continue;
+    const at = (du, dv) => {
+      const c = world.campCell(camp, p.u + du, p.v + dv);
+      return c < 0 ? [-1, -1] : [c % w, (c / w) | 0];
+    };
+    for (let du = -1; du <= 1; du++) for (const dv of [-1, -2]) put(...at(du, dv), PLUNGER_BOX);
+    const top = camp.sap.firedAt >= 0 ? -3 : -4; // the bar, pushed down
+    for (let dv = -3; dv > top; dv--) put(...at(0, dv), PLUNGER_HANDLE);
+    for (let du = -1; du <= 1; du++) put(...at(du, top), PLUNGER_HANDLE);
   }
   for (const e of world.creatures) {
     const k = e.craft;

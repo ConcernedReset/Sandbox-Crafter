@@ -44,6 +44,7 @@ import { Grounds } from './grounds.js';
 import { Paths } from './paths.js';
 import { Aircraft } from './aircraft.js';
 import { War } from './war.js';
+import { Grudges } from './grudges.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -463,7 +464,7 @@ export class World {
     }
     if (this.zoneBox !== null) this.fastPasses(fromBottom);
     if (this.creatures.length !== 0) this.stepCreatures(); // shaped creatures (creatures.js)
-    if (this.camps.length !== 0 || this.flak.length !== 0) this.stepWar(); // camps at war (war.js)
+    if (this.camps.length !== 0 || this.flak.length !== 0 || this.charges.length !== 0) this.stepWar(); // camps at war (war.js)
     for (let a = 0; a < next.length; a++) if (air.solid[a] >= SEAL_COUNT) next[a] = 1;
     air.next = air.blocked;
     air.blocked = next;
@@ -1541,4 +1542,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Paths, Trees, Aircraft, War);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Paths, Trees, Aircraft, War, Grudges);

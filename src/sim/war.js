@@ -85,6 +85,7 @@ export const War = {
   // second, each camp on its own beat) births, hut repairs and raids.
   stepWar() {
     if (this.flak.length !== 0) this.stepFlak();
+    if (this.charges.length !== 0) this.stepCharges(); // (grudges.js)
     for (const camp of this.camps) {
       const aa = camp.aa;
       if (aa !== null) {
@@ -133,6 +134,8 @@ export const War = {
         if (camp.pad !== null && camp.pad.roof) camp.pad = null;
       }
     }
+    // Anger, and hitting back (grudges.js).
+    this.campAnger(camp);
     // Raids: the clock starts with the camp's first war machine.
     if (camp.raid !== null) {
       if (this.raidOver(camp)) this.endRaid(camp);
@@ -206,14 +209,13 @@ export const War = {
   // engineer, nearest the enemy first), its helicopter and its missile
   // against the nearest other camp. False if there's nobody to raid, or
   // nothing to raid with.
-  startRaid(camp) {
-    const enemy = this.nearestRival(camp);
+  startRaid(camp, enemy = this.nearestRival(camp)) {
     if (enemy === null) return false;
     const want = Math.ceil(camp.members.size * RAID_SHARE);
     const pick = [];
     for (const id of camp.members) {
       const o = this.creatureById[id];
-      if (!o || o.brain === null || o.grow >= 0 || id === camp.engineer) continue;
+      if (!o || o.brain === null || o.grow >= 0 || id === camp.engineer || camp.sap?.id === id) continue;
       const b = o.brain;
       if (!this.armed(b) || this.has(b, GUNPOWDER) < AMMO_LOW || b.raid !== null) continue;
       if (b.job === 'swimming' || b.job === 'fleeing' || this.isInside(o.x, o.y)) continue;

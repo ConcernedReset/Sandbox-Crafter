@@ -498,6 +498,7 @@ export const Aircraft = {
     if (k.camp !== null && k.camp.launcher !== null && k.camp.launcher.missile === e) k.camp.launcher.missile = null;
     this.removeCreature(e);
     this.crater(nose % this.w, (nose / this.w) | 0, CRATER_R);
+    if (k.camp !== null) this.missileLanded(nose % this.w, (nose / this.w) | 0, k.camp); // (grudges.js)
   },
 
   // A crater of radius r at (x, y): the middle blown away (into smoke and a

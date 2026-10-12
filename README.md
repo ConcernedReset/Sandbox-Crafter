@@ -642,6 +642,26 @@ Each frame (60 per second):
    (or in its tube) sets it off. With the AI view on, helicopters and
    missiles are labelled with what they're doing, and each camp's label
    shows its war machines and when it next raids.
+
+   Each camp also has an **anger** level, from 0 to 100, aimed at the camp
+   that last angered it. It rises when another camp's bullets hit its
+   people (more if one of them dies soon after), when an enemy missile
+   lands in the camp, and every second that an enemy human or helicopter is
+   close by; with nobody near, it slowly cools. At 100, once the enemy has
+   been gone for 30 seconds, the camp **hits back**. With a helicopter or a
+   missile ready it raids at once (which counts as its next raid). With
+   neither it sends a **tunneller**: one human kneads gunpowder into 8 cells
+   of C4 (its camp-mates by the fire hand over what they can spare), mines
+   metal for wire and fetches wood to line the tunnel, then digs from its
+   camp (from the end of its own mine tunnels, if they lead that way) all
+   the way to a spot 10 cells under the middle of the enemy's hut (deeper,
+   if other tunnels are in the way). It packs the end of the tunnel with the C4,
+   walks back out laying copper wire through the tunnel's wall and on along
+   the ground to a plunger just past its lawn, kneels and pushes it: a
+   spark runs down the wire, the C4 goes off, and the blast craters up
+   through the hut above. Cut the wire and the spark never gets there.
+   Each camp's label in the AI view shows its anger and how its tunnel job
+   is going.
 9. **Trees**: a **Sapling** (Seed + Fertilizer) dropped on dirt, mud, grass
    or sand takes root and grows: its trunk climbs to a height of its own (15
    to 45, two cells wide when it's tall), a few branches sprout leaves, and

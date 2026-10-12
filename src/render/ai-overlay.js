@@ -16,6 +16,7 @@ import {
 } from '../sim/humans.js';
 import { DEFS } from '../sim/elements.js';
 import { AA_CAP } from '../sim/war.js';
+import { SAP_C4 } from '../sim/grudges.js';
 
 export const CAMP_COLORS = ['#f6c344', '#5ec8f2', '#f2708e', '#8be06a', '#c38bf2', '#f29a4b'];
 
@@ -37,6 +38,10 @@ const GOAL = {
   shooting: ['fight', '#ff4d4d'],
   hunting: ['fight', '#ff4d4d'],
   raiding: ['fight', '#ff4d4d'],
+  tunnelling: ['sap', '#ff8c42'],
+  'placing the charge': ['sap', '#ff8c42'],
+  'laying wire': ['sap', '#ff8c42'],
+  detonating: ['sap', '#ff8c42'],
   'going home': ['rest', '#6fa8ff'],
   fleeing: ['flee', '#ff5fd2'],
   'resting by the fire': ['rest', '#6fa8ff'],
@@ -165,6 +170,27 @@ export function aiPlan(world, e) {
     case 'going home':
       if (camp) target = [camp.x, camp.y];
       break;
+    // A tunneller's (grudges.js).
+    case 'tunnelling':
+      if (b.tun) {
+        target = [b.tun.tx, b.tun.ty];
+        path = tunnelPath(world, e, b.tun);
+        if (camp?.sap) detail = `under Camp ${campNumber(camp.sap.enemy)}, ${camp.sap.dug} dug`;
+        if (b.tun.legs === null) detail += b.tun.entrance ? ', to a new entrance' : ', through the tunnels';
+      }
+      break;
+    case 'placing the charge':
+      if (camp?.sap) detail = `${camp.sap.placed.length}/${SAP_C4}`;
+      break;
+    case 'laying wire':
+    case 'detonating': {
+      const s = camp?.sap;
+      if (s) {
+        if (s.plug) target = [s.plug.kx, s.plug.ky];
+        detail = s.firedAt >= 0 ? 'pushed' : `${s.wire.length} cells${s.short ? ', out of wire' : ''}`;
+      }
+      break;
+    }
     default:
       if (b.goalX >= 0) target = [b.goalX, b.goalY];
   }
@@ -202,6 +228,9 @@ export function campLabel(world, camp) {
   else if (camp.pad) parts.push('heli …');
   if (camp.aa) parts.push(camp.aa.done ? `AA ${camp.aa.ammo}` : 'AA …');
   if (camp.launcher) parts.push(camp.launcher.missile ? 'missile ✓' : camp.launcher.done ? 'no missile' : 'launcher …');
+  // Anger, and its tunnel job (grudges.js).
+  if (camp.anger > 0) parts.push(`anger ${Math.round(camp.anger)}${camp.grudge && world.camps.includes(camp.grudge) ? ` at Camp ${campNumber(camp.grudge)}` : ''}`);
+  if (camp.sap) parts.push(`tunnel: ${camp.sap.stage}${world.tick < camp.sap.waitUntil ? ` (waiting for ${camp.sap.why})` : ''}`);
   if (camp.raid) parts.push(`raiding Camp ${campNumber(camp.raid.enemy)}`);
   else if (camp.raidAt > 0) parts.push(`raid in ${Math.max(0, camp.raidAt - world.tick)}`);
   if (away > 0) parts.push(`${away} away`);
