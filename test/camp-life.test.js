@@ -7,11 +7,21 @@ import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
 import { METALS } from '../src/sim/humans.js';
 import { PLANT_GAP, PLANT_R, WOOD_LOW, PLANT_N } from '../src/sim/planting.js';
+import { VEIN_R } from '../src/sim/tunnels.js';
 import { aiPlan, campLabel } from '../src/render/ai-overlay.js';
 import { run, fillRect } from './helpers.js';
 import { field, settle, CHORES } from './camps.js';
 
 const empty = (w, b, t) => { while (w.takeOut(b, t)); };
+// Coal in place of what's there.
+const ore = (w, x0, y0, x1, y1) => {
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      w.clearCell(y * w.w + x);
+      w.spawn(y * w.w + x, ID.COAL);
+    }
+  }
+};
 
 test('a human short of gunpowder is handed what camp-mates by the fire can spare (they keep enough for their guns)', () => {
   const w = field(300, 1);
@@ -57,6 +67,37 @@ test('wood comes from camp-mates with nothing to do; raiders and the tunneller n
   // And only by the fire.
   c.brain.job = 'resting by the fire';
   assert.equal(w.share(a, a.brain, { ...camp, x: camp.x + 100 }, 'wood', 20), 0, 'away from the fire, nobody hands over anything');
+});
+
+test("a second miner leaves a vein a camp-mate's tunnel is on its way to, and mines it through that tunnel once it's there", () => {
+  const w = field(320, 7);
+  const { camp, people: [a, b] } = settle(w, 160, 2);
+  const lawn = w.lawn(camp), g = w.h - 30;
+  ore(w, camp.x + lawn.u1 + 20, g + 14, camp.x + lawn.u1 + 30, g + 17); // one vein
+  assert.ok(w.startMining(a, a.brain, camp, 'coal', 4), 'the first sets off');
+  const t = a.brain.tun;
+  assert.ok(!w.startMining(b, b.brain, camp, 'coal', 4), 'the second leaves it be');
+  assert.equal(b.brain.tun, null);
+  // The first gets there.
+  for (let f = 0; f < 8000 && Math.max(Math.abs(a.x - t.tx), Math.abs(a.y - t.ty)) > VEIN_R; f++) w.step();
+  assert.ok(Math.max(Math.abs(a.x - t.tx), Math.abs(a.y - t.ty)) <= VEIN_R, 'the first got there');
+  const entrances = [...w.tunnels.nodes.values()].filter((n) => n.entrance).length;
+  b.brain.skip.delete('coal');
+  b.brain.job = 'wandering';
+  assert.ok(w.startMining(b, b.brain, camp, 'coal', 4), 'now the second sets off');
+  assert.equal(b.brain.tun.entrance, false, 'through the tunnel there is, not a new entrance');
+  assert.equal([...w.tunnels.nodes.values()].filter((n) => n.entrance).length, entrances);
+});
+
+test('the camp sends a miner to the vein that takes the least digging, not just the nearest', () => {
+  const w = field(320, 8);
+  const { camp, people: [a] } = settle(w, 160, 1);
+  const lawn = w.lawn(camp), g = w.h - 30;
+  const near = camp.x + lawn.u1 + 6, far = camp.x + lawn.u1 + 40;
+  ore(w, near, g + 22, near + 3, g + 24); // nearer it, but deep
+  ore(w, far, g + 8, far + 3, g + 10); // farther, but just under the ground
+  assert.ok(w.startMining(a, a.brain, camp, 'coal', 4));
+  assert.ok(Math.abs(a.brain.tun.tx - far) <= 4, `the shallow one (${a.brain.tun.tx}: near ${near}, far ${far})`);
 });
 
 test('a camp whose trees have run out plants saplings round it, spaced out past its lawn, and they grow', () => {

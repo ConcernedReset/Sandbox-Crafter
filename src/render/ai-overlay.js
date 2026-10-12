@@ -245,6 +245,8 @@ export function campLabel(world, camp) {
   return parts.join(' · ');
 }
 
+const PASS_WORDS = { approach: 'coming in', dive: 'diving in', pass: 'strafing pass', climb: 'climbing away' };
+
 // What a war machine (aircraft.js) is up to: { color, label, target, path }.
 export function craftPlan(world, e) {
   const k = e.craft, health = `${e.n - e.lost}/${e.n}`;
@@ -260,8 +262,8 @@ export function craftPlan(world, e) {
     case 'home': what = 'flying home'; target = [k.homeX, k.homeY]; break;
     case 'down': what = 'down'; break;
     default:
-      what = k.goal === k.camp ? 'defending' : `raiding Camp ${campNumber(k.goal)}`;
-      target = foe ? [foe.x, foe.y] : [k.goal.x, k.goal.y];
+      what = (k.goal === k.camp ? 'defending' : `raiding Camp ${campNumber(k.goal)}`) + (k.phase ? `: ${PASS_WORDS[k.phase]}` : '');
+      target = k.cx !== undefined ? [k.cx, k.cy] : [k.goal.x, k.goal.y];
   }
   const at = foe && k.state === 'flying' ? `, at a ${DEFS[foe.kind].name.toLowerCase()}` : '';
   return { color, label: `helicopter ${what}${at} (${health})`, target, path: target ? [[e.x, e.y], target] : null };

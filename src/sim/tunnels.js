@@ -30,7 +30,9 @@ const TUNNEL_GAP = 4; // solid cells kept between a new run and other tunnels (c
 const START_R = 8; // except this near where it branches off
 const SEAM_START_R = 5; // or, going on along a seam, this near where it is (not back alongside its own run)
 const PLAN_TRIES = 30; // the cheapest plans it checks for clearance
-const DEPOSIT_TRIES = 4; // deposits it tries to plan a tunnel to before it gives up on that resource a while
+export const VEIN_CHOICES = 5; // veins of a resource the camp weighs up for a miner (startMining)
+export const VEIN_R = 12; // deposits this near count as the same vein
+export const VEIN_WAIT = 600; // a vein a camp-mate's tunnel is on its way to: the others leave it this long
 const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
 const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
 const ROUTE_NODES = 60000; // spots planAround looks at, at most, for a way round other tunnels
@@ -625,12 +627,13 @@ export const Tunnels = {
   // The cheapest way to tunnel to (tx, ty): from a spot on the network
   // (travel there, then dig), or from a new entrance, whose new run keeps
   // clear of other tunnels (pathClear). { cost, x, y, entrance } or null.
-  planTunnel(e, camp, tx, ty) {
+  // (`dist`: travel costs over the network from e, if worked out already.)
+  planTunnel(e, camp, tx, ty, dist = null) {
     const net = this.tunnels;
     if (net.nodes.size > 0 && (net.gx !== e.gx || net.gy !== e.gy)) return null; // dug under another gravity
     const plans = [];
     if (net.edges.size > 0) {
-      const { dist } = this.netDistances(this.netSources(e).src);
+      if (dist === null) dist = this.netDistances(this.netSources(e).src).dist;
       for (const ed of net.edges.values()) {
         const a = net.nodes.get(ed.a);
         for (let k = 0; k <= ed.len; k++) {
@@ -649,25 +652,41 @@ export const Tunnels = {
     return null;
   },
 
-  // Set off to mine `key` (a RESOURCES key) until it holds `goal`: plan a
-  // tunnel to the nearest deposit it can. Lining first (TUNNEL_LINING in
-  // hand: it gathers wood for it; it goes with less only if there's no more
-  // to be had).
-  // False if there's no way (it skips that one a while).
+  // Set off to mine `key` (a RESOURCES key) until it holds `goal`. The
+  // camp's plan, not just its own: of up to VEIN_CHOICES veins (deposits
+  // VEIN_R apart, nearest first), it leaves alone any a camp-mate's tunnel
+  // is still on its way to (once that one gets there, the way to it runs
+  // through its tunnel), and takes the one the cheapest plan gets to:
+  // travel through the camp's tunnels, and NEW_COST for each spot dug, so
+  // the least digging. Lining first (TUNNEL_LINING in hand: it gathers wood
+  // for it; it goes with less only if there's no more to be had).
+  // False if there's no way (it skips that one a while: a short while if
+  // it's waiting on a camp-mate's tunnel).
   startMining(e, b, camp, key, goal) {
     if ((b.skip.get(key) ?? 0) > this.tick) return false;
-    const set = RESOURCES[key];
-    // The nearest deposit it can plan a tunnel to (one it can't is left
-    // alone a while, and the next nearest tried).
-    let t = -1, plan = null;
-    for (let k = 0; k < DEPOSIT_TRIES && plan === null; k++) {
-      t = this.findDeposit(e, camp, set, this.digLimit(b));
-      if (t < 0) break;
-      plan = this.planTunnel(e, camp, t % this.w, (t / this.w) | 0);
-      if (plan === null) this.banNear(b, t);
+    const set = RESOURCES[key], busy = this.veinsBeingDug(e, camp, key), seen = [];
+    const near = (x, y, p) => Math.max(Math.abs(x - p[0]), Math.abs(y - p[1])) <= VEIN_R;
+    const net = this.tunnels;
+    const dist = net.edges.size > 0 && net.gx === e.gx && net.gy === e.gy ? this.netDistances(this.netSources(e).src).dist : null;
+    let t = -1, plan = null, waiting = false;
+    for (let k = 0; k < VEIN_CHOICES; k++) {
+      const c = this.findDeposit(e, camp, set, this.digLimit(b), Infinity, (x, y) => !seen.some((p) => near(x, y, p)));
+      if (c < 0) break;
+      const cx = c % this.w, cy = (c / this.w) | 0;
+      seen.push([cx, cy]);
+      if (busy.some((p) => near(cx, cy, p))) {
+        waiting = true;
+        continue;
+      }
+      const p = this.planTunnel(e, camp, cx, cy, dist);
+      if (p === null) this.banNear(b, c); // (no way there: left alone a while)
+      else if (plan === null || p.cost < plan.cost) {
+        t = c;
+        plan = p;
+      }
     }
     if (plan === null) {
-      b.skip.set(key, this.tick + BAN_FOR);
+      b.skip.set(key, this.tick + (waiting ? VEIN_WAIT : BAN_FOR));
       return false;
     }
     if (this.liningInHand(b) < TUNNEL_LINING) this.share(e, b, camp, 'wood', Math.ceil((TUNNEL_LINING - this.liningInHand(b)) / SCAFFOLD_CUT));
@@ -686,6 +705,21 @@ export const Tunnels = {
     b.tun = { tx: t % this.w, ty: (t / this.w) | 0, x: plan.x, y: plan.y, entrance: plan.entrance, route: null, legs: null, node: null };
     if (b.tool !== 0) b.held = HELD_PICKAXE;
     return true;
+  },
+
+  // Where its camp-mates' tunnels for `key` are still on their way to:
+  // [x, y] of each target not yet reached (its digger more than VEIN_R
+  // from it).
+  veinsBeingDug(e, camp, key) {
+    const out = [];
+    for (const id of camp.members) {
+      const o = this.creatureById[id];
+      if (!o || o === e || o.brain === null) continue;
+      const t = o.brain.tun;
+      if (t === null || t.sap || o.brain.mineKey !== key || o.brain.job !== 'mining') continue;
+      if (Math.max(Math.abs(o.x - t.tx), Math.abs(o.y - t.ty)) > VEIN_R) out.push([t.tx, t.ty]);
+    }
+    return out;
   },
 
   // Stop mining (done, or it can't go on).

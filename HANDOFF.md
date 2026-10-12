@@ -322,11 +322,19 @@ else; `test/build.test.js` checks the bundle runs.
   only while `craft.mend` (on the pad, `MEND_EVERY` 30). `creatureDies`
   hands them to `craftDies` (a helicopter falls as loose Metal scrap with a
   small blast; a missile `detonate`s). Helicopter (`stepHeli`): 'parked'
-  until `heliCall` (its camp raiding, or an enemy within `DEFEND_R` of
-  home; on a raid it waits `HELI_WAIT` for the missile), 'flying'
-  (`heliFight`: hover `HELI_HOVER` over and `HELI_SIDE` beside the
-  nearest enemy, `pellet` every `HELI_GUN_EVERY` (3) within `HELI_GUN_R`
-  (20); cruise `HELI_CRUISE` over the ground), 'home' when the raid ends,
+  until `heliCall` (its camp raiding, or enemy people within `DEFEND_R`
+  of home: `enemyNear`'s `people`; an enemy helicopter or missile alone
+  doesn't send it up, two of them couldn't fight it out; on a raid it
+  waits `HELI_WAIT` for the missile), 'flying' (`heliFight`: flyby
+  passes centred on the enemy people nearest the goal, or its fire,
+  `k.cx/cy`; `k.phase` 'approach' (out to its own side at `CLIMB_H`),
+  'dive' (to `STRAFE_H` at the near end, `PASS_HALF` out), 'pass'
+  (straight across to the far end, low: `heliToward`'s `low` skips the
+  cruising height), 'climb' (`PASS_OUT` on, up to `CLIMB_H`), then
+  `k.dir` flips and it dives again; a point not reached in `PASS_MAX`
+  is given up on. `heliShoot`: a `pellet` every `HELI_GUN_EVERY` (3)
+  at the nearest enemy, person or aircraft, within `HELI_GUN_R` (20) in
+  sight; cruise `HELI_CRUISE` over the ground), 'home' when the raid ends,
   the defence goes quiet, or it's `HELI_RETREAT` hurt; 'down' with no camp.
   Pellets bounce off it `HELI_ARMOUR` of the time (a missile,
   `MISSILE_ARMOUR`: an anti-air burst is what stops one). Moving (`heliMove`), it
@@ -388,15 +396,14 @@ else; `test/build.test.js` checks the bundle runs.
   roof pad with it: `camp.hut` can now go back to null, so anything reading
   it must check, as `shelter` does). A living helicopter is sent to its
   camp's current pad (`warStep`), and `warCarryingOn`, `warBuild` and
-  `buildHeli` drop a blueprint the camp no longer has. A helicopter
-  fighting another holds off to its side at its height (over it, the two
-  jammed). Five older bugs this showed up: `giveUp` now lets go of a wall
+  `buildHeli` drop a blueprint the camp no longer has. Five older bugs
+  this showed up: `giveUp` now lets go of a wall
   (`climbing = false`; a human clinging in a tree crown, with every plan
   unreachable, held on for ever); `prey` never counts a human (a newborn
   has no brain until its first step, and was hunted); `startMining`
-  tries the next nearest deposit (up to `DEPOSIT_TRIES`, banning each it
-  can't plan a tunnel to with `banNear`) instead of giving up on a
-  resource whenever the nearest is out of reach; a swimmer up against
+  weighs up several deposits (now the camp's plan: see Tunnels), banning
+  each it can't plan a tunnel to with `banNear`, instead of giving up on
+  a resource whenever the nearest is out of reach; a swimmer up against
   a wall it can't climb out at turns round after `SWIM_TURN` strokes
   (`swimBlocked`; it swam into the pond's high side for ever, half a grown
   camp at once); and `findDeposit` skips deposits with liquid within
@@ -528,6 +535,17 @@ else; `test/build.test.js` checks the bundle runs.
   the new run keeps `TUNNEL_GAP` (4) solid cells from every other tunnel
   outside `START_R` (8) of its start (`pathClear`); going on along a seam
   checks the same within `SEAM_START_R` (5), and bans that cell if not.
+  `startMining` plans for the camp, not just the miner: of up to
+  `VEIN_CHOICES` veins (`findDeposit` with a `keep` filter keeping them
+  `VEIN_R` apart, nearest first) it skips any a camp-mate's tunnel for
+  the same resource is still on its way to (`veinsBeingDug`: its digger
+  farther than `VEIN_R` from its target; it skips the resource
+  `VEIN_WAIT`, so it gets on with something else, and once that tunnel
+  is there the cheapest way to the vein runs through it), and takes the
+  cheapest `planTunnel` (travel plus `NEW_COST` a spot: the least new
+  digging; `planTunnel` takes the network distances, worked out once).
+  Before, each human took the deposit nearest itself, and two often dug
+  parallel tunnels, from two new entrances, to one vein.
   Where no straight plan is clear, `planAround` finds a way round other
   tunnels: `spotsBlocked` marks the spots a run can't pass (within
   `TUNNEL_GAP` of a tunnel, out of the world, or open to the sky: never

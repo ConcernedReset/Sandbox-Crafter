@@ -6,10 +6,13 @@
 // pieces, and a missile that loses one goes off.
 //
 // The helicopter waits on its pad (mending while it's there) until its
-// camp raids another, or raiders come near home; then it flies out at
-// cruising height, comes down over the fight, and shoots at whatever of
-// the enemy's it can see, close up, a round every few steps. It flies home
-// when the raid is over, the fight is, or it's badly hit.
+// camp raids another, or raiders (people: not an enemy helicopter or
+// missile) come near home; then it flies out at cruising height and makes
+// flyby passes over the enemy: down low on one side, straight across,
+// climbing away past the far side, round, and back the other way. All the
+// while it shoots, a round every few steps, at whatever enemy it sees
+// close enough. It flies home when the raid is over, the fight is, or it's
+// badly hit.
 //
 // A missile sits in its launch tube until a raid; then it flies straight
 // up, turns toward the enemy's hut, speeding up, and blows a crater in
@@ -25,8 +28,14 @@ const { SOLID, POWDER, LIQUID } = State;
 
 const HELI_EVERY = 1; // steps per cell it flies
 const HELI_CRUISE = 14; // the least it flies above the ground on the way somewhere
-const HELI_HOVER = 10; // how far above (and to the side of) what it's shooting at it hovers
-const HELI_SIDE = 8;
+const HELI_HOVER = 10; // how high it comes in over its pad before it sets down
+// Flybys: a pass runs PASS_HALF either side of the enemy, STRAFE_H over
+// them; past the far end it climbs away, PASS_OUT on, to CLIMB_H, and comes
+// round. A point of the pattern within PASS_NEAR is reached; one not
+// reached in PASS_MAX steps (a hill in the way, say) is given up on.
+export const PASS_HALF = 40, PASS_OUT = 15, STRAFE_H = 10, CLIMB_H = 30;
+const PASS_NEAR = 2, PASS_MAX = 300;
+const NEXT_PHASE = { approach: 'dive', dive: 'pass', pass: 'climb', climb: 'dive' };
 export const HELI_GUN_R = 20; // it fires at what's this close
 export const HELI_GUN_EVERY = 3; // steps between rounds
 const HELI_SPREAD = 0.06; // radians either way a round may stray
@@ -120,12 +129,13 @@ export const Aircraft = {
   // ---- the helicopter -----------------------------------------------------------
 
   // Where to go and fight: the camp its own is raiding, or its own with
-  // raiders (or their helicopter) near; null if neither.
+  // raiders near (people: an enemy helicopter alone doesn't send it up,
+  // two of them can't fight it out); null if neither.
   heliCall(k) {
     const camp = k.camp;
     if (camp === null) return null;
     if (camp.raid !== null && this.camps.includes(camp.raid.enemy)) return camp.raid.enemy;
-    return this.enemyNear(camp, camp.x, camp.y, DEFEND_R) !== null ? camp : null;
+    return this.enemyNear(camp, camp.x, camp.y, DEFEND_R, true) !== null ? camp : null;
   },
 
   // Is creature o one of camp's enemies: a human of another camp, or
@@ -143,11 +153,12 @@ export const Aircraft = {
     return k !== null && (k.kind === 'heli' ? k.state !== 'parked' : k.state === 'flying');
   },
 
-  // camp's nearest enemy within r of (x, y): a creature, or null.
-  enemyNear(camp, x, y, r) {
+  // camp's nearest enemy within r of (x, y) (`people`: humans only): a
+  // creature, or null.
+  enemyNear(camp, x, y, r, people = false) {
     let best = null, bd = Infinity;
     for (const o of this.creatures) {
-      if (!this.enemyOf(camp, o)) continue;
+      if ((people && o.brain === null) || !this.enemyOf(camp, o)) continue;
       const d = Math.max(Math.abs(o.x - x), Math.abs(o.y - y));
       if (d <= r && d < bd) {
         best = o;
@@ -168,6 +179,7 @@ export const Aircraft = {
       k.state = 'flying';
       k.quiet = 0;
       k.pace = 0;
+      k.phase = null; // (its passes start afresh)
     }
     if (k.camp === null) k.state = 'down';
     if (k.state === 'down') {
@@ -192,34 +204,46 @@ export const Aircraft = {
       if (over || e.lost > e.n * HELI_RETREAT) {
         k.state = 'home';
         k.foe = null;
+        k.phase = null;
       }
     }
     if (k.state === 'flying') this.heliFight(e, k);
     if (k.state === 'home') this.heliHome(e, k);
   },
 
-  // Over the fight: find something to shoot, hover above and beside it,
-  // and fire when it's close enough and in sight.
+  // Over the fight: flyby passes, centred on the enemy people nearest the
+  // goal (or, with none, the goal's fire). First out to its own side of
+  // them, up at CLIMB_H ('approach'); then down to STRAFE_H at the near end
+  // of the pass ('dive'), straight across to the far end ('pass'), on and
+  // up away from them ('climb'), and round: the next pass goes back the
+  // other way. It shoots whatever enemy it sees, all the while.
   heliFight(e, k) {
     const goal = k.goal;
-    if (this.tick % HELI_LOOK_EVERY === 0 || !this.alive(k.foe) || !this.enemyOf(k.camp, k.foe)) {
-      const foe = this.enemyNear(k.camp, goal.x, goal.y, HELI_LOOK);
-      k.foe = foe;
-      if (foe === null && k.goal === k.camp) k.quiet += HELI_LOOK_EVERY;
+    if (this.tick % HELI_LOOK_EVERY === 0 || k.cx === undefined) {
+      const foe = this.enemyNear(k.camp, goal.x, goal.y, HELI_LOOK, true);
+      if (foe === null && goal === k.camp) k.quiet += HELI_LOOK_EVERY;
       else if (foe !== null) k.quiet = 0;
+      const c = foe ?? goal;
+      k.cx = c.x;
+      k.cy = c.y;
     }
-    const foe = this.alive(k.foe) ? k.foe : null;
-    let tx, ty;
-    if (foe !== null) {
-      // Above it, off to the side it's on.
-      const side = this.across(e, e.x - foe.x, e.y - foe.y) >= 0 ? 1 : -1;
-      // (Another helicopter: off to its side at its height, not over it.)
-      [tx, ty] = foe.craft !== null ? this.heliOffset(e, foe.x, foe.y, side * HELI_SIDE * 2, 0) : this.heliOffset(e, foe.x, foe.y, side * HELI_SIDE, HELI_HOVER);
-    } else {
-      [tx, ty] = this.heliOffset(e, goal.x, goal.y, 0, HELI_HOVER + 8);
+    if (k.phase == null) {
+      k.dir = this.across(e, k.cx - e.x, k.cy - e.y) >= 0 ? 1 : -1; // (passes start from its own side)
+      k.phase = 'approach';
+      k.phaseAt = this.tick;
     }
-    this.heliToward(e, k, tx, ty);
-    if (foe !== null) this.heliShoot(e, k, foe);
+    const along = k.phase === 'dive' ? -PASS_HALF : k.phase === 'pass' ? PASS_HALF : k.phase === 'climb' ? PASS_HALF + PASS_OUT : -(PASS_HALF + PASS_OUT);
+    const low = k.phase === 'dive' || k.phase === 'pass';
+    let [tx, ty] = this.heliOffset(e, k.cx, k.cy, k.dir * along, low ? STRAFE_H : CLIMB_H);
+    tx = Math.max(EDGE, Math.min(this.w - 1 - EDGE, tx));
+    ty = Math.max(EDGE, Math.min(this.h - 1 - EDGE, ty));
+    if (Math.max(Math.abs(e.x - tx), Math.abs(e.y - ty)) <= PASS_NEAR || this.tick - k.phaseAt > PASS_MAX) {
+      if (k.phase === 'climb') k.dir = -k.dir; // round for a pass back the other way
+      k.phase = NEXT_PHASE[k.phase];
+      k.phaseAt = this.tick;
+    }
+    this.heliToward(e, k, tx, ty, false, low);
+    this.heliShoot(e, k);
   },
 
   // Fly home and set down on its pad.
@@ -278,9 +302,9 @@ export const Aircraft = {
   },
 
   // A cell a step (every HELI_EVERY steps) toward (tx, ty): across, and
-  // up or down, keeping well above the ground on the way there; climbing
-  // over whatever's in its way.
-  heliToward(e, k, tx, ty, homing = false) {
+  // up or down, keeping well above the ground on the way there (but on a
+  // `low` pass over the enemy); climbing over whatever's in its way.
+  heliToward(e, k, tx, ty, homing = false, low = false) {
     if (++k.pace < HELI_EVERY) return;
     k.pace = 0;
     // Boxed in (another helicopter, a human, an overhang), it shuffles back
@@ -298,14 +322,14 @@ export const Aircraft = {
     tx = Math.max(EDGE, Math.min(this.w - 1 - EDGE, tx));
     ty = Math.max(EDGE, Math.min(this.h - 1 - EDGE, ty));
     const du = this.across(e, tx - e.x, ty - e.y), dv = this.upOf(e, tx - e.x, ty - e.y);
-    const far = Math.abs(du) > 24;
-    const low = this.clearance(e, HELI_CRUISE + 2);
+    const far = Math.abs(du) > 24 && !low;
+    const under = this.clearance(e, HELI_CRUISE + 2);
     let su = Math.sign(du), sv = Math.sign(dv);
     // On the way: at cruising height; over the fight: never right down on
     // the ground.
-    if (far && low < HELI_CRUISE) sv = 1;
-    else if (far && sv < 0 && low <= HELI_CRUISE) sv = 0;
-    else if (!homing && sv < 0 && low <= 4) sv = 0;
+    if (far && under < HELI_CRUISE) sv = 1;
+    else if (far && sv < 0 && under <= HELI_CRUISE) sv = 0;
+    else if (!homing && sv < 0 && under <= 4) sv = 0;
     if (su === 0 && sv === 0) return;
     this.heliStep(e, su, sv);
     // Getting nowhere (within a few cells for HELI_STALL moves)?
@@ -374,19 +398,31 @@ export const Aircraft = {
     return [e.x + 5 * f * e.gy - 2 * e.gx, e.y - 5 * f * e.gx - 2 * e.gy];
   },
 
-  // A round every HELI_GUN_EVERY steps at a random pixel of the foe, when
-  // it's within HELI_GUN_R and nothing else is first on the line.
-  heliShoot(e, k, foe) {
+  // A round every HELI_GUN_EVERY steps at a random pixel of the nearest
+  // enemy (person or aircraft) within HELI_GUN_R that it can see: nothing
+  // else first on the line. (k.foe: what it last shot at.)
+  heliShoot(e, k) {
     if (++k.reload < HELI_GUN_EVERY) return;
     const [mx, my] = this.heliMuzzle(e);
-    if (Math.max(Math.abs(foe.x - mx), Math.abs(foe.y - my)) > HELI_GUN_R) return;
-    const aim = this.randomCell(foe);
-    if (aim < 0) return;
-    const ax = aim % this.w, ay = (aim / this.w) | 0;
-    if (!this.inBounds(mx, my) || this.lineFirst(e, mx, my, ax, ay) !== foe) return;
-    k.reload = 0;
-    const a = Math.atan2(ay - my, ax - mx) + (this.rand() - 0.5) * 2 * HELI_SPREAD;
-    this.pellet(e, mx, my, Math.cos(a), Math.sin(a));
+    if (!this.inBounds(mx, my)) return;
+    const near = [];
+    for (const o of this.creatures) {
+      if (!this.enemyOf(k.camp, o)) continue;
+      const d = Math.max(Math.abs(o.x - mx), Math.abs(o.y - my));
+      if (d <= HELI_GUN_R) near.push([d, o]);
+    }
+    near.sort((p, q) => p[0] - q[0]);
+    for (let n = 0; n < near.length && n < 4; n++) {
+      const o = near[n][1], aim = this.randomCell(o);
+      if (aim < 0) continue;
+      const ax = aim % this.w, ay = (aim / this.w) | 0;
+      if (this.lineFirst(e, mx, my, ax, ay) !== o) continue;
+      k.reload = 0;
+      k.foe = o;
+      const a = Math.atan2(ay - my, ax - mx) + (this.rand() - 0.5) * 2 * HELI_SPREAD;
+      this.pellet(e, mx, my, Math.cos(a), Math.sin(a));
+      return;
+    }
   },
 
   // ---- missiles -----------------------------------------------------------------

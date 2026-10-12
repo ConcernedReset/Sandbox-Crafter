@@ -581,7 +581,11 @@ Each frame (60 per second):
    shorter than starting a new one, and digging out or giving up on
    stretches that get blocked. New tunnels keep 4 cells of solid ground
    from the others (side by side they would cave into one pit), and
-   entrances are at least 20 cells apart. Cutting a tree at its foot brings it down
+   entrances are at least 20 cells apart. A camp plans its mining as a
+   whole: a miner goes for the vein that takes the least new digging (often
+   one the camp's tunnels already lead to), and leaves a vein a camp-mate
+   is already digging towards until that tunnel gets there, then mines it
+   through that tunnel rather than digging another. Cutting a tree at its foot brings it down
    (its leaves scatter). A camp with nowhere for a hut moves somewhere
    that has room, or, with nowhere it can get to, does without one.
    Humans walk right through each other. A shot is 4 pellets in a tight spread for 1 gunpowder; each
@@ -643,8 +647,13 @@ Each frame (60 per second):
    in pieces. A camp's first war machine starts its **raid** clock: every 5
    to 10 minutes it sends a quarter of its people (armed ones; never the
    builder), its helicopter and its missile against the nearest other camp.
-   The raiders walk there and fight, and come home when the raid is over;
-   the helicopter drives off raiders at home too. The missile flies straight
+   The raiders walk there and fight, and come home when the raid is over.
+   The helicopter attacks in **flybys**: it dives low on one side of the
+   enemy, flies straight across them firing at everything it sees, climbs
+   away past the far side, comes round and makes another pass the other
+   way. It does the same against raiders at home, but an enemy helicopter
+   alone doesn't send it up (it still fires at one that crosses its
+   sights). The missile flies straight
    up, high over the hills and trees, comes straight down on the enemy's
    hut and blows a crater where it hits, breaking stone and brick into
    rubble; it tears through leaves, but a hard hit on the way

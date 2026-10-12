@@ -10,7 +10,7 @@ import { CAMP_AWAY_R } from '../src/sim/humans.js';
 import {
   AA_CAP, AA_R, HELI_METAL, MISSILE_POWDER, MISSILE_METAL, RAID_MIN, RAID_MAX, BIRTH_EVERY, POP_CAP, SHELL_SPEED,
 } from '../src/sim/war.js';
-import { HELI_GUN_R } from '../src/sim/aircraft.js';
+import { HELI_GUN_R, STRAFE_H, CLIMB_H } from '../src/sim/aircraft.js';
 import { paintWar } from '../src/render/renderer.js';
 import { craftPlan, campLabel } from '../src/render/ai-overlay.js';
 import { fillRect, run, countOf } from './helpers.js';
@@ -454,6 +454,50 @@ test("a leaf caught in its tail, or dust on it, doesn't pin a helicopter down", 
   let f = 0;
   for (; f < 600 && k.state !== 'parked'; f++) w.step();
   assert.equal(k.state, 'parked', `back on its pad (${heli.x},${heli.y} for ${k.homeX},${k.homeY})`);
+});
+
+test('on a raid the helicopter makes flyby passes: low across the enemy camp, one way then the other, climbing away between', () => {
+  const w = field(320, 31);
+  const A = settle(w, 60, 1), B = settle(w, 240, 3);
+  for (const e of [...A.people, ...B.people]) e.brain.weapon = 0; // (just the helicopter shooting)
+  const heli = (built(w, A.camp, 'pad'), A.camp.heli);
+  A.camp.raidAt = w.tick;
+  const crossings = [];
+  let side = 0, highest = 0;
+  w.heliShoot = () => {}; // (holding its fire, so the raid lasts: shooting, it had them all in two passes)
+  for (let f = 0; f < 4000 && crossings.length < 3; f++) {
+    w.step();
+    if (!alive(w, heli) || heli.craft.state !== 'flying') continue;
+    const up = B.camp.y - heli.y, s = Math.sign(heli.x - B.camp.x);
+    if (s !== 0 && side !== 0 && s !== side) crossings.push({ dir: s, up });
+    if (s !== 0) side = s;
+    if (Math.abs(heli.x - B.camp.x) > 40) highest = Math.max(highest, up);
+  }
+  assert.ok(crossings.length >= 3, `three passes over the camp (${JSON.stringify(crossings)})`);
+  for (const c of crossings) assert.ok(c.up <= STRAFE_H + 8, `low over it (${c.up})`);
+  assert.notEqual(crossings[0].dir, crossings[1].dir, 'back the other way');
+  assert.ok(highest >= CLIMB_H - 8, `climbing away between passes (${highest})`);
+});
+
+test("an enemy helicopter near home doesn't send the helicopter up; enemy people do", () => {
+  const w = field(320, 32);
+  const A = settle(w, 60, 1), B = settle(w, 240, 1);
+  built(w, A.camp, 'pad');
+  built(w, B.camp, 'pad');
+  const ours = A.camp.heli, theirs = B.camp.heli;
+  // Theirs, up over our camp.
+  theirs.craft.state = 'flying';
+  assert.ok(w.moveBody(theirs, A.camp.x + 30, A.camp.y - 30, 0, 1, 0, 1), 'moved over our camp');
+  assert.equal(w.heliCall(ours.craft), null, 'not for a helicopter');
+  // One of theirs, on foot, by our fire.
+  const e = B.people[0];
+  w.removeCreature(e);
+  w.spawn((A.camp.y - 8) * w.w + A.camp.x + 25, ID.HUMAN);
+  run(w, 12);
+  const raider = w.creatures.find((o) => o.kind === ID.HUMAN && o.brain && o.brain.camp !== A.camp);
+  raider.brain.camp = B.camp;
+  B.camp.members.add(raider.id);
+  assert.equal(w.heliCall(ours.craft), A.camp, 'for raiders');
 });
 
 test('a helicopter has to come close to shoot', () => {

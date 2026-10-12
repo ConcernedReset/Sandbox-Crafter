@@ -1617,7 +1617,7 @@ export const Humans = {
   // of e) that it can dig, buried or not: not something a human put there,
   // claimed, given up on, or just under a camp's lawn (grounds.js). -1 if
   // none.
-  findDeposit(e, camp, set, limit, near = Infinity) {
+  findDeposit(e, camp, set, limit, near = Infinity, keep = null) {
     const { w, h, type } = this;
     const b = e.brain;
     let best = -1, bd = Infinity;
@@ -1627,6 +1627,7 @@ export const Humans = {
         if (!set[type[i]]) continue;
         const d = Math.abs(x - e.x) + Math.abs(y - e.y);
         if (d >= bd || d > near || camp.claims.has(i) || this.isBanned(b, i) || !this.diggable(i, limit) || this.inLawn(x, y) || this.underWater(x, y)) continue;
+        if (keep !== null && !keep(x, y)) continue;
         best = i;
         bd = d;
       }
