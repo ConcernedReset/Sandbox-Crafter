@@ -321,7 +321,8 @@ else; `test/build.test.js` checks the bundle runs.
   `buildCraft` (loose stuff, liquid or growth in the footprint is swept
   aside first; they grow ring by ring, and wait if blocked) and stepped by
   `stepCraft` instead of the animal step: no `orient`, no `fling`, mending
-  only while `craft.mend` (on the pad, `MEND_EVERY` 30). `creatureDies`
+  only while `craft.mend` (on the pad, `MEND_EVERY` 30; parked, it stays till
+  mended all the way, or no pixel has mended for `MEND_STUCK`). `creatureDies`
   hands them to `craftDies` (a helicopter falls as loose Metal scrap with a
   small blast; a missile `detonate`s). Helicopter (`stepHeli`): 'parked'
   until `heliCall` (its camp raiding, or enemy people within `DEFEND_R`

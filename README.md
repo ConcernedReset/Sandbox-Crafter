@@ -643,7 +643,7 @@ Each frame (60 per second):
    fires a round every 3 steps but only from within 20 cells, so it has to
    come in close, and its plating turns most bullets (a blast it doesn't;
    a missile's too, so the anti-air gun is what stops one).
-   It mends on its pad. Badly hit, it flies home; shot down, it comes down
+   It mends on its pad, all the way before it flies again. Badly hit, it flies home; shot down, it comes down
    in pieces. A camp's first war machine starts its **raid** clock: every 5
    to 10 minutes it sends a quarter of its people (armed ones; never the
    builder), its helicopter and its missile against the nearest other camp.

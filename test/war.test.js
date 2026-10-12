@@ -10,7 +10,7 @@ import { CAMP_AWAY_R } from '../src/sim/humans.js';
 import {
   AA_CAP, AA_R, HELI_METAL, MISSILE_POWDER, MISSILE_METAL, RAID_MIN, RAID_MAX, BIRTH_EVERY, POP_CAP, SHELL_SPEED,
 } from '../src/sim/war.js';
-import { HELI_GUN_R, STRAFE_H, CLIMB_H } from '../src/sim/aircraft.js';
+import { HELI_GUN_R, STRAFE_H, CLIMB_H, HELI_RETREAT } from '../src/sim/aircraft.js';
 import { paintWar } from '../src/render/renderer.js';
 import { craftPlan, campLabel } from '../src/render/ai-overlay.js';
 import { fillRect, run, countOf } from './helpers.js';
@@ -477,6 +477,34 @@ test('on a raid the helicopter makes flyby passes: low across the enemy camp, on
   for (const c of crossings) assert.ok(c.up <= STRAFE_H + 8, `low over it (${c.up})`);
   assert.notEqual(crossings[0].dir, crossings[1].dir, 'back the other way');
   assert.ok(highest >= CLIMB_H - 8, `climbing away between passes (${highest})`);
+});
+
+test('a helicopter home to mend stays on its pad till it is mended all the way, raid or not', () => {
+  const w = field(320, 33);
+  const A = settle(w, 60, 1), B = settle(w, 240, 1);
+  built(w, A.camp, 'pad');
+  const heli = A.camp.heli;
+  // Shot up: more than it turns back at.
+  const hurt = Math.ceil(heli.n * HELI_RETREAT) + 2;
+  for (let p = 0, k = 0; p < heli.n && k < hurt; p++) {
+    if (heli.pix[p] !== BODY) continue;
+    w.clearCell(heli.cells[p]);
+    w.hurt(heli, p, false);
+    k++;
+  }
+  assert.ok(heli.lost > heli.n * HELI_RETREAT);
+  A.camp.raidAt = w.tick; // a raid, while it's mending
+  let left = -1, lostThen = -1;
+  for (let f = 0; f < 6000 && left < 0; f++) {
+    w.step();
+    if (heli.craft.state !== 'parked') {
+      left = f;
+      lostThen = heli.lost;
+    }
+  }
+  assert.ok(left > 0, 'it went in the end');
+  assert.equal(lostThen, 0, `mended all the way first (left after ${left} steps)`);
+  assert.ok(B.camp, '(someone to raid)');
 });
 
 test("an enemy helicopter near home doesn't send the helicopter up; enemy people do", () => {

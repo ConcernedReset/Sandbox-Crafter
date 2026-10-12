@@ -41,6 +41,7 @@ export const HELI_GUN_EVERY = 3; // steps between rounds
 const HELI_SPREAD = 0.06; // radians either way a round may stray
 const HELI_LOOK = 70; // how far from the fight it looks for something to shoot
 export const HELI_RETREAT = 0.4; // this much of it shot away, it flies home
+export const MEND_STUCK = 300; // on its pad it mends all the way before it flies again, unless no pixel has mended for this long
 export const DEFEND_R = 60; // raiders this close to its camp send it up
 const HELI_STAY = 600; // steps defending with nothing to shoot before it goes home
 const HELI_LOOK_EVERY = 8;
@@ -171,7 +172,16 @@ export const Aircraft = {
   stepHeli(e, k) {
     k.mend = k.state === 'parked';
     if (k.state === 'parked') {
-      if (e.lost > e.n * HELI_RETREAT) return; // mending first
+      // Mended all the way first (it used to go again as soon as it was
+      // less than HELI_RETREAT hurt, only to come straight back), unless
+      // it's stopped mending: a pixel's place taken by something.
+      if (e.lost > 0) {
+        if (k.lostWas !== e.lost) {
+          k.lostWas = e.lost;
+          k.mendAt = this.tick;
+        }
+        if (this.tick - k.mendAt < MEND_STUCK) return;
+      }
       const goal = this.heliCall(k);
       if (goal === null) return;
       if (goal !== k.camp && this.tick - k.camp.raid.start < HELI_WAIT) return; // the missile goes first
