@@ -97,7 +97,7 @@ export const Creatures = {
   forgetCreature(e) {
     if (e.brain !== null) { // humans.js
       this.mourn(e); // (grudges.js)
-      this.dropInventory(e);
+      e.brain.items.clear(); // what it carried goes with it: nothing is dropped
       this.leaveCamp(e);
     }
     const list = this.creatures, last = list.pop();

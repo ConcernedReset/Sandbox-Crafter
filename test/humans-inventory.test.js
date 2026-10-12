@@ -62,7 +62,7 @@ test('a gatherer brings several pieces of wood in one trip', () => {
   assert.ok(most >= 6, `carried ${most} at once`);
 });
 
-test('a dead human drops what it carried', () => {
+test('a dead human drops nothing: what it carried goes with it', () => {
   const w = makeWorld(60, 40, 1);
   fillRect(w, 0, 35, 59, 39, ID.STONE);
   w.spawn(25 * 60 + 30, ID.HUMAN);
@@ -71,7 +71,8 @@ test('a dead human drops what it carried', () => {
   for (let k = 0; k < 7; k++) w.stow(e.brain, ID.WOOD);
   const before = countOf(w, ID.WOOD);
   w.creatureDies(e);
-  assert.equal(countOf(w, ID.WOOD), before + 7);
+  assert.equal(countOf(w, ID.WOOD), before);
+  assert.equal(e.brain.items.size, 0);
 });
 
 test('the inspect line lists the inventory', () => {

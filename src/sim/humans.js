@@ -672,19 +672,6 @@ export const Humans = {
     }
   },
 
-  // A human that dies drops the pixels it carried round where it lay; its
-  // tool, weapon and armour are lost.
-  dropInventory(e) {
-    const b = e.brain;
-    for (const [t, k] of b.items) {
-      for (let n = 0; n < k; n++) {
-        const c = this.freeSpaceNear(e.y * this.w + e.x);
-        if (c >= 0) this.spawn(c, t);
-      }
-    }
-    b.items.clear();
-  },
-
   pose(e, fr) {
     if (e.frame !== fr) this.moveBody(e, e.x, e.y, fr, e.facing, e.gx, e.gy);
   },

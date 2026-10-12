@@ -226,7 +226,9 @@ else; `test/build.test.js` checks the bundle runs.
   `HELD_GUN`; the renderer's `paintHumans` draws it). `stow` mixes Coal and
   Salt into Gunpowder (`mixPowder`); `gather` fills its hands from
   `findWanted`; jobs under way carry on through `carryingOn`. A dead human
-  drops its items (`dropInventory`). The pile is lit as **Campfire**
+  drops nothing: what it carried, its tool, gun and armour go with it
+  (`forgetCreature` clears its items; it used to spill them round where
+  it lay). The pile is lit as **Campfire**
   (`kindle`, `updateCampfire` in behaviors.js); `acrossFire` only cares
   about real Fire, and `stepCamps` (once a step) counts `camp.burned` and
   ages `world.shots`. Crafting (`craftWork`) starts when `canCraft`: the
