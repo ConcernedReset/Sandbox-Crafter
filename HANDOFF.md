@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,750 tests, all passing, in two or three minutes (most of it the human situations)
+npm test    # node --test: about 1,760 tests, all passing, in two or three minutes (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -47,6 +47,7 @@ else; `test/build.test.js` checks the bundle runs.
 | `src/render/renderer.js` | Draws the grid, the Gas and Glow effects, particles, minimap; heat and pressure views |
 | `src/sim/war.js` | Humans' war: building the helipad, anti-air gun and missile launcher (the engineer), the anti-air gun and its shells, raids, births, mending the hut |
 | `src/sim/aircraft.js` | The helicopter and missiles: shaped creatures with minds of their own (`e.craft`): flying, shooting, craters |
+| `src/sim/planting.js` | A camp whose trees near it run low sends a human out to plant saplings round it (`plantChores`, `plantSpots`, `plantWork`) |
 | `src/sim/grudges.js` | Each camp's anger at the others, hitting back (a raid, or a tunneller's C4 under the enemy hut, wired home to a plunger), and charges going off |
 | `src/sim/paths.js` | Overland route planning for humans: A* over the places a body can stand or hang (`findPath`), following the plan move by move (`followPath`, `planWay`) |
 | `src/render/ai-overlay.js` | Show spheres of influence / Show AI data: camp ranges, huts, lawns, tunnels, claims, members (`drawInfluence`); each human's trail, route, target and goal label (`aiPlan`, `drawAI`, `AITrails`), drawn on the canvas after the picture (`Renderer.showInfluence`, `showAI`) |
@@ -155,7 +156,13 @@ else; `test/build.test.js` checks the bundle runs.
   (gravity, convection, edges, portals, time zones) call `wakeAll`;
   nothing sleeps under Newtonian gravity. `world.sleeping = false` turns it
   off (tests compare with it). The air skips its whole step while
-  `Air.settle` finds it still (`AIR_STILL`, `HEAT_STILL`).
+  `Air.settle` finds it still (`AIR_STILL`, `HEAT_STILL`). Asleep or not,
+  `step` still visits every particle (it counts the airtight ones in each
+  air block, and `world.count`), so it works out each row's air block once
+  (`airRow`) rather than calling `air.at` for each; and `conductHeat` jumps
+  over the rest of a fully asleep chunk's row at once. A world with much
+  more ground (Deep tribes, three times the particles of Two tribes) was
+  1.8 times slower a step for walking over its sleeping stone; now 1.2.
 - **Shaped creatures** (`shapes.js`, `creatures.js`): an element with a
   `shape` (frames of small pictures, palette letters, `pulse`) gets the
   `body` behaviour. Each creature is an entity in `world.creatures` /
@@ -420,8 +427,10 @@ else; `test/build.test.js` checks the bundle runs.
   `chooseWork` right after `raidWork`) runs it by stage: 'gathering'
   (`sapGather`: gunpowder kneaded into `SAP_C4` (8) C4 items at
   `SAP_POWDER` (2) each, keeping `AMMO_LOW` for its gun; by the fire,
-  camp-mates within `POOL_R` hand over theirs over `AMMO_LOW`
-  (`sapPool`; not the engineer or raiders); then `sapPlan` and metal for
+  camp-mates hand over what they can spare (`share`, humans.js); its
+  wood trips only take wood nearer home than the enemy (`gather`'s
+  `keep`: deep under the enemy, the nearest was by the enemy's camp,
+  and it walked in among them); then `sapPlan` and metal for
   the wire estimated from the plan, `WIRE_PER_METAL` 20),
   'digging' (`sapDigWork`: wood for lining under `TUNNEL_LINING`, from
   as far as `SAP_WOOD_R`, but after `WOOD_TRIES` trips with no spot dug
@@ -435,7 +444,7 @@ else; `test/build.test.js` checks the bundle runs.
   (`netDistances` from its entrances within `OWN_R` and nearer it than
   the enemy, plus `NEW_COST` a spot dug) or a new entrance on the enemy
   side; to `sapTarget`: `SAP_DEPTH` (10) under the enemy hut's middle,
-  or the next of `DEPTHS`, down to 42, below the miners' tunnels (in
+  or the next of `DEPTHS`, down to 70, below the miners' tunnels (in
   Two tribes, 36: nothing shallower kept clear of them, not even a run
   that only touched them). In Two
   tribes the near entrances were all too close to the camp's own mine
@@ -479,6 +488,31 @@ else; `test/build.test.js` checks the bundle runs.
   on the camps run short of salt (gunpowder), metal and wood within reach,
   and the ground round them is cratered by raids (the plunger spot and
   the wire's way out). The test field shows the whole job working.
+- **Sharing** (`share` in humans.js): a human by its camp's fire (within
+  `SHARE_R`) is handed what camp-mates there can spare, up to what it
+  needs: gunpowder over `AMMO_LOW`; metal from those with gun and armour
+  already; wood from those resting or wandering. Never from the engineer,
+  the tunneller or raiders. Called before it sets off to get it:
+  `craftWork` (pickaxe wood, gunpowder, gun metal and wood, armour metal),
+  `startMining` (lining wood), `warStep`/`buildStep` (the engineer's
+  metal and gunpowder) and the tunneller. `gather`/`findWanted` take a
+  `keep(x, y)` filter (kept as `brain.fetchKeep` for the rest of the
+  trip). Tested in `test/camp-life.test.js`.
+- **Planting** (`planting.js`, from `campChores`): every `PLANT_EVERY`
+  a lit camp counts the tree wood (`WOOD` nobody put there) and saplings
+  within `FUEL_R` (`treesNear`); under `WOOD_LOW` (60) with fewer than
+  `SAPLINGS_MAX` saplings, the idle member nearest the fire (not the
+  engineer, tunneller or a raider) becomes `camp.planter` with
+  `brain.plant`: up to `PLANT_N` spots from `plantSpots` (soil, the
+  cell over it empty, `SKY` rows of open air, outside every lawn, no
+  tunnel within `NO_TUNNEL` under it, `PLANT_GAP` across from any tree,
+  sapling or other spot; nearest first, alternating sides). Job 'planting
+  saplings' (`plantWork`): walk to `STAND` cells camp-side of the spot,
+  kneel `PLANT_FOR`, `spawn` a Sapling (not `putDown`: its tree is
+  anyone's). A planter that stops planting is let go (`plantChores`,
+  `leaveCamp`). The Deep tribes world (`deepTribes` in scenes.js:
+  `DEEP_DIRT` rows of dirt over stone, ore by depth, five caverns) is
+  for long games: in Two tribes the ore within reach ran out.
 - **Tunnels** (`tunnels.js`): mining digs tunnels. A spot is where a
   human's feet go; its inside is the 3x6 body box. `workSpot` lines first
   (`looseRound`: powders with the inside below or diagonally below are
@@ -494,6 +528,14 @@ else; `test/build.test.js` checks the bundle runs.
   the new run keeps `TUNNEL_GAP` (4) solid cells from every other tunnel
   outside `START_R` (8) of its start (`pathClear`); going on along a seam
   checks the same within `SEAM_START_R` (5), and bans that cell if not.
+  Where no straight plan is clear, `planAround` finds a way round other
+  tunnels: `spotsBlocked` marks the spots a run can't pass (within
+  `TUNNEL_GAP` of a tunnel, out of the world, or open to the sky: never
+  out over the ground), A* over the rest (up to `ROUTE_NODES`), then the
+  path straightened into as few `legsTo` runs as stay clear; a plan's
+  worked-out legs go in `tun.planned`, which `tunnelGo` uses. (Only the
+  tunneller uses it so far; in Deep tribes long runs it still found no
+  way late in a game, the ground between the camps full of mines.)
   Side-by-side runs merge into one cavern humans can't climb out of. `mine` = `tunnelGo` (`netRoute` waypoints, splitting a
   run into a junction where it starts) then `tunnelDig` (`growTunnel`).
   `stepAlong` moves spot to spot, re-lines, and repairs (`workSpot`);

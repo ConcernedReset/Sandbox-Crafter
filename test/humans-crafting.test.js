@@ -80,6 +80,9 @@ for (const seed of [1, 2]) {
     const armed = [...people.values()].find((e) => e.brain.armour > 0);
     assert.equal(armed.brain.tool, 1);
     assert.equal(armed.brain.weapon, 1);
+    // (Gunpowder may come after: with coal out of reach a while it goes on
+    // to its gun, and its camp-mates share theirs.)
+    for (let k = 0; k < 6000 && w.has(armed.brain, ID.GUNPOWDER) === 0; k++) w.step();
     assert.ok(w.has(armed.brain, ID.GUNPOWDER) > 0, 'with gunpowder');
   });
 }

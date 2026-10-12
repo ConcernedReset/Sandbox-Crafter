@@ -108,6 +108,7 @@ export const WOOD_ONLY = setOf(['WOOD']);
 // It carries as much as it likes of anything (so nothing it digs through
 // is wasted), but sets out to gather this many of a thing at a time.
 export const GATHER = 10;
+export const SHARE_R = 30; // near the fire, camp-mates this near hand each other what they can spare (share)
 export const HELD_PICKAXE = -1, HELD_GUN = -2; // what it shows in its hand, besides a pixel
 const FEED = setOf(['WOOD', 'PEAT', 'SAWDUST']); // fuel it feeds the fire before coal
 
@@ -125,7 +126,7 @@ export function newBrain() {
     tool: 0, weapon: 0, // a pickaxe, a gun (1 if it has one)
     armour: 0, // hits its armour can still take (0: none)
     held: 0, // what it shows in its hand: an element, HELD_PICKAXE or HELD_GUN
-    fetchSet: null, fetchR: 0, fetchSide: false, // what it's fetching, and where from
+    fetchSet: null, fetchR: 0, fetchSide: false, fetchKeep: null, // what it's fetching, and where from (keep: (x, y) => is it one it wants)
     mineKey: '', wantN: 0, // what it's mining (a RESOURCES key) and how many it wants
     skip: new Map(), // resource key -> tick until which it doesn't look for it
     refill: true, // it wants gunpowder (a full stack the first time)
@@ -140,6 +141,7 @@ export function newBrain() {
     reload: 0, foe: 0, huntAt: 0, huntUntil: 0, // shooting: steps since the last shot, what at
     raid: null, // the camp it's raiding (war.js)
     hitBy: null, hitAt: 0, // the camp whose bullet last hit it, and when (grudges.js)
+    plant: null, // spots it's to plant saplings at (planting.js)
     war: null, // the war machine it's building or loading (war.js)
     rub: 0, // steps spent rubbing sticks
     breath: 0, // steps with its head under
@@ -587,6 +589,39 @@ export const Humans = {
     return best;
   },
 
+  // Human e, by its camp's fire, is handed what its camp-mates there can
+  // spare of `what`, up to `need`: gunpowder over AMMO_LOW (for their own
+  // guns); metal, from those with their gun and armour already; wood, from
+  // those with nothing to do (resting or wandering). Never the engineer,
+  // the tunneller or raiders, who need theirs. How many it got.
+  share(e, b, camp, what, need) {
+    const near = (o) => Math.max(Math.abs(o.x - camp.x), Math.abs(o.y - camp.y)) <= SHARE_R;
+    if (need <= 0 || !near(e)) return 0;
+    let got = 0;
+    for (const id of camp.members) {
+      if (got >= need) break;
+      const o = this.creatureById[id];
+      if (!o || o === e || o.brain === null || o.grow >= 0 || id === camp.engineer || !near(o)) continue;
+      const ob = o.brain;
+      if (ob.raid !== null || (camp.sap !== null && camp.sap.id === id)) continue;
+      if (what === 'gunpowder') {
+        while (got < need && this.has(ob, GUNPOWDER) > AMMO_LOW && this.takeOut(ob, GUNPOWDER)) {
+          this.stow(b, GUNPOWDER);
+          got++;
+        }
+      } else if (what === 'metal') {
+        if (ob.weapon === 0 || ob.armour === 0) continue;
+        for (let t; got < need && (t = this.takeAny(ob, METALS)) !== 0; got++) this.stow(b, t);
+      } else if (ob.job === 'resting by the fire' || ob.job === 'wandering') {
+        while (got < need && this.takeOut(ob, WOOD)) {
+          this.stow(b, WOOD);
+          got++;
+        }
+      }
+    }
+    return got;
+  },
+
   // Coal and Salt carried together make Gunpowder (the game's own Coal +
   // Salt reaction), two at a time.
   mixPowder(b) {
@@ -599,13 +634,14 @@ export const Humans = {
 
   // Set off to fetch the nearest thing in `set` (within `radius` of the camp,
   // open to one side if `side`): true if there was one.
-  gather(e, b, camp, set, radius, job, side = false) {
-    const t = this.findWanted(e, camp, set, radius, side);
+  gather(e, b, camp, set, radius, job, side = false, keep = null) {
+    const t = this.findWanted(e, camp, set, radius, side, keep);
     if (t < 0) return false;
     this.claim(b, camp, t);
     b.fetchSet = set;
     b.fetchR = radius;
     b.fetchSide = side;
+    b.fetchKeep = keep;
     b.job = job;
     return true;
   },
@@ -844,23 +880,32 @@ export const Humans = {
   // Its next crafting step, in order: a pickaxe, levelling the ground round
   // the hut (one human at a time; grounds.js), coal and salt for gunpowder,
   // metal for a gun, then armour. Crafting is instant once it
-  // has what's needed; otherwise it sets off to get it. True if that gave it
-  // a job. A resource out of reach is skipped for a while (startMining).
+  // has what's needed; otherwise (once its camp-mates by the fire have
+  // handed over what they can spare: share) it sets off to get it. True if
+  // that gave it a job. A resource out of reach is skipped for a while
+  // (startMining).
   craftWork(e, b, camp) {
     if (!this.canCraft(camp)) return false;
+    if (b.tool === 0) this.share(e, b, camp, 'wood', PICK_WOOD - this.has(b, WOOD));
     if (b.tool === 0 && !this.craft(b, 'pickaxe')) {
       return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
     }
     if (this.flattenWork(e, b, camp)) return true;
+    if (this.wantsPowder(b)) this.share(e, b, camp, 'gunpowder', GATHER - this.has(b, GUNPOWDER));
     if (this.wantsPowder(b)) {
       const pairs = Math.ceil((GATHER - this.has(b, GUNPOWDER)) / 2);
       if (this.has(b, COAL) < pairs && this.startMining(e, b, camp, 'coal', pairs)) return true;
       if (this.has(b, COAL) > 0 && this.startMining(e, b, camp, 'salt', 0)) return true;
     }
+    if (b.weapon === 0) {
+      this.share(e, b, camp, 'metal', GUN_METAL - this.holding(b, METALS));
+      this.share(e, b, camp, 'wood', GUN_WOOD - this.has(b, WOOD));
+    }
     if (b.weapon === 0 && !this.craft(b, 'gun')) {
       if (this.holding(b, METALS) < GUN_METAL) return this.startMining(e, b, camp, 'metal', GUN_METAL);
       return this.gather(e, b, camp, WOOD_ONLY, FUEL_R, 'gathering wood');
     }
+    if (b.weapon !== 0 && b.armour === 0) this.share(e, b, camp, 'metal', ARMOUR_METAL - this.holding(b, METALS));
     if (b.weapon !== 0 && b.armour === 0 && !this.craft(b, 'armour')) {
       return this.startMining(e, b, camp, 'metal', ARMOUR_METAL);
     }
@@ -1047,6 +1092,7 @@ export const Humans = {
       case 'mining': return b.tun !== null;
       case 'flattening the camp': return b.target >= 0 && camp.flattener === e.id;
       case 'hunting': return b.foe !== 0 && this.creatureById[b.foe] != null && this.tick <= b.huntUntil;
+      case 'planting saplings': return b.plant !== null && b.plant.length > 0 && camp.planter === e.id; // planting.js
       default: return this.warCarryingOn(e, b, camp) === true; // war.js's jobs
     }
   },
@@ -1301,6 +1347,7 @@ export const Humans = {
       case 'placing the charge': this.sapCharge(e, b); break;
       case 'laying wire': this.sapWire(e, b); break;
       case 'detonating': this.sapFire(e, b); break;
+      case 'planting saplings': this.plantWork(e, b); break; // planting.js
       default: this.wander(e, b);
     }
   },
@@ -1329,6 +1376,9 @@ export const Humans = {
       // was last near, its tunnel job, and how it has hit back.
       anger: 0, grudge: null, enemyAt: 0,
       sap: null, sapRetry: 0, strikes: 0, sapsDone: 0, sapsFailed: 0,
+      // Planting (planting.js): who's planting saplings, when it next counts
+      // its trees, how many it has planted.
+      planter: 0, plantAt: 0, planted: 0,
     };
     this.camps.push(camp);
     return camp;
@@ -1485,7 +1535,7 @@ export const Humans = {
   // `set`, open to the air (`side`: open to one side, so it isn't the
   // ground underfoot), within reach of ground a human stands on, and not in
   // the pile or the hut, nor claimed or given up on. -1 if none.
-  findWanted(e, camp, set, radius, side = false) {
+  findWanted(e, camp, set, radius, side = false, keep = null) {
     const { w, h, type } = this;
     const b = e.brain, hut = camp.hut;
     let best = -1, bd = Infinity;
@@ -1497,7 +1547,7 @@ export const Humans = {
         if (d >= bd || camp.claims.has(i) || this.isBanned(b, i) || this.inPile(camp, x, y)) continue;
         if ((hut !== null && hut.set.has(i)) || this.madeByHuman(i)) continue; // not its hut, nor tunnel lining
         if (!this.openAt(x, y) || !this.nearGround(x, y, e.gx, e.gy)) continue;
-        if (side && !this.openSide(x, y, e.gx, e.gy)) continue;
+        if ((side && !this.openSide(x, y, e.gx, e.gy)) || (keep !== null && !keep(x, y))) continue;
         if (this.acrossFire(camp, e.x, e.y, x, y)) continue;
         best = i;
         bd = d;
@@ -1622,7 +1672,7 @@ export const Humans = {
     if (this.stow(b, u)) {
       this.clearCell(t);
       if (u === WOOD) this.fell(t % this.w, (t / this.w) | 0);
-      if (this.holding(b, b.fetchSet) < GATHER && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide)) return;
+      if (this.holding(b, b.fetchSet) < GATHER && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide, b.fetchKeep)) return;
     }
     b.job = b.job === 'fetching stone' ? 'building the hut' : 'wandering';
     b.think = 0;
@@ -1802,6 +1852,7 @@ export const Humans = {
     if (camp.flattener === e.id) camp.flattener = 0;
     if (camp.engineer === e.id) camp.engineer = 0;
     if (camp.sap !== null && camp.sap.id === e.id) this.endSap(camp, true);
+    if (camp.planter === e.id) camp.planter = 0;
     b.raid = null;
     const k = this.camps.indexOf(camp); // (a camp gone already isn't there: splice(-1) would drop another)
     if (camp.members.size === 0 && k >= 0) this.camps.splice(k, 1);

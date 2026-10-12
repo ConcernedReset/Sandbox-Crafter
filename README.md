@@ -165,13 +165,16 @@ back to system ones; progress is saved per file location.)
   back after about three seconds of quick frames; the menu shows where it
   is ("Auto (Medium)"). Gas and Glow are your own choice at every level.
 - **World** (in the `⋯` menu) clears the world and loads a ready-made one.
-  Three are for playing: the **Starting area** (rolling dirt, a sand dune and a
+  Four are for playing: the **Starting area** (rolling dirt, a sand dune and a
   stone-lined pond), the **Wilderness**, hills to make a home in, with
   saplings that grow into a forest, logs, boulders, a coal seam, a pond with
-  fish, and three humans, and **Two tribes**, three humans at each end of
+  fish, and three humans, **Two tribes**, three humans at each end of
   rolling hills with a wooded ridge between, each with its own forest,
   boulders and plenty of coal, salt and metal underground: once they're
-  settled and armed they go to war. Five are showcases: **Creatures** (a pond full of
+  settled and armed they go to war, and **Deep tribes**, the same two
+  tribes over deep ground: a few rows of dirt, then stone all the way down,
+  with big seams of coal and salt and veins of metal and copper, the deeper
+  the richer, and a few open caverns deep down between the camps. Five are showcases: **Creatures** (a pond full of
   swimmers, a meadow full of insects, frogs and snails, birds, a caged
   phoenix and two humans), **Every element** (each in its own little walled
   cell, a stress test), the **Physics lab** (portals, time zones, sieving
@@ -605,7 +608,13 @@ Each frame (60 per second):
    doesn't hurt it. It shows what it last picked up or is using in its hand
    (a pickaxe, a gun), and armour turns its shirt grey. Hover over a
    creature to see its health, and what a human is doing and carrying. The
-   Wilderness has coal, salt and metal buried in it.
+   Wilderness has coal, salt and metal buried in it. Humans **share**: one
+   by the fire that's short of something takes what its camp-mates there
+   can spare before going off to get it (gunpowder they don't need for
+   their own guns, metal from those already with gun and armour, wood from
+   anyone with nothing to do). And when the trees near the camp run low,
+   one of them goes out and **plants saplings** round it, well apart and
+   past the lawn, which grow into new trees.
 
    A camp whose hut is up (or that does without one) and whose fire is
    burning **grows**: a new human

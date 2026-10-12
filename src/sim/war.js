@@ -136,6 +136,8 @@ export const War = {
     }
     // Anger, and hitting back (grudges.js).
     this.campAnger(camp);
+    // Trees running out: it plants more (planting.js).
+    this.plantChores(camp);
     // Raids: the clock starts with the camp's first war machine.
     if (camp.raid !== null) {
       if (this.raidOver(camp)) this.endRaid(camp);
@@ -562,6 +564,7 @@ export const War = {
         return 'done';
       }
       if (this.tick < pad.waitUntil) return 'stuck';
+      this.share(e, b, camp, 'metal', HELI_METAL - this.holding(b, METALS));
       if (this.holding(b, METALS) >= HELI_METAL) return this.warJob(b, pad, 'building the helicopter');
       return this.startMining(e, b, camp, 'metal', HELI_METAL) ? 'busy' : 'stuck';
     }
@@ -573,7 +576,9 @@ export const War = {
       if (aa.ammo < AA_LOW) aa.filling = true;
       if (aa.ammo >= AA_CAP) aa.filling = false;
       if (!aa.filling) return 'done';
-      const spare = this.has(b, GUNPOWDER) - AMMO_LOW, need = AA_CAP - aa.ammo;
+      const need = AA_CAP - aa.ammo;
+      this.share(e, b, camp, 'gunpowder', need - (this.has(b, GUNPOWDER) - AMMO_LOW));
+      const spare = this.has(b, GUNPOWDER) - AMMO_LOW;
       if (spare >= need || spare >= 6) return this.warJob(b, aa, 'loading the anti-air gun');
       return this.powderFor(e, b, camp, need);
     }
@@ -583,6 +588,8 @@ export const War = {
     if (r !== 'done') return r;
     if (this.alive(ln.missile) || this.tick < ln.waitUntil) return 'done';
     const metal = MISSILE_METAL - ln.metal, powder = MISSILE_POWDER - ln.powder;
+    this.share(e, b, camp, 'metal', metal - this.holding(b, METALS));
+    this.share(e, b, camp, 'gunpowder', powder - (this.has(b, GUNPOWDER) - AMMO_LOW));
     if (metal > 0 && this.holding(b, METALS) < metal) return this.startMining(e, b, camp, 'metal', metal) ? 'busy' : 'stuck';
     if (powder > 0 && this.has(b, GUNPOWDER) - AMMO_LOW < powder) return this.powderFor(e, b, camp, powder);
     return this.warJob(b, ln, 'loading the launcher');
@@ -609,9 +616,10 @@ export const War = {
       if (this.holding(b, MATERIAL) > 0) return this.warJob(b, s, `building the ${s.name}`);
       return this.gather(e, b, camp, MATERIAL, STONE_R, 'fetching stone', true) ? 'busy' : 'stuck';
     }
-    if (this.holding(b, METALS) > 0) return this.warJob(b, s, `building the ${s.name}`);
     let need = 0;
     for (let j = k; j < s.cells.length; j++) if (s.mats[j] === 'metal' && !this.builtAt(s.cells[j])) need++;
+    if (this.holding(b, METALS) === 0) this.share(e, b, camp, 'metal', need);
+    if (this.holding(b, METALS) > 0) return this.warJob(b, s, `building the ${s.name}`);
     return this.startMining(e, b, camp, 'metal', need) ? 'busy' : 'stuck';
   },
 

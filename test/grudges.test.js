@@ -128,17 +128,17 @@ test('camp-mates by the fire hand a tunneller their spare gunpowder and metal (k
   const { w, A } = rivals(150, 3); // (12 gunpowder each)
   const [p0, p1, p2] = A.people;
   A.camp.engineer = p1.id;
-  w.sapPool(p0, p0.brain, A.camp, 20);
+  w.share(p0, p0.brain, A.camp, 'gunpowder', 20);
   assert.equal(w.has(p0.brain, ID.GUNPOWDER), 20);
   assert.equal(w.has(p1.brain, ID.GUNPOWDER), 12, 'the engineer keeps its own');
   assert.equal(w.has(p2.brain, ID.GUNPOWDER), 4, 'enough for its gun');
   // Metal, from those with their gun and armour.
   for (const p of [p1, p2]) for (let k = 0; k < 5; k++) w.stow(p.brain, ID.METAL);
   p2.brain.armour = 0;
-  w.sapPool(p0, p0.brain, A.camp, 20, true);
+  w.share(p0, p0.brain, A.camp, 'metal', 20);
   assert.equal(w.has(p0.brain, ID.METAL), 0, 'the engineer keeps its own, one without armour too');
   p2.brain.armour = 10;
-  w.sapPool(p0, p0.brain, A.camp, 3, true);
+  w.share(p0, p0.brain, A.camp, 'metal', 3);
   assert.equal(w.has(p0.brain, ID.METAL), 3);
   assert.equal(w.has(p2.brain, ID.METAL), 2);
 });
@@ -182,7 +182,7 @@ test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plun
   const mid = w.campCell(B.camp, hut.u0 + (HUT_W >> 1), hut.floor);
   assert.equal(firing.charge.length, SAP_C4);
   assert.ok(Math.abs(cx - (mid % w.w)) <= 4, `under the hut (${cx} vs ${mid % w.w})`);
-  assert.equal(powder0 - firing.gunpowder, SAP_C4 * SAP_POWDER, 'gunpowder kneaded into C4');
+  assert.ok(powder0 - firing.gunpowder >= SAP_C4 * SAP_POWDER, 'gunpowder kneaded into C4 (and some shot)');
   // The wire: copper, from the charge to the plunger, every cell touching the last.
   const { wire, plug } = firing;
   assert.ok(firing.human, 'copper, put there by a human (nobody digs it up)');
@@ -200,6 +200,32 @@ test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plun
   assert.ok(B.camp.anger >= ANGER_BLAST, 'B is furious');
   assert.equal(B.camp.grudge, A.camp);
   assert.equal(w.charges.length, 0);
+});
+
+test('with other tunnels in the way of a straight one, a way round them (under ground, clear of them) is planned', () => {
+  const { w } = rivals();
+  // A curtain of old tunnel across the way, from just under the ground
+  // down to 18 deep; under it, just room to pass.
+  const top = w.h - 30;
+  for (let y = top + 1; y <= top + 18; y++) for (const x of [128, 129, 130]) w.tunnels.mask[y * w.w + x] |= INSIDE;
+  const x0 = 100, y0 = top + 9, x1 = 160, y1 = top + 9;
+  assert.equal(w.pathClear(x0, y0, w.legsTo(x0, y0, x1, y1, 0, 1), 0, 1), false, 'no straight way');
+  const legs = w.planAround(x0, y0, x1, y1, 0, 1);
+  assert.ok(legs !== null && legs.length <= 6, `round it, in a few runs (${JSON.stringify(legs)})`);
+  const blocked = w.spotsBlocked(0, 1, x0, y0, 8);
+  let x = x0, y = y0, deepest = 0;
+  for (const leg of legs) {
+    for (let k = 0; k < leg.n; k++) {
+      x += leg.dx;
+      y += leg.dy;
+      deepest = Math.max(deepest, y);
+      assert.equal(blocked[y * w.w + x], 0, `clear at ${x},${y}`);
+    }
+  }
+  assert.deepEqual([x, y], [x1, y1], 'to the end');
+  assert.ok(deepest >= top + 18 + 4 + 6, `under the curtain (${deepest})`);
+  // Never out over the ground: blocked, a spot whose box is open to the sky.
+  assert.equal(blocked[(top - 1) * w.w + 115], 1);
 });
 
 test('a charge going off (whatever sets it off) craters up through the hut over it', () => {

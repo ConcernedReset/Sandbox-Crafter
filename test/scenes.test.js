@@ -110,6 +110,41 @@ test('two tribes: three humans at each end, far apart, with wood, stone, coal, s
   }
 });
 
+test('deep tribes: three humans at each end, over a little dirt and deep stone, big ore veins deep down, and open caverns', () => {
+  const w = scene('deep', 20);
+  const people = w.creatures.filter((e) => e.kind === ID.HUMAN);
+  assert.equal(people.filter((e) => e.x < w.w / 2).length, 3);
+  assert.equal(people.filter((e) => e.x >= w.w / 2).length, 3);
+  // The ground: its top in each column, dirt for a few rows, then stone.
+  const top = (x) => {
+    for (let y = 0; y < w.h; y++) if (w.type[y * w.w + x] === ID.GRASS) return y;
+    return -1;
+  };
+  for (const x of [30, 120, 200, 280, 370]) {
+    const g = top(x);
+    assert.ok(g > 30 && g < 90, `the surface high up (${g} at ${x})`);
+    assert.equal(w.type[(g + 10) * w.w + x], ID.DIRT, `dirt under it at ${x}`);
+    assert.ok(w.h - g > 140, 'deep ground');
+  }
+  // Ore, the deeper the richer, each side within its reach.
+  const depths = { COAL: [], SALT: [], METAL: [], COPPER: [] };
+  let stone = 0, open = 0;
+  for (let i = 0; i < w.type.length; i++) {
+    const x = i % w.w, y = (i / w.w) | 0, g = top(x);
+    if (g < 0) continue;
+    const k = Object.keys(depths).find((t) => ID[t] === w.type[i]);
+    if (k) depths[k].push(y - g);
+    if (y > g + 25 && w.type[i] === ID.STONE) stone++;
+    if (y > g + 40 && w.type[i] === 0) open++;
+  }
+  const mid = (a) => a.sort((p, q) => p - q)[a.length >> 1];
+  for (const [t, least] of [['COAL', 600], ['SALT', 400], ['METAL', 1000], ['COPPER', 1000]]) assert.ok(depths[t].length >= least, `plenty of ${t} (${depths[t].length})`);
+  assert.ok(mid(depths.COAL) < mid(depths.SALT) && mid(depths.SALT) < mid(depths.METAL) && mid(depths.METAL) < mid(depths.COPPER), 'the deeper the richer');
+  assert.ok(mid(depths.COPPER) - MINE_R < 0, 'still in mining reach');
+  assert.ok(stone > 30000, 'stone down below');
+  assert.ok(open > 800, `open caverns deep down (${open} cells)`);
+});
+
 test('the creature world has every kind of creature', () => {
   const w = scene('creatures', 30);
   const kinds = new Set(w.creatures.map((e) => e.kind));

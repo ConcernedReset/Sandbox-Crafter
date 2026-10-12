@@ -45,6 +45,7 @@ import { Paths } from './paths.js';
 import { Aircraft } from './aircraft.js';
 import { War } from './war.js';
 import { Grudges } from './grudges.js';
+import { Planting } from './planting.js';
 
 const { SOLID, POWDER, LIQUID, GAS, ENERGY } = State;
 const { WALL, FIRE, ASH, SPARK, PHOTON } = ID;
@@ -436,23 +437,27 @@ export class World {
     // of grains falls together.
     const g = this.gravity;
     const fromBottom = g.scanRows === 0 ? (tick & 1) === 0 : g.scanRows > 0;
+    const solid = air.solid;
+    let count = 0;
     for (let n = 0; n < h; n++) {
       const y = fromBottom ? h - 1 - n : n;
       const leftToRight = g.scanCols === 0 ? ((tick + y) & 1) === 0 : g.scanCols < 0;
       const row = y * w;
+      const airRow = air.at(0, y); // (the air block of (x, y) is airRow + x / CELL: worked out once a row, for every particle)
       for (let k = 0; k < w; k++) {
         const x = leftToRight ? k : w - 1 - k;
         const i = row + x;
         const t = type[i];
         if (t === 0) continue;
+        count++;
         const wl = wall[i];
         if (wl !== 0) {
           // A wall blocks its air block, unless it lets air through.
-          if ((wl & PASS.air) === 0) next[air.at(x, y)] = 1;
+          if ((wl & PASS.air) === 0) next[airRow + ((x / CELL) | 0)] = 1;
           if (t === WALL) continue;
         }
         // Metal carrying a spark is still metal as far as the air is concerned.
-        if ((AIRTIGHT[t] || (t === SPARK && AIRTIGHT[this.ctype[i]])) && !loose[i]) air.solid[air.at(x, y)]++;
+        if ((AIRTIGHT[t] || (t === SPARK && AIRTIGHT[this.ctype[i]])) && !loose[i]) solid[airRow + ((x / CELL) | 0)]++;
         // A sleeping area's particles aren't updated (sleep.js).
         if (sleepy && chunkAwake[(y >> 4) * cw + (x >> 4)] === 0) continue;
         if (clock[i] === pass) continue;
@@ -462,6 +467,7 @@ export class World {
         this.update(i, x, y, t);
       }
     }
+    this.count = count; // particles in the world
     if (this.zoneBox !== null) this.fastPasses(fromBottom);
     if (this.creatures.length !== 0) this.stepCreatures(); // shaped creatures (creatures.js)
     if (this.camps.length !== 0 || this.flak.length !== 0 || this.charges.length !== 0) this.stepWar(); // camps at war (war.js)
@@ -1189,17 +1195,19 @@ export class World {
     const zones = this.zoneCount !== 0;
     const heat = this.air.heat;
     const sides = this.voidEdges;
-    let count = 0;
     for (let y = 0; y < h; y++) {
-      const row = y * w;
+      const row = y * w, edgeRow = (y & 15) === 15, chunkRow = (y >> 4) * cw;
       for (let x = 0; x < w; x++) {
+        // A fully asleep area's heat isn't worked out, except along its right
+        // and bottom edges, which trade heat with the chunks beside and below
+        // (the rest of its row in the chunk is skipped at once).
+        if (sleepy && !edgeRow && (x & 15) !== 15 && chunkFull[chunkRow + (x >> 4)] === 1) {
+          x = (x | 15) - 1;
+          continue;
+        }
         const i = row + x;
         const t = type[i];
         if (t === 0) continue;
-        count++;
-        // A fully asleep area's heat isn't worked out, except along its right
-        // and bottom edges, which trade heat with the chunks beside and below.
-        if (sleepy && chunkFull[(y >> 4) * cw + (x >> 4)] === 1 && (x & 15) !== 15 && (y & 15) !== 15) continue;
         // Wall is a perfect insulator, unless it lets heat through: then it
         // conducts like metal.
         let ka = COND[t];
@@ -1260,7 +1268,6 @@ export class World {
     // Across a looped edge, touching particles trade heat as neighbours do.
     if (this.loopX) for (let y = 0; y < h; y++) this.conductPair(y * w + w - 1, y * w);
     if (this.loopY) for (let x = 0; x < w; x++) this.conductPair((h - 1) * w + x, x);
-    this.count = count;
   }
 
   // Two touching cells trade heat (when both hold something), as in conductHeat.
@@ -1542,4 +1549,4 @@ export class World {
   }
 }
 
-Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Paths, Trees, Aircraft, War, Grudges);
+Object.assign(World.prototype, Behaviors, Particles, Machines, AirMachines, MotionMachines, TimeZones, Portals, Sleep, Creatures, Humans, Tunnels, Grounds, Paths, Trees, Aircraft, War, Grudges, Planting);

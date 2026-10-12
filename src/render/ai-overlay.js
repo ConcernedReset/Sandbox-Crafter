@@ -25,6 +25,7 @@ const GOAL = {
   'gathering wood': ['gather', '#6fdc6f'],
   'fetching stone': ['gather', '#6fdc6f'],
   'carrying wood': ['gather', '#6fdc6f'],
+  'planting saplings': ['gather', '#6fdc6f'],
   'lighting the fire': ['build', '#f5a142'],
   'building the hut': ['build', '#f5a142'],
   'flattening the camp': ['build', '#f5a142'],
@@ -102,6 +103,12 @@ export function aiPlan(world, e) {
     case 'flattening the camp':
       target = at(b.target);
       if (b.fetchSet) detail = `${world.holding(b, b.fetchSet)}/${GATHER}`;
+      break;
+    case 'planting saplings':
+      if (b.plant?.length > 0) {
+        target = [b.plant[0].x, b.plant[0].y];
+        detail = `${b.plant.length} to go`;
+      }
       break;
     case 'carrying wood':
     case 'lighting the fire':
@@ -230,6 +237,7 @@ export function campLabel(world, camp) {
   if (camp.launcher) parts.push(camp.launcher.missile ? 'missile ✓' : camp.launcher.done ? 'no missile' : 'launcher …');
   // Anger, and its tunnel job (grudges.js).
   if (camp.anger > 0) parts.push(`anger ${Math.round(camp.anger)}${camp.grudge && world.camps.includes(camp.grudge) ? ` at Camp ${campNumber(camp.grudge)}` : ''}`);
+  if (camp.planter) parts.push('planting');
   if (camp.sap) parts.push(`tunnel: ${camp.sap.stage}${world.tick < camp.sap.waitUntil ? ` (waiting for ${camp.sap.why})` : ''}`);
   if (camp.raid) parts.push(`raiding Camp ${campNumber(camp.raid.enemy)}`);
   else if (camp.raidAt > 0) parts.push(`raid in ${Math.max(0, camp.raidAt - world.tick)}`);

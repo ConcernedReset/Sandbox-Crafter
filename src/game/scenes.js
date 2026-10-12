@@ -61,6 +61,8 @@ function tools(world) {
   return { w, h, put, set, rect, box, disc, switchOn };
 }
 
+const DEEP_DIRT = 20; // Deep tribes: rows of dirt (grass on top) before the stone
+
 // Rolling ground: the height of the surface at x.
 const rolling = (h, base, a1, a2, phase = 0) => (x) => Math.round(h - base + Math.sin(x / 37 + phase) * a1 + Math.sin(x / 13 + 1.7 + phase) * a2);
 
@@ -176,6 +178,55 @@ function twoTribes(world) {
     for (const x of [50, 62, 74]) set(X(x), ground(X(x)) - 8, ID.HUMAN);
   }
   // Trees along the ridge.
+  for (const x of [170, 186, 200, 214, 230]) put(x, ground(x) - 1, ID.SAPLING);
+}
+
+// ---- deep tribes ---------------------------------------------------------------
+
+// Two tribes over deep ground: the surface high up, a few rows of dirt,
+// then stone to the bottom of the world, with big seams and veins of ore
+// the deeper the richer (coal, then salt, metal, copper), and a few open
+// caverns deep down, mostly between the camps, ore showing in their walls.
+// Each side has its own forest, logs and boulders, with a wooded ridge
+// between, and three humans.
+function deepTribes(world) {
+  const { w, h, put, set, rect, disc } = tools(world);
+  const rolled = rolling(h, 180, 6, 3, 2.1);
+  const ground = (x) => rolled(x) - Math.round(Math.max(0, 16 - Math.abs(x - w / 2) * 0.35));
+  for (let x = 0; x < w; x++) {
+    const g = ground(x);
+    for (let y = g; y < h; y++) put(x, y, y < g + 2 ? ID.GRASS : y < g + DEEP_DIRT ? ID.DIRT : ID.STONE);
+  }
+  for (const side of [0, 1]) {
+    const X = (x) => (side === 0 ? x : w - 1 - x);
+    // Ore, [x0, x1, depth from, depth to, element].
+    for (const [x0, x1, d0, d1, t] of [
+      [10, 60, 25, 32, ID.COAL], [100, 150, 30, 38, ID.COAL], [60, 110, 40, 48, ID.SALT], [140, 175, 42, 48, ID.SALT],
+      [15, 70, 55, 66, ID.METAL], [90, 150, 62, 74, ID.METAL], [40, 120, 85, 98, ID.COPPER],
+    ]) {
+      for (let x = x0; x <= x1; x++) for (let y = ground(X(x)) + d0; y <= ground(X(x)) + d1; y++) set(X(x), y, t);
+    }
+    for (const x of [14, 28, 92, 108, 124, 140, 156]) put(X(x), ground(X(x)) - 1, ID.SAPLING);
+    for (const [x0, len] of [[34, 8], [112, 7]]) {
+      const a = Math.min(X(x0), X(x0 + len));
+      rect(a, ground(a) - 3, a + len, ground(a) - 1, ID.WOOD, false);
+    }
+    for (const [cx, r] of [[22, 5], [134, 6]]) disc(X(cx), ground(X(cx)) - r + 1, r, ID.STONE, false);
+    for (let x = 6; x < 170; x += 21) put(X(x), ground(X(x)) - 1, ID.FLOWER);
+    for (const x of [50, 62, 74]) set(X(x), ground(X(x)) - 8, ID.HUMAN);
+  }
+  // Caverns: [x, depth, half-width, half-height]; the ore in their walls
+  // in patches (every few cells round the edge).
+  for (const [cx, d, rx, ry] of [[140, 52, 14, 7], [200, 70, 18, 9], [260, 52, 14, 7], [110, 98, 12, 6], [290, 98, 12, 6]]) {
+    const cy = ground(cx) + d;
+    for (let y = cy - ry - 2; y <= cy + ry + 2; y++) {
+      for (let x = cx - rx - 2; x <= cx + rx + 2; x++) {
+        const q = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
+        if (q <= 1) set(x, y, 0);
+        else if (q <= 1.45 && (x * 7 + y * 13) % 5 === 0) set(x, y, d > 80 ? ID.METAL : ID.COAL);
+      }
+    }
+  }
   for (const x of [170, 186, 200, 214, 230]) put(x, ground(x) - 1, ID.SAPLING);
 }
 
@@ -636,6 +687,7 @@ export const SCENES = [
   { key: 'start', name: 'Starting area', build: startingArea },
   { key: 'wilderness', name: 'Wilderness (for humans)', build: wilderness },
   { key: 'tribes', name: 'Two tribes (for humans, at war)', build: twoTribes },
+  { key: 'deep', name: 'Deep tribes (for humans, at war, deep underground)', build: deepTribes },
   { key: 'creatures', name: 'Creatures', build: creatures, showcase: true },
   { key: 'gallery', name: 'Every element (stress test)', build: gallery, showcase: true },
   { key: 'lab', name: 'Physics lab', build: physicsLab, showcase: true },
