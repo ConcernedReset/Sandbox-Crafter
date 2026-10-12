@@ -29,15 +29,24 @@ test('Medium conducts heat at about the same speed for half the work, and never 
   }
 });
 
-test('Medium steps the air every other step', () => {
-  const w = makeWorld(40, 20);
-  w.setQuality('medium');
-  w.pressurize(20, 10, 3, 30); // keep the air busy
-  let steps = 0;
-  const real = w.air.step.bind(w.air);
-  w.air.step = (g) => { steps++; return real(g); };
-  run(w, 10);
-  assert.equal(steps, 5);
+test('Medium and Low still step the air every step: a blast spreads as fast as on High', () => {
+  const arrives = (quality) => {
+    const w = makeWorld(200, 100, 1);
+    w.setQuality(quality);
+    let steps = 0;
+    const real = w.air.step.bind(w.air);
+    w.air.step = (g) => { steps++; return real(g); };
+    w.blast(50, 50, 40);
+    const at = [];
+    for (let f = 0; f < 60; f++) {
+      w.step();
+      for (const [k, d] of [10, 20, 30].entries()) if (at[k] === undefined && w.air.p[w.air.at(50 + d, 50)] > 0.05) at[k] = f;
+    }
+    assert.equal(steps, 60, `${quality}: the air every step`);
+    return at;
+  };
+  const high = arrives('high');
+  for (const q of ['medium', 'low']) assert.deepEqual(arrives(q), high, `${q}: the blast reaches 10, 20 and 30 cells away when it does on High`);
 });
 
 test('Low launches at most 4,000 flying particles', () => {

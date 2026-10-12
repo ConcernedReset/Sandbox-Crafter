@@ -156,9 +156,10 @@ back to system ones; progress is saved per file location.)
   its whole shape. Picking an element in the palette doesn't move the tree
   in hard mode. Resetting discoveries keeps hard mode on.
 - **Performance** (in the `⋯` menu): Auto, High, Medium or Low, remembered
-  in your browser. High is the full simulation. Medium works out heat and
-  the air every other step (heat at twice the rate, so it spreads about as
-  fast; wind and blasts spread at half speed). Low does the same, runs a
+  in your browser. High is the full simulation. Medium works out heat
+  every other step, at twice the rate, so it spreads about as fast (the air
+  still moves every step, so wind and blasts are as quick as on High). Low
+  does the same, runs a
   game that can't keep up in slow motion instead of stuttering, and has at
   most 4,000 flying particles at once. Auto, the default, starts at High,
   drops a level when frames take too long for about a second, and climbs
@@ -991,8 +992,9 @@ crosses into a sleeping area as fast as into an awake one; that slow
 reactions (water turning dirt to mud), radioactivity and plants carry on;
 that nothing sleeps under Newtonian gravity; and that the settled starting
 scene needs a tenth of the particle updates. The performance tests check
-Medium's heat keeps pace with High's without overshooting, the air steps
-every other step, Low's particle cap, Auto's levels, and the saved choice.
+Medium's heat keeps pace with High's without overshooting, a blast spreads
+as fast on Medium and Low as on High, Low's particle cap, Auto's levels, and
+the saved choice.
 The creature tests check shapes compile, a seed grows ring by ring (and
 gives up with no room), a body falls whole with sand piling on it, lost
 pixels are damage and half the body lost is death, only the hot pixels are

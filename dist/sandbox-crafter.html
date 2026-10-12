@@ -17980,9 +17980,12 @@ class World {
     if (this.portalCells !== 0) this.stepPortalAir();
     this.computeField();
     this.stepProjectiles();
-    // At lower quality heat and air take turns, every other step each.
+    // At lower quality heat is worked out every other step, two steps'
+    // worth at once. The air steps every step whatever the quality: it can't
+    // do two at once, and stepped every other step, blasts and wind spread
+    // at half speed.
     if (this.heatSteps === 1 || (tick & 1) === 0) this.conductHeat();
-    if (this.airEvery === 1 || (tick & 1) === 1) air.step(this.gravity);
+    air.step(this.gravity);
     this.stepSleep();
   }
 
@@ -18856,12 +18859,11 @@ class World {
   // Convection on or off. Off, the air forgets any heat it held.
   // How hard the simulation works (the Performance setting): 'high' as it
   // is; 'medium' works out heat every other step, at the rate two steps
-  // would, and steps the air every other step; 'low' does the same and
+  // would (the air still steps every step); 'low' does the same and
   // launches at most LOW_PARTICLES flying particles at once.
   setQuality(level) {
     this.quality = level;
     this.heatSteps = level === 'high' ? 1 : 2;
-    this.airEvery = level === 'high' ? 1 : 2;
     this.pCap = level === 'low' ? LOW_PARTICLES : this.px.length;
   }
 
