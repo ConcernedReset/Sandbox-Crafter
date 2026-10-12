@@ -51,8 +51,6 @@ const MISSILE_BOOST = 24; // cells straight up out of the tube
 const MISSILE_TURN = 0.07; // radians a step it can turn
 const NOSE = 4; // how far its nose is ahead of its tail (where it's anchored)
 const APEX = 80; // how high over the higher end of its way it flies
-// Growth (leaves, plants, saplings) a missile tears through.
-const LEAFY = Uint8Array.from(DEFS, (d) => (d.cat === 'life' && (d.state === SOLID || d.state === POWDER) && !d.shape ? 1 : 0));
 const APEX_NEAR = 14; // this near a point of its way, it turns for the next
 const TURN_ROOM = 24; // and its way keeps this far inside the world (room to turn)
 const MISSILE_FUEL = 1500; // steps it flies before it comes down wherever it is
@@ -380,8 +378,9 @@ export const Aircraft = {
   // Sweep what's loose (powders, rubble) or wild (leaves, plants, the wood
   // of trees: never what humans built) out of the cells e's body would take
   // at (x, y) facing f: pushed aside, or cleared. False (sweeping nothing)
-  // if anything else is in the way. `leavesOnly`: just growth (a missile
-  // tearing through a tree's crown), which is cleared away.
+  // if anything else is in the way. `leavesOnly`: just what's wild
+  // (growth and tree wood: a missile tearing through a tree), which is
+  // cleared away.
   sweepFor(e, x, y, f, leavesOnly = false) {
     const out = this.footB;
     if (!this.placeCells(e.kind, x, y, 0, f, e.gx, e.gy, out)) return false;
@@ -392,7 +391,7 @@ export const Aircraft = {
       if (this.roomForBody(e, c)) continue;
       const t = this.type[c], d = DEFS[t];
       if (SHAPED[t] || this.wall[c] !== 0) return false;
-      if (leavesOnly ? LEAFY[t] === 0 : !(d.state === POWDER || this.loose[c] || this.wild(c))) return false;
+      if (leavesOnly ? !this.wild(c) : !(d.state === POWDER || this.loose[c] || this.wild(c))) return false;
       loose.push(c);
     }
     for (const c of loose) {
@@ -504,8 +503,9 @@ export const Aircraft = {
       const nx = e.x + sx, ny = e.y + sy;
       // Leaving its tube and climbing over its own camp, it pushes through
       // what's loose or growing (sand on its fins, a tree over the tube);
-      // after that it tears through leaves and other growth, and goes off on
-      // anything else it hits.
+      // after that it tears through what's soft and wild (leaves and other
+      // growth, and the wood of trees: wild, never what humans built), and
+      // goes off on anything else it hits.
       if (!this.moveBody(e, nx, ny, 0, 1, -dx, -dy) && !this.moveBody(e, nx, ny, 0, 1, e.gx, e.gy)
         && !(this.sweepFor(e, nx, ny, 1, k.boost <= 0 && k.leg > 0) && this.moveBody(e, nx, ny, 0, 1, e.gx, e.gy))) {
         // Its own side in the way (its helicopter taking off, say): it

@@ -357,7 +357,9 @@ else; `test/build.test.js` checks the bundle runs.
   anchored tail) at most `MISSILE_TURN` a step, speeding to 2 a step and
   pointing in 8 directions (its gx/gy is the way it came from). Leaving
   its tube it sweeps aside loose stuff and growth (sand on its fins);
-  after that it tears through growth (`sweepFor` with `leavesOnly`) and
+  after that it tears through what's `wild` (growth and tree wood: in
+  Deep tribes, with the surface high up, missiles ran into trunks;
+  `sweepFor` with `leavesOnly`) and
   goes off on anything else it hits (but waits up to `MISSILE_HOLD` for
   its own side to move); losing `MISSILE_TOUGH` (3) pixels sets it off;
   `crater` clears the middle, breaks solids loose round it, then a `blast`
@@ -520,9 +522,14 @@ else; `test/build.test.js` checks the bundle runs.
   saplings' (`plantWork`): walk to `STAND` cells camp-side of the spot,
   kneel `PLANT_FOR`, `spawn` a Sapling (not `putDown`: its tree is
   anyone's). A planter that stops planting is let go (`plantChores`,
-  `leaveCamp`). The Deep tribes world (`deepTribes` in scenes.js:
-  `DEEP_DIRT` rows of dirt over stone, ore by depth, five caverns) is
-  for long games: in Two tribes the ore within reach ran out.
+  `leaveCamp`). The Deep tribes world (`deepTribes` in scenes.js: the
+  surface about a third of the way down, so a missile's way over the top,
+  `APEX` above, stays in the world and over the trees; `DEEP_DIRT` rows
+  of dirt over stone; ore veins as wavy lenses with gaps and caves as
+  wandering worms of round hollows, `DEEP_CAVE_TOP` to
+  `DEEP_CAVE_BOTTOM` down, both from `noise2`/`fbm`, smooth noise on a
+  fixed hash, so the world is the same every time) is for long games: in
+  Two tribes the ore within reach ran out.
 - **Tunnels** (`tunnels.js`): mining digs tunnels. A spot is where a
   human's feet go; its inside is the 3x6 body box. `workSpot` lines first
   (`looseRound`: powders with the inside below or diagonally below are

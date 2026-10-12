@@ -191,6 +191,34 @@ test("a missile flies at the enemy's hut and blows a crater in it", () => {
   assert.ok(left < hut.cells.length - 3, `the hut smashed (${left} of ${hut.cells.length} left)`);
 });
 
+test("a missile flies through a tree's trunk and leaves in its way (but not through what humans built)", () => {
+  const w = field(300, 2, 170);
+  const A = settle(w, 60, 1), B = settle(w, 220, 1);
+  const ln = built(w, A.camp, 'launcher');
+  const m = ln.missile;
+  A.people[0].brain.weapon = 0;
+  B.people[0].brain.weapon = 0;
+  // A wall of tree wood and leaves right across the sky between the camps.
+  for (let y = 5; y < w.h - 31; y++) for (const x of [140, 141, 142]) w.spawn(y * w.w + x, y % 3 === 0 ? ID.LEAVES : ID.WOOD);
+  A.camp.raidAt = w.tick;
+  let at = null;
+  const detonate = w.detonate.bind(w);
+  w.detonate = (e) => {
+    if (e === m) at = [m.x, m.y];
+    return detonate(e);
+  };
+  for (let f = 0; f < 400 && alive(w, m); f++) w.step();
+  assert.ok(at !== null, 'it went off');
+  assert.ok(Math.abs(at[0] - B.camp.x) < 30, `at the enemy camp, not the tree (${at})`);
+  let torn = 0;
+  for (let y = 5; y < w.h - 31; y++) if (w.type[y * w.w + 141] === 0) torn++;
+  assert.ok(torn > 0, 'a hole torn through it');
+  // A wall humans put up stops it.
+  const wall = w.campCell(A.camp, 0, -40);
+  w.putDown(wall, ID.WOOD);
+  assert.equal(w.wild(wall), false);
+});
+
 test('an anti-air gun goes for an incoming missile first, and bursts right by it set it off', () => {
   const w = field(300, 2, 170);
   const A = settle(w, 60, 1), B = settle(w, 220, 2);

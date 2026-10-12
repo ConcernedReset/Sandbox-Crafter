@@ -110,7 +110,7 @@ test('two tribes: three humans at each end, far apart, with wood, stone, coal, s
   }
 });
 
-test('deep tribes: three humans at each end, over a little dirt and deep stone, big ore veins deep down, and open caverns', () => {
+test('deep tribes: three humans at each end, the ground a third of the way down, a little dirt over deep stone, wavy ore veins and caves', () => {
   const w = scene('deep', 20);
   const people = w.creatures.filter((e) => e.kind === ID.HUMAN);
   assert.equal(people.filter((e) => e.x < w.w / 2).length, 3);
@@ -122,9 +122,10 @@ test('deep tribes: three humans at each end, over a little dirt and deep stone, 
   };
   for (const x of [30, 120, 200, 280, 370]) {
     const g = top(x);
-    assert.ok(g > 30 && g < 90, `the surface high up (${g} at ${x})`);
+    assert.ok(g > w.h / 3 + 20 && g < w.h * 0.65, `the surface a third of the way down or more (${g} at ${x})`);
+    assert.ok(g > 100, 'sky enough over it for a missile to clear the trees');
     assert.equal(w.type[(g + 10) * w.w + x], ID.DIRT, `dirt under it at ${x}`);
-    assert.ok(w.h - g > 140, 'deep ground');
+    assert.ok(w.h - g > 85, 'deep ground');
   }
   // Ore, the deeper the richer, each side within its reach.
   const depths = { COAL: [], SALT: [], METAL: [], COPPER: [] };
@@ -141,8 +142,15 @@ test('deep tribes: three humans at each end, over a little dirt and deep stone, 
   for (const [t, least] of [['COAL', 600], ['SALT', 400], ['METAL', 1000], ['COPPER', 1000]]) assert.ok(depths[t].length >= least, `plenty of ${t} (${depths[t].length})`);
   assert.ok(mid(depths.COAL) < mid(depths.SALT) && mid(depths.SALT) < mid(depths.METAL) && mid(depths.METAL) < mid(depths.COPPER), 'the deeper the richer');
   assert.ok(mid(depths.COPPER) - MINE_R < 0, 'still in mining reach');
-  assert.ok(stone > 30000, 'stone down below');
-  assert.ok(open > 800, `open caverns deep down (${open} cells)`);
+  assert.ok(stone > 18000, `stone down below (${stone})`);
+  assert.ok(open > 800, `open caves deep down (${open} cells)`);
+  // Wavy, not ruled: the top of the first coal vein on the left goes up and down along it.
+  const tops = new Set();
+  for (let x = 20; x <= 50; x++) {
+    const g = top(x);
+    for (let y = g; y < w.h; y++) if (w.type[y * w.w + x] === ID.COAL) { tops.add(y - g); break; }
+  }
+  assert.ok(tops.size >= 4, `a wavy vein (its top at ${[...tops]} under the ground)`);
 });
 
 test('the creature world has every kind of creature', () => {

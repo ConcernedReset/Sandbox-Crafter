@@ -61,7 +61,23 @@ function tools(world) {
   return { w, h, put, set, rect, box, disc, switchOn };
 }
 
-const DEEP_DIRT = 20; // Deep tribes: rows of dirt (grass on top) before the stone
+const DEEP_DIRT = 18; // Deep tribes: rows of dirt (grass on top) before the stone
+const DEEP_CAVE_TOP = 34, DEEP_CAVE_BOTTOM = 92; // and how deep its caves wander
+
+// Smooth noise for natural shapes (ore veins, caves): a fixed hash of the
+// whole-number points, eased between them. 0..1. fbm adds finer layers.
+function hash2(x, y) {
+  let n = Math.imul(x, 374761393) + Math.imul(y, 668265263);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+function noise2(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+const fbm = (x, y) => 0.6 * noise2(x, y) + 0.3 * noise2(x * 2.1 + 17, y * 2.1) + 0.1 * noise2(x * 4.3 + 31, y * 4.3);
 
 // Rolling ground: the height of the surface at x.
 const rolling = (h, base, a1, a2, phase = 0) => (x) => Math.round(h - base + Math.sin(x / 37 + phase) * a1 + Math.sin(x / 13 + 1.7 + phase) * a2);
@@ -183,15 +199,16 @@ function twoTribes(world) {
 
 // ---- deep tribes ---------------------------------------------------------------
 
-// Two tribes over deep ground: the surface high up, a few rows of dirt,
-// then stone to the bottom of the world, with big seams and veins of ore
-// the deeper the richer (coal, then salt, metal, copper), and a few open
-// caverns deep down, mostly between the camps, ore showing in their walls.
-// Each side has its own forest, logs and boulders, with a wooded ridge
-// between, and three humans.
+// Two tribes over deep ground: the surface a third of the way down (the
+// sky over it high enough for missiles to clear the trees), a few rows of
+// dirt, then stone to the bottom of the world, with veins of ore the
+// deeper the richer (coal, then salt, metal, copper), each a wavy lens
+// with gaps in it, and caves wandering through the rock deep down, mostly
+// between the camps, ore showing in their walls. Each side has its own
+// forest, logs and boulders, with a wooded ridge between, and three humans.
 function deepTribes(world) {
   const { w, h, put, set, rect, disc } = tools(world);
-  const rolled = rolling(h, 180, 6, 3, 2.1);
+  const rolled = rolling(h, 100, 6, 3, 2.1);
   const ground = (x) => rolled(x) - Math.round(Math.max(0, 16 - Math.abs(x - w / 2) * 0.35));
   for (let x = 0; x < w; x++) {
     const g = ground(x);
@@ -199,13 +216,23 @@ function deepTribes(world) {
   }
   for (const side of [0, 1]) {
     const X = (x) => (side === 0 ? x : w - 1 - x);
-    // Ore, [x0, x1, depth from, depth to, element].
-    for (const [x0, x1, d0, d1, t] of [
-      [10, 60, 25, 32, ID.COAL], [100, 150, 30, 38, ID.COAL], [60, 110, 40, 48, ID.SALT], [140, 175, 42, 48, ID.SALT],
-      [15, 70, 55, 66, ID.METAL], [90, 150, 62, 74, ID.METAL], [40, 120, 85, 98, ID.COPPER],
-    ]) {
-      for (let x = x0; x <= x1; x++) for (let y = ground(X(x)) + d0; y <= ground(X(x)) + d1; y++) set(X(x), y, t);
-    }
+    // Ore veins, [x0, x1, depth from, depth to, element]: a lens between
+    // those depths that wanders up and down and swells and thins along
+    // its length, tapering at its ends, with gaps (smooth noise, worked
+    // out on this side's own x, so the two sides mirror each other).
+    [
+      [8, 66, 22, 34, ID.COAL], [96, 156, 26, 38, ID.COAL], [56, 116, 36, 48, ID.SALT], [134, 178, 38, 48, ID.SALT],
+      [12, 76, 50, 66, ID.METAL], [86, 156, 56, 72, ID.METAL], [36, 128, 74, 90, ID.COPPER],
+    ].forEach(([x0, x1, d0, d1, t], s) => {
+      for (let x = x0; x <= x1; x++) {
+        const taper = Math.min(1, (x - x0) / 10, (x1 - x) / 10);
+        const mid = (d0 + d1) / 2 + (d1 - d0) * 0.6 * (noise2(x / 23 + s * 7.3, s) - 0.5);
+        const half = ((d1 - d0) / 2) * (0.6 + 0.7 * noise2(x / 11 + s * 3.1, 9 + s)) * taper;
+        for (let d = Math.floor(mid - half); d <= Math.ceil(mid + half); d++) {
+          if (Math.abs(d - mid) <= half && fbm(x / 9 + s * 5.7, d / 6) > 0.32) set(X(x), ground(X(x)) + d, t);
+        }
+      }
+    });
     for (const x of [14, 28, 92, 108, 124, 140, 156]) put(X(x), ground(X(x)) - 1, ID.SAPLING);
     for (const [x0, len] of [[34, 8], [112, 7]]) {
       const a = Math.min(X(x0), X(x0 + len));
@@ -215,15 +242,37 @@ function deepTribes(world) {
     for (let x = 6; x < 170; x += 21) put(X(x), ground(X(x)) - 1, ID.FLOWER);
     for (const x of [50, 62, 74]) set(X(x), ground(X(x)) - 8, ID.HUMAN);
   }
-  // Caverns: [x, depth, half-width, half-height]; the ore in their walls
-  // in patches (every few cells round the edge).
-  for (const [cx, d, rx, ry] of [[140, 52, 14, 7], [200, 70, 18, 9], [260, 52, 14, 7], [110, 98, 12, 6], [290, 98, 12, 6]]) {
-    const cy = ground(cx) + d;
-    for (let y = cy - ry - 2; y <= cy + ry + 2; y++) {
-      for (let x = cx - rx - 2; x <= cx + rx + 2; x++) {
-        const q = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
-        if (q <= 1) set(x, y, 0);
-        else if (q <= 1.45 && (x * 7 + y * 13) % 5 === 0) set(x, y, d > 80 ? ID.METAL : ID.COAL);
+  // Caves: worms wandering through the rock, [x, depth, heading, length,
+  // width]: a string of round hollows, each a step on from the last, the
+  // heading turning and the width swelling and narrowing as it goes (smooth
+  // noise), kept DEEP_CAVE_TOP to DEEP_CAVE_BOTTOM down. Then ore in
+  // patches in their walls: coal higher up, metal deeper.
+  const hollow = new Set();
+  [[150, 46, 0.2, 46, 4], [200, 60, -0.3, 60, 5], [250, 46, Math.PI - 0.2, 46, 4], [112, 80, 0.4, 34, 3.5], [288, 80, Math.PI - 0.4, 34, 3.5]]
+    .forEach(([x0, d0, a0, len, r0], s) => {
+      let x = x0, d = d0, a = a0;
+      for (let k = 0; k < len; k++) {
+        const r = r0 * (0.6 + 0.8 * noise2(k / 9 + s * 4.1, 3));
+        const cx = Math.round(x), cy = ground(cx) + Math.round(d);
+        for (let y = Math.floor(cy - r); y <= cy + r; y++) {
+          for (let xx = Math.floor(cx - r); xx <= cx + r; xx++) {
+            if ((xx - cx) ** 2 + (y - cy) ** 2 > r * r || y >= h - 2 || xx < 1 || xx >= w - 1) continue;
+            set(xx, y, 0);
+            hollow.add(y * w + xx);
+          }
+        }
+        a += (noise2(k / 7 + s * 9.2, 5) - 0.5) * 0.9;
+        x += Math.cos(a) * 1.6;
+        d = Math.max(DEEP_CAVE_TOP + r0, Math.min(DEEP_CAVE_BOTTOM - r0, d + Math.sin(a) * 0.8));
+      }
+    });
+  for (const c of hollow) {
+    const x = c % w, y = (c / w) | 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const j = (y + dy) * w + x + dx;
+        if (hollow.has(j) || world.type[j] !== ID.STONE || fbm((x + dx) / 4, (y + dy) / 4) < 0.62) continue;
+        set(x + dx, y + dy, y + dy - ground(x + dx) > 60 ? ID.METAL : ID.COAL);
       }
     }
   }

@@ -173,9 +173,10 @@ back to system ones; progress is saved per file location.)
   rolling hills with a wooded ridge between, each with its own forest,
   boulders and plenty of coal, salt and metal underground: once they're
   settled and armed they go to war, and **Deep tribes**, the same two
-  tribes over deep ground: a few rows of dirt, then stone all the way down,
-  with big seams of coal and salt and veins of metal and copper, the deeper
-  the richer, and a few open caverns deep down between the camps. Five are showcases: **Creatures** (a pond full of
+  tribes over deep ground, the surface a third of the way down the world: a
+  few rows of dirt, then stone all the way down, with wavy veins of coal,
+  salt, metal and copper, the deeper the richer, and caves wandering through
+  the rock between the camps, ore in their walls. Five are showcases: **Creatures** (a pond full of
   swimmers, a meadow full of insects, frogs and snails, birds, a caged
   phoenix and two humans), **Every element** (each in its own little walled
   cell, a stress test), the **Physics lab** (portals, time zones, sieving
@@ -657,7 +658,8 @@ Each frame (60 per second):
    sights). The missile flies straight
    up, high over the hills and trees, comes straight down on the enemy's
    hut and blows a crater where it hits, breaking stone and brick into
-   rubble; it tears through leaves, but a hard hit on the way
+   rubble; it tears through leaves and the wood of trees (not what humans
+   built), but a hard hit on the way
    (or in its tube) sets it off. With the AI view on, helicopters and
    missiles are labelled with what they're doing, and each camp's label
    shows its war machines and when it next raids.
