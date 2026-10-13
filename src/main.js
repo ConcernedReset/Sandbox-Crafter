@@ -331,7 +331,13 @@ perfSelect.addEventListener('change', () => {
 });
 applyPerf();
 $('menu-sleep').addEventListener('change', (e) => { renderer.showSleep = e.target.checked; });
-$('menu-influence').addEventListener('change', (e) => { renderer.showInfluence = e.target.checked; });
+$('menu-influence').addEventListener('change', (e) => {
+  renderer.showInfluence = e.target.checked;
+  $('tribe-tools').hidden = !e.target.checked; // (testing tools for the camps, grudges.js)
+});
+$('tribe-war').addEventListener('click', () => world.startWars());
+$('tribe-peace').addEventListener('click', () => world.endWars());
+$('tribe-kit').addEventListener('click', () => world.kitOut());
 $('menu-ai').addEventListener('change', (e) => { renderer.showAI = e.target.checked; });
 
 $('menu-hard').checked = progress.hard;

@@ -37,7 +37,7 @@
 import { DEFS, ID, State } from './elements.js';
 import { SHAPED } from './creatures.js';
 import {
-  WALK_EVERY, AMMO_LOW, WOOD_ONLY, FRAME_KNEEL, METALS, DANGER, HUT_W, HELD_PICKAXE,
+  WALK_EVERY, AMMO_LOW, WOOD_ONLY, FRAME_KNEEL, METALS, DANGER, HUT_W, HELD_PICKAXE, ARMOUR_HITS,
 } from './humans.js';
 import { INSIDE, LINED, NEW_COST, TUNNEL_LINING, ENTRY_DEPTH } from './tunnels.js';
 
@@ -45,6 +45,7 @@ const { LIQUID, GAS, ENERGY } = State;
 const { GUNPOWDER, C4, COPPER } = ID;
 
 export const ANGER_MAX = 100;
+export const ANGER_RUSH = 10; // at full anger, the clock to its next raid runs this many times as fast (war.js)
 export const ANGER_HIT = 2; // an enemy's bullet hits one of its people (armour or not)
 export const ANGER_KILL = 25; // one of them dies soon after an enemy's hit
 const KILL_WINDOW = 600; // (this soon)
@@ -79,6 +80,8 @@ const BLOW_CHARGE = 7, BLOW_MID = 8, BLOW_TOP = 11; // their sizes: at the charg
 const BLOW_STEP = 8; // (one every this many cells, at most)
 const PLUNGER_U = 4; // where it kneels at the plunger: this far past the edge of the lawn (the plunger 3 nearer)
 const PLUNGER_FAR = 16; // (or up to this much farther, where there's ground for it)
+// What kitOut hands every human.
+const KIT = [['WOOD', 200], ['STONE', 100], ['METAL', 100], ['COPPER', 100], ['COAL', 100], ['GUNPOWDER', 200]];
 // Its jobs, in order.
 const SAP_JOBS = new Set(['tunnelling', 'placing the charge', 'laying wire', 'detonating']);
 
@@ -256,6 +259,11 @@ export const Grudges = {
       camp.sapsDone++;
       camp.strikes++;
     }
+    this.freeSapper(s);
+  },
+
+  // The tunneller off its job.
+  freeSapper(s) {
     const o = this.creatureById[s.id];
     if (!o || o.brain === null) return;
     const b = o.brain;
@@ -807,6 +815,66 @@ export const Grudges = {
       if (this.inBounds(tx, ty)) this.crater(tx, ty, k === 0 ? BLOW_CHARGE : k === n ? BLOW_TOP : BLOW_MID);
     }
     this.angerAround(tx, ty, ch.by, ANGER_BLAST, ANGER_NEAR_R);
+  },
+
+  // ---- testing tools (the buttons over the world with the AI view on) -------
+
+  // Every camp goes to war with every other: furious with its nearest
+  // rival, it raids it at once if it can (else at its next chores), and
+  // sends a tunneller.
+  startWars() {
+    for (const camp of this.camps) {
+      const enemy = this.nearestRival(camp);
+      if (enemy === null) continue;
+      for (const o of this.camps) this.goToWar(camp, o);
+      camp.anger = ANGER_MAX;
+      camp.grudge = enemy;
+      camp.enemyAt = this.tick;
+      if (camp.raid === null && !this.startRaid(camp, enemy)) camp.raidAt = this.tick;
+    }
+  },
+
+  // Every war ends: anger gone, raids called off (raiders and helicopters
+  // home; the raid clock starts afresh), tunnel jobs dropped. Charges laid
+  // stay where they are.
+  endWars() {
+    for (const camp of this.camps) {
+      camp.anger = 0;
+      camp.grudge = null;
+      camp.wars.clear();
+      camp.sapFor = null;
+      if (camp.sap !== null) {
+        const s = camp.sap;
+        camp.sap = null;
+        this.freeSapper(s);
+      }
+      if (camp.raid !== null) {
+        for (const id of camp.raid.party) {
+          const b = this.creatureById[id]?.brain;
+          if (!b || b.raid === null) continue;
+          b.raid = null;
+          b.job = 'wandering';
+          b.think = 0;
+        }
+        camp.raid = null;
+      }
+      camp.raidAt = 0;
+    }
+  },
+
+  // Every human gets a pickaxe, a gun, whole armour and plenty of
+  // everything (KIT).
+  kitOut() {
+    for (const e of this.creatures) {
+      const b = e.brain;
+      if (!b) continue;
+      b.tool = 1;
+      b.weapon = 1;
+      b.armour = ARMOUR_HITS;
+      for (const [t, n] of KIT) {
+        b.items.set(ID[t], this.has(b, ID[t]) + n);
+      }
+    }
   },
 };
 

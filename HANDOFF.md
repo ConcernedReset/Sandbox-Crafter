@@ -384,7 +384,9 @@ else; `test/build.test.js` checks the bundle runs.
   hitting anything. `stepWar` runs from `World.step` whenever there are
   camps or shells (not only with creatures). Raids (`campChores`, once a
   second per camp): the clock (`camp.raidAt`) starts with the first war
-  machine, `raidGap` `RAID_MIN`..`RAID_MAX` (18,000-36,000 steps);
+  machine, `raidGap` `RAID_MIN`..`RAID_MAX` (18,000-36,000 steps), and
+  at full anger runs `ANGER_RUSH` (10) times as fast (each chores takes
+  9 more `CHORES_EVERY` off it);
   `startRaid` against `nearestRival`: `ceil(members * RAID_SHARE)` armed
   members (not the engineer, not in a tunnel) get `brain.raid`, the
   missile is launched at `aimPoint` (the enemy hut's roof) and the
@@ -424,6 +426,15 @@ else; `test/build.test.js` checks the bundle runs.
   arrow; the renderer's `paintWar` draws shells, barrels, rotors and a
   missile's flame; `cellNotes` names machine parts. Tested in
   `test/war.test.js`. Keep it game-only, like the gun.
+- **Testing tools** (grudges.js, buttons `#tribe-tools` over the world,
+  shown with Show spheres of influence, main.js): `startWars` (`goToWar`
+  with every other camp, full anger at `nearestRival`, `startRaid` at
+  once, else `raidAt` now), `endWars` (anger, `wars`, `sapFor` cleared;
+  the tunneller freed (`freeSapper`, no failure counted); raiders'
+  `brain.raid` cleared, so helicopters fly home; `raidAt` 0: the clock
+  starts again with a war machine), `kitOut` (every human: pickaxe, gun,
+  `ARMOUR_HITS` armour, and `KIT`: wood 200, stone 100, metal 100,
+  copper 100, coal 100, gunpowder 200).
 - **Grudges** (`grudges.js`): going to war: `startRaid` calls
   `goToWar` both ways; the first time a camp meets an enemy so
   (`camp.wars`) it marks it `camp.sapFor`, and its chores start a

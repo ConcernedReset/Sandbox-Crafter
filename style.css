@@ -373,6 +373,33 @@ kbd {
 }
 .viewport .minimap[hidden] { display: none; }
 
+.tribe-tools {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  max-width: calc(100% - 24px);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(10, 12, 16, 0.82);
+}
+.tribe-tools[hidden] { display: none; }
+.tribe-tools button {
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 500 12px/1 var(--font-mono);
+  cursor: pointer;
+}
+.tribe-tools button + button { border-left: 1px solid var(--line); }
+.tribe-tools button:hover { color: var(--text); background: var(--panel-2); }
+.tribe-tools button:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+
 .paused-flag {
   position: absolute;
   top: 12px;

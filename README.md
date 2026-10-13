@@ -197,7 +197,12 @@ back to system ones; progress is saved per file location.)
   crosses on what its humans are on their way to fetch; a line to each
   member (red and dashed once it's strayed too far); and a label with its
   fire, hut and how many are away. The tunnel network is drawn in gold,
-  entrances as larger squares.
+  entrances as larger squares. While it's on, three buttons over the
+  world help with testing: **Start wars** (every camp furious with its
+  nearest rival, raiding at once where it can, and sending a tunneller),
+  **End wars** (anger gone, raids called off, tunnel jobs dropped) and
+  **Max gear** (every human gets a pickaxe, a gun, whole armour and
+  plenty of wood, stone, metal, copper, coal and gunpowder).
 - **Show AI data** (`⋯` menu) draws, for each human, a fading trail of
   where it's been, a dashed line along the way it means to go (for a miner,
   through the tunnels and along the run it will dig), a crosshair on its

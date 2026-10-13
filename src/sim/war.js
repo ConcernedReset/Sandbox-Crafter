@@ -35,6 +35,7 @@ import { SHAPED } from './creatures.js';
 import {
   HUT_W, HUT_WALL, WALK_EVERY, MATERIAL, METALS, AMMO_LOW, STONE_R,
 } from './humans.js';
+import { ANGER_MAX, ANGER_RUSH } from './grudges.js';
 
 const { SOLID, POWDER, LIQUID } = State;
 const { GUNPOWDER, COAL, HUMAN, HELICOPTER, MISSILE, SMOKE, WOOD } = ID;
@@ -138,7 +139,11 @@ export const War = {
     this.campAnger(camp);
     // Trees running out: it plants more (planting.js).
     this.plantChores(camp);
-    // Raids: the clock starts with the camp's first war machine.
+    // Raids: the clock starts with the camp's first war machine. At full
+    // anger it runs ANGER_RUSH times as fast.
+    if (camp.raid === null && camp.raidAt > this.tick && camp.anger >= ANGER_MAX) {
+      camp.raidAt = Math.max(this.tick, camp.raidAt - (ANGER_RUSH - 1) * CHORES_EVERY);
+    }
     if (camp.raid !== null) {
       if (this.raidOver(camp)) this.endRaid(camp);
     } else if (camp.raidAt === 0) {

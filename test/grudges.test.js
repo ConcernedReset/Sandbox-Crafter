@@ -444,3 +444,44 @@ test("a tunneller that can't dig its way keeps at it; after a while with no head
   assert.ok(A.camp.sapRetry > w.tick);
   assert.ok(alive(w, A.people[0]));
 });
+
+test('at full anger the clock to the next raid runs 10 times as fast', () => {
+  const left = (anger) => {
+    const { w, A } = rivals(150, 1);
+    A.camp.raidAt = w.tick + 3000;
+    A.camp.anger = anger;
+    A.camp.enemyAt = w.tick; // (not calm: it doesn't hit back meanwhile)
+    run(w, CHORES * 2);
+    return A.camp.raidAt - w.tick;
+  };
+  const calm = left(0), angry = left(ANGER_MAX);
+  assert.ok(calm > 2800, `calm: ${calm} left`);
+  assert.ok(angry < 3000 - CHORES * 2 * 9, `furious: ${angry} left`);
+});
+
+test('the testing tools: start wars, end them, and kit every human out', () => {
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
+  w.startWars();
+  assert.ok(A.camp.wars.has(B.camp) && B.camp.wars.has(A.camp), 'at war both ways');
+  assert.equal(A.camp.anger, ANGER_MAX);
+  assert.equal(A.camp.grudge, B.camp);
+  assert.ok(A.camp.raid !== null, 'A raids at once');
+  run(w, CHORES * 2);
+  assert.ok(A.camp.sap !== null, 'and sends a tunneller');
+  w.endWars();
+  for (const c of [A.camp, B.camp]) {
+    assert.equal(c.anger, 0);
+    assert.equal(c.wars.size, 0);
+    assert.equal(c.raid, null);
+    assert.equal(c.sap, null);
+    assert.equal(c.sapFor, null);
+  }
+  assert.ok(A.people.every((o) => o.brain.raid === null), 'raiders called home');
+  w.kitOut();
+  for (const o of [...A.people, ...B.people]) {
+    assert.equal(o.brain.tool, 1);
+    assert.equal(o.brain.weapon, 1);
+    assert.ok(o.brain.armour >= 10);
+    assert.ok(w.has(o.brain, ID.METAL) >= 100 && w.has(o.brain, ID.GUNPOWDER) >= 200 && w.has(o.brain, ID.WOOD) >= 200);
+  }
+});
