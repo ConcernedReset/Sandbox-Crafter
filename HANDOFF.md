@@ -427,7 +427,10 @@ else; `test/build.test.js` checks the bundle runs.
   missile's flame; `cellNotes` names machine parts. Tested in
   `test/war.test.js`. Keep it game-only, like the gun.
 - **Testing tools** (grudges.js, buttons `#tribe-tools` over the world,
-  shown with Show spheres of influence, main.js): `startWars` (`goToWar`
+  shown with Show spheres of influence, main.js; each takes `only`, the
+  camp picked in `#tribe-pick` (`campNumber`, refreshed as camps come and
+  go), or null for all; `endWars(only)` ends the wars on both sides,
+  `makePeace(camp, foe)`): `startWars` (`goToWar`
   with every other camp, full anger at `nearestRival`, `startRaid` at
   once, else `raidAt` now), `endWars` (anger, `wars`, `sapFor` cleared;
   the tunneller freed (`freeSapper`, no failure counted); raiders'

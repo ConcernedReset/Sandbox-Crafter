@@ -406,6 +406,18 @@ kbd {
   font: 500 12px/1 var(--font-mono);
   cursor: pointer;
 }
+.tribe-tools select {
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: none;
+  color: var(--text);
+  font: 500 12px/1 var(--font-mono);
+  cursor: pointer;
+}
+.tribe-tools select option { background: var(--panel); color: var(--text); }
+.tribe-tools select:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 .tribe-tools button + button { border-left: 1px solid var(--line); }
 .tribe-tools button:hover { color: var(--text); background: var(--panel-2); }
 .tribe-tools button:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
@@ -1005,9 +1017,12 @@ kbd {
           <div class="toasts" id="toasts" aria-live="polite"></div>
           <div class="paused-flag" id="paused-flag" hidden>Paused</div>
           <div class="tribe-tools" id="tribe-tools" role="group" aria-label="Tribe testing tools" hidden>
-            <button type="button" id="tribe-war" title="Every camp goes to war with every other: full anger, a raid at once where it can, and a tunneller sent">Start wars</button>
-            <button type="button" id="tribe-peace" title="Every war ends: anger gone, raids called off, tunnel jobs dropped">End wars</button>
-            <button type="button" id="tribe-kit" title="Every human gets a pickaxe, a gun, whole armour and plenty of wood, stone, metal, copper, coal and gunpowder">Max gear</button>
+            <select id="tribe-pick" aria-label="Which tribe the buttons act on" title="Which tribe the buttons act on (numbered as on the map)">
+              <option value="">All tribes</option>
+            </select>
+            <button type="button" id="tribe-war" title="The tribe goes to war with every other: full anger at its nearest rival, a raid at once where it can, and a tunneller sent">Start wars</button>
+            <button type="button" id="tribe-peace" title="The tribe's wars end, on both sides: anger gone, raids called off, tunnel jobs dropped">End wars</button>
+            <button type="button" id="tribe-kit" title="The tribe's humans get a pickaxe, a gun, whole armour and plenty of wood, stone, metal, copper, coal and gunpowder">Max gear</button>
           </div>
           <canvas class="minimap" id="minimap" hidden aria-label="Map of the whole world. Click or drag to move the view."></canvas>
           <div class="zoom" role="group" aria-label="Zoom">
@@ -16339,13 +16354,14 @@ const Grudges = {
     this.angerAround(tx, ty, ch.by, ANGER_BLAST, ANGER_NEAR_R);
   },
 
-  // ---- testing tools (the buttons over the world with the AI view on) -------
+  // ---- testing tools (the buttons over the world with Show spheres of influence on) ----
+  // Each acts on every camp, or with `only`, on that one.
 
-  // Every camp goes to war with every other: furious with its nearest
-  // rival, it raids it at once if it can (else at its next chores), and
-  // sends a tunneller.
-  startWars() {
-    for (const camp of this.camps) {
+  // A camp goes to war with every other: furious with its nearest rival,
+  // it raids it at once if it can (else at its next chores), and sends a
+  // tunneller.
+  startWars(only = null) {
+    for (const camp of only === null ? this.camps : [only]) {
       const enemy = this.nearestRival(camp);
       if (enemy === null) continue;
       for (const o of this.camps) this.goToWar(camp, o);
@@ -16356,40 +16372,53 @@ const Grudges = {
     }
   },
 
-  // Every war ends: anger gone, raids called off (raiders and helicopters
-  // home; the raid clock starts afresh), tunnel jobs dropped. Charges laid
-  // stay where they are.
-  endWars() {
+  // Wars end: every camp's, or `only`'s, on both sides (the others' wars
+  // with it end too). Charges laid stay where they are.
+  endWars(only = null) {
     for (const camp of this.camps) {
-      camp.anger = 0;
-      camp.grudge = null;
-      camp.wars.clear();
-      camp.sapFor = null;
-      if (camp.sap !== null) {
-        const s = camp.sap;
-        camp.sap = null;
-        this.freeSapper(s);
-      }
-      if (camp.raid !== null) {
-        for (const id of camp.raid.party) {
-          const b = this.creatureById[id]?.brain;
-          if (!b || b.raid === null) continue;
-          b.raid = null;
-          b.job = 'wandering';
-          b.think = 0;
-        }
-        camp.raid = null;
-      }
-      camp.raidAt = 0;
+      if (only === null || camp === only) this.makePeace(camp, null);
+      else this.makePeace(camp, only);
     }
   },
 
-  // Every human gets a pickaxe, a gun, whole armour and plenty of
-  // everything (KIT).
-  kitOut() {
+  // Camp's wars end: all of them (`foe` null), or just its war with `foe`:
+  // anger at it gone, raids on it called off (raiders and helicopters
+  // home), the tunnel job against it dropped. Ending them all, the raid
+  // clock starts afresh.
+  makePeace(camp, foe) {
+    const all = foe === null;
+    if (all || camp.grudge === foe) {
+      camp.anger = 0;
+      camp.grudge = null;
+    }
+    if (all) camp.wars.clear();
+    else camp.wars.delete(foe);
+    if (all || camp.sapFor === foe) camp.sapFor = null;
+    if (camp.sap !== null && (all || camp.sap.enemy === foe)) {
+      const s = camp.sap;
+      camp.sap = null;
+      this.freeSapper(s);
+    }
+    if (camp.raid !== null && (all || camp.raid.enemy === foe)) {
+      for (const id of camp.raid.party) {
+        const b = this.creatureById[id]?.brain;
+        if (!b || b.raid === null) continue;
+        b.raid = null;
+        b.job = 'wandering';
+        b.think = 0;
+      }
+      camp.raid = null;
+      camp.raidAt = 0;
+    }
+    if (all) camp.raidAt = 0;
+  },
+
+  // Every human (or `only`'s) gets a pickaxe, a gun, whole armour and
+  // plenty of everything (KIT).
+  kitOut(only = null) {
     for (const e of this.creatures) {
       const b = e.brain;
-      if (!b) continue;
+      if (!b || (only !== null && b.camp !== only)) continue;
       b.tool = 1;
       b.weapon = 1;
       b.armour = ARMOUR_HITS;
@@ -23497,6 +23526,7 @@ __modules["src/main.js"] = (() => {
 const { World } = __modules["src/sim/world.js"];
 const { DEFS, ID } = __modules["src/sim/elements.js"];
 const { Renderer } = __modules["src/render/renderer.js"];
+const { campNumber, campColor } = __modules["src/render/ai-overlay.js"];
 const { TreeView } = __modules["src/render/tree-view.js"];
 const { Input, MAX_BRUSH, HARD_BLOCKED } = __modules["src/game/input.js"];
 const { Camera } = __modules["src/game/camera.js"];
@@ -23827,10 +23857,41 @@ $('menu-sleep').addEventListener('change', (e) => { renderer.showSleep = e.targe
 $('menu-influence').addEventListener('change', (e) => {
   renderer.showInfluence = e.target.checked;
   $('tribe-tools').hidden = !e.target.checked; // (testing tools for the camps, grudges.js)
+  if (e.target.checked) refreshTribes();
 });
-$('tribe-war').addEventListener('click', () => world.startWars());
-$('tribe-peace').addEventListener('click', () => world.endWars());
-$('tribe-kit').addEventListener('click', () => world.kitOut());
+// Which tribe the buttons act on: all of them, or one camp, numbered and
+// coloured as the map draws them. The list follows the camps as they come
+// and go (a camp that's gone falls back to all).
+const tribePick = $('tribe-pick');
+let tribeList = '';
+function refreshTribes() {
+  const nums = world.camps.map((c) => campNumber(c)).sort((a, b) => a - b);
+  const list = nums.join(',');
+  if (list !== tribeList) {
+    tribeList = list;
+    const was = tribePick.value;
+    tribePick.replaceChildren(new Option('All tribes', ''), ...nums.map((n) => new Option(`Camp ${n}`, String(n))));
+    tribePick.value = nums.includes(Number(was)) ? was : '';
+  }
+  const camp = pickedTribe();
+  tribePick.style.color = camp === null ? '' : campColor(camp);
+}
+function pickedTribe() {
+  return tribePick.value === '' ? null : world.camps.find((c) => campNumber(c) === Number(tribePick.value)) ?? null;
+}
+function tribeTool(act) {
+  refreshTribes();
+  const camp = pickedTribe();
+  if (tribePick.value !== '' && camp === null) return; // (gone since it was picked)
+  act(camp);
+}
+tribePick.addEventListener('mousedown', refreshTribes);
+tribePick.addEventListener('focus', refreshTribes);
+tribePick.addEventListener('change', refreshTribes);
+setInterval(() => { if (!$('tribe-tools').hidden) refreshTribes(); }, 500);
+$('tribe-war').addEventListener('click', () => tribeTool((camp) => world.startWars(camp)));
+$('tribe-peace').addEventListener('click', () => tribeTool((camp) => world.endWars(camp)));
+$('tribe-kit').addEventListener('click', () => tribeTool((camp) => world.kitOut(camp)));
 $('menu-ai').addEventListener('change', (e) => { renderer.showAI = e.target.checked; });
 
 $('menu-hard').checked = progress.hard;

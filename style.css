@@ -396,6 +396,18 @@ kbd {
   font: 500 12px/1 var(--font-mono);
   cursor: pointer;
 }
+.tribe-tools select {
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: none;
+  color: var(--text);
+  font: 500 12px/1 var(--font-mono);
+  cursor: pointer;
+}
+.tribe-tools select option { background: var(--panel); color: var(--text); }
+.tribe-tools select:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 .tribe-tools button + button { border-left: 1px solid var(--line); }
 .tribe-tools button:hover { color: var(--text); background: var(--panel-2); }
 .tribe-tools button:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }

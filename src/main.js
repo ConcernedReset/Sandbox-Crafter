@@ -4,6 +4,7 @@
 import { World } from './sim/world.js';
 import { DEFS, ID } from './sim/elements.js';
 import { Renderer } from './render/renderer.js';
+import { campNumber, campColor } from './render/ai-overlay.js';
 import { TreeView } from './render/tree-view.js';
 import { Input, MAX_BRUSH, HARD_BLOCKED } from './game/input.js';
 import { Camera } from './game/camera.js';
@@ -334,10 +335,41 @@ $('menu-sleep').addEventListener('change', (e) => { renderer.showSleep = e.targe
 $('menu-influence').addEventListener('change', (e) => {
   renderer.showInfluence = e.target.checked;
   $('tribe-tools').hidden = !e.target.checked; // (testing tools for the camps, grudges.js)
+  if (e.target.checked) refreshTribes();
 });
-$('tribe-war').addEventListener('click', () => world.startWars());
-$('tribe-peace').addEventListener('click', () => world.endWars());
-$('tribe-kit').addEventListener('click', () => world.kitOut());
+// Which tribe the buttons act on: all of them, or one camp, numbered and
+// coloured as the map draws them. The list follows the camps as they come
+// and go (a camp that's gone falls back to all).
+const tribePick = $('tribe-pick');
+let tribeList = '';
+function refreshTribes() {
+  const nums = world.camps.map((c) => campNumber(c)).sort((a, b) => a - b);
+  const list = nums.join(',');
+  if (list !== tribeList) {
+    tribeList = list;
+    const was = tribePick.value;
+    tribePick.replaceChildren(new Option('All tribes', ''), ...nums.map((n) => new Option(`Camp ${n}`, String(n))));
+    tribePick.value = nums.includes(Number(was)) ? was : '';
+  }
+  const camp = pickedTribe();
+  tribePick.style.color = camp === null ? '' : campColor(camp);
+}
+function pickedTribe() {
+  return tribePick.value === '' ? null : world.camps.find((c) => campNumber(c) === Number(tribePick.value)) ?? null;
+}
+function tribeTool(act) {
+  refreshTribes();
+  const camp = pickedTribe();
+  if (tribePick.value !== '' && camp === null) return; // (gone since it was picked)
+  act(camp);
+}
+tribePick.addEventListener('mousedown', refreshTribes);
+tribePick.addEventListener('focus', refreshTribes);
+tribePick.addEventListener('change', refreshTribes);
+setInterval(() => { if (!$('tribe-tools').hidden) refreshTribes(); }, 500);
+$('tribe-war').addEventListener('click', () => tribeTool((camp) => world.startWars(camp)));
+$('tribe-peace').addEventListener('click', () => tribeTool((camp) => world.endWars(camp)));
+$('tribe-kit').addEventListener('click', () => tribeTool((camp) => world.kitOut(camp)));
 $('menu-ai').addEventListener('change', (e) => { renderer.showAI = e.target.checked; });
 
 $('menu-hard').checked = progress.hard;

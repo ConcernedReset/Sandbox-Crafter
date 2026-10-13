@@ -108,9 +108,12 @@
           <div class="toasts" id="toasts" aria-live="polite"></div>
           <div class="paused-flag" id="paused-flag" hidden>Paused</div>
           <div class="tribe-tools" id="tribe-tools" role="group" aria-label="Tribe testing tools" hidden>
-            <button type="button" id="tribe-war" title="Every camp goes to war with every other: full anger, a raid at once where it can, and a tunneller sent">Start wars</button>
-            <button type="button" id="tribe-peace" title="Every war ends: anger gone, raids called off, tunnel jobs dropped">End wars</button>
-            <button type="button" id="tribe-kit" title="Every human gets a pickaxe, a gun, whole armour and plenty of wood, stone, metal, copper, coal and gunpowder">Max gear</button>
+            <select id="tribe-pick" aria-label="Which tribe the buttons act on" title="Which tribe the buttons act on (numbered as on the map)">
+              <option value="">All tribes</option>
+            </select>
+            <button type="button" id="tribe-war" title="The tribe goes to war with every other: full anger at its nearest rival, a raid at once where it can, and a tunneller sent">Start wars</button>
+            <button type="button" id="tribe-peace" title="The tribe's wars end, on both sides: anger gone, raids called off, tunnel jobs dropped">End wars</button>
+            <button type="button" id="tribe-kit" title="The tribe's humans get a pickaxe, a gun, whole armour and plenty of wood, stone, metal, copper, coal and gunpowder">Max gear</button>
           </div>
           <canvas class="minimap" id="minimap" hidden aria-label="Map of the whole world. Click or drag to move the view."></canvas>
           <div class="zoom" role="group" aria-label="Zoom">

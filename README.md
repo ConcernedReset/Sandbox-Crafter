@@ -197,8 +197,9 @@ back to system ones; progress is saved per file location.)
   crosses on what its humans are on their way to fetch; a line to each
   member (red and dashed once it's strayed too far); and a label with its
   fire, hut and how many are away. The tunnel network is drawn in gold,
-  entrances as larger squares. While it's on, three buttons over the
-  world help with testing: **Start wars** (every camp furious with its
+  entrances as larger squares. While it's on, a tribe picker and three
+  buttons over the world help with testing, acting on every tribe or just
+  the one picked (numbered and coloured as on the map): **Start wars** (every camp furious with its
   nearest rival, raiding at once where it can, and sending a tunneller),
   **End wars** (anger gone, raids called off, tunnel jobs dropped) and
   **Max gear** (every human gets a pickaxe, a gun, whole armour and

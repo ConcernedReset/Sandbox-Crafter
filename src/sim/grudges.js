@@ -817,13 +817,14 @@ export const Grudges = {
     this.angerAround(tx, ty, ch.by, ANGER_BLAST, ANGER_NEAR_R);
   },
 
-  // ---- testing tools (the buttons over the world with the AI view on) -------
+  // ---- testing tools (the buttons over the world with Show spheres of influence on) ----
+  // Each acts on every camp, or with `only`, on that one.
 
-  // Every camp goes to war with every other: furious with its nearest
-  // rival, it raids it at once if it can (else at its next chores), and
-  // sends a tunneller.
-  startWars() {
-    for (const camp of this.camps) {
+  // A camp goes to war with every other: furious with its nearest rival,
+  // it raids it at once if it can (else at its next chores), and sends a
+  // tunneller.
+  startWars(only = null) {
+    for (const camp of only === null ? this.camps : [only]) {
       const enemy = this.nearestRival(camp);
       if (enemy === null) continue;
       for (const o of this.camps) this.goToWar(camp, o);
@@ -834,40 +835,53 @@ export const Grudges = {
     }
   },
 
-  // Every war ends: anger gone, raids called off (raiders and helicopters
-  // home; the raid clock starts afresh), tunnel jobs dropped. Charges laid
-  // stay where they are.
-  endWars() {
+  // Wars end: every camp's, or `only`'s, on both sides (the others' wars
+  // with it end too). Charges laid stay where they are.
+  endWars(only = null) {
     for (const camp of this.camps) {
-      camp.anger = 0;
-      camp.grudge = null;
-      camp.wars.clear();
-      camp.sapFor = null;
-      if (camp.sap !== null) {
-        const s = camp.sap;
-        camp.sap = null;
-        this.freeSapper(s);
-      }
-      if (camp.raid !== null) {
-        for (const id of camp.raid.party) {
-          const b = this.creatureById[id]?.brain;
-          if (!b || b.raid === null) continue;
-          b.raid = null;
-          b.job = 'wandering';
-          b.think = 0;
-        }
-        camp.raid = null;
-      }
-      camp.raidAt = 0;
+      if (only === null || camp === only) this.makePeace(camp, null);
+      else this.makePeace(camp, only);
     }
   },
 
-  // Every human gets a pickaxe, a gun, whole armour and plenty of
-  // everything (KIT).
-  kitOut() {
+  // Camp's wars end: all of them (`foe` null), or just its war with `foe`:
+  // anger at it gone, raids on it called off (raiders and helicopters
+  // home), the tunnel job against it dropped. Ending them all, the raid
+  // clock starts afresh.
+  makePeace(camp, foe) {
+    const all = foe === null;
+    if (all || camp.grudge === foe) {
+      camp.anger = 0;
+      camp.grudge = null;
+    }
+    if (all) camp.wars.clear();
+    else camp.wars.delete(foe);
+    if (all || camp.sapFor === foe) camp.sapFor = null;
+    if (camp.sap !== null && (all || camp.sap.enemy === foe)) {
+      const s = camp.sap;
+      camp.sap = null;
+      this.freeSapper(s);
+    }
+    if (camp.raid !== null && (all || camp.raid.enemy === foe)) {
+      for (const id of camp.raid.party) {
+        const b = this.creatureById[id]?.brain;
+        if (!b || b.raid === null) continue;
+        b.raid = null;
+        b.job = 'wandering';
+        b.think = 0;
+      }
+      camp.raid = null;
+      camp.raidAt = 0;
+    }
+    if (all) camp.raidAt = 0;
+  },
+
+  // Every human (or `only`'s) gets a pickaxe, a gun, whole armour and
+  // plenty of everything (KIT).
+  kitOut(only = null) {
     for (const e of this.creatures) {
       const b = e.brain;
-      if (!b) continue;
+      if (!b || (only !== null && b.camp !== only)) continue;
       b.tool = 1;
       b.weapon = 1;
       b.armour = ARMOUR_HITS;

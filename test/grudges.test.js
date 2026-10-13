@@ -485,3 +485,24 @@ test('the testing tools: start wars, end them, and kit every human out', () => {
     assert.ok(w.has(o.brain, ID.METAL) >= 100 && w.has(o.brain, ID.GUNPOWDER) >= 200 && w.has(o.brain, ID.WOOD) >= 200);
   }
 });
+
+test('the testing tools act on one tribe when one is picked', () => {
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
+  w.startWars(A.camp);
+  assert.equal(A.camp.anger, ANGER_MAX, 'A is furious');
+  assert.equal(B.camp.anger, 0, 'B is not');
+  assert.ok(A.camp.raid !== null && B.camp.raid === null, 'only A raids');
+  w.startWars(B.camp);
+  assert.ok(B.camp.wars.has(A.camp));
+  // Peace for A: both sides of its wars end.
+  w.endWars(A.camp);
+  assert.equal(A.camp.anger, 0);
+  assert.equal(A.camp.raid, null);
+  assert.equal(B.camp.wars.has(A.camp), false, "B's war with A is over too");
+  assert.equal(B.camp.grudge, null);
+  assert.ok(B.camp.raid === null || B.camp.raid.enemy !== A.camp, 'no raid on A');
+  const before = w.has(B.people[0].brain, ID.METAL);
+  w.kitOut(A.camp);
+  assert.ok(A.people.every((o) => w.has(o.brain, ID.METAL) >= 100));
+  assert.equal(w.has(B.people[0].brain, ID.METAL), before, "B's humans get nothing");
+});
