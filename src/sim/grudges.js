@@ -8,6 +8,10 @@
 // every second, for each enemy human and helicopter near the camp. With no
 // enemy near, it cools.
 //
+// Going to war: the first raid between two camps (either way) sends one
+// of each camp's humans to tunnel under the other's hut (goToWar), whatever
+// else it has; a job that fails is tried again later.
+//
 // Hitting back: at full anger, once no enemy has been near for CALM_FOR
 // steps, the camp strikes the camp it's angry with. With a helicopter or a
 // missile ready it raids at once (war.js's raid, which counts as its timed
@@ -144,6 +148,13 @@ export const Grudges = {
     }
     const s = camp.sap;
     if (s !== null && !camp.members.has(s.id)) this.endSap(camp, true);
+    // A war's tunneller still to send (or to send again).
+    const war = camp.sapFor;
+    if (war !== null && camp.sap === null && this.tick >= camp.sapRetry) {
+      if (!this.camps.includes(war) || war.members.size === 0) camp.sapFor = null;
+      else if (this.startSap(camp, war, 'war')) camp.sapFor = null;
+      else camp.sapRetry = this.tick + SAP_RETRY;
+    }
     if (camp.anger >= ANGER_MAX && this.tick - camp.enemyAt >= CALM_FOR) this.hitBack(camp);
   },
 
@@ -179,12 +190,21 @@ export const Grudges = {
     }
   },
 
+  // Camp goes to war with `enemy` (the first raid between them, either
+  // way): once for each enemy, it sends a tunneller against it (at its next
+  // chores; a job that fails is tried again later, till one goes off).
+  goToWar(camp, enemy) {
+    if (camp === enemy || camp.wars.has(enemy)) return;
+    camp.wars.add(enemy);
+    if (camp.sapFor === null) camp.sapFor = enemy;
+  },
+
   // ---- the tunneller ---------------------------------------------------------------
 
   // Send one of the camp's humans with a pickaxe (not its engineer, nor a
   // raider), the one with most of what's needed, to tunnel under `enemy`.
   // False if there's nobody.
-  startSap(camp, enemy) {
+  startSap(camp, enemy, cause = 'anger') {
     if (enemy.gx !== camp.gx || enemy.gy !== camp.gy) return false;
     let best = null, bs = -1;
     for (const id of camp.members) {
@@ -202,7 +222,7 @@ export const Grudges = {
     const across = (enemy.x - camp.x) * camp.gy - (enemy.y - camp.y) * camp.gx;
     camp.sap = {
       id: best.id, enemy, side: across < 0 ? -1 : 1, // the tunneller, its target, and which way that is
-      stage: 'gathering', start: this.tick,
+      stage: 'gathering', start: this.tick, cause, // ('anger' or 'war': what sent it)
       metal: 0, // metal it wants for the wire
       depth: SAP_DEPTH, tx: -1, ty: -1, // where the tunnel ends
       endX: -1, endY: -1, dx: 0, dy: 0, dug: 0, progressAt: this.tick, // how far it has got, and which way
@@ -231,7 +251,13 @@ export const Grudges = {
     if (s === null) return;
     camp.sap = null;
     if (failed) {
-      camp.anger = ANGER_MAX;
+      // Tried again later: for a war, its tunneller (anger doesn't come
+      // into it); hitting back, the anger comes back.
+      if (s.cause === 'war') {
+        if (this.camps.includes(s.enemy)) camp.sapFor = s.enemy;
+      } else {
+        camp.anger = ANGER_MAX;
+      }
       camp.sapRetry = this.tick + SAP_RETRY;
       camp.sapsFailed++;
     } else {

@@ -420,7 +420,13 @@ else; `test/build.test.js` checks the bundle runs.
   arrow; the renderer's `paintWar` draws shells, barrels, rotors and a
   missile's flame; `cellNotes` names machine parts. Tested in
   `test/war.test.js`. Keep it game-only, like the gun.
-- **Grudges** (`grudges.js`): `camp.anger` (0..`ANGER_MAX` 100) at
+- **Grudges** (`grudges.js`): going to war: `startRaid` calls
+  `goToWar` both ways; the first time a camp meets an enemy so
+  (`camp.wars`) it marks it `camp.sapFor`, and its chores start a
+  tunneller against it (`startSap(camp, enemy, 'war')`, `s.cause`)
+  once it has nobody tunnelling and `sapRetry` is past; a war job that
+  fails sets `sapFor` again (an anger one puts the anger back instead).
+  `camp.anger` (0..`ANGER_MAX` 100) at
   `camp.grudge` (the camp that last angered it), raised by `anger(camp,
   by, n)`: `pelletHits` now takes the shooter (a human's or a
   helicopter's camp) and calls `struck` (`ANGER_HIT` 2, and

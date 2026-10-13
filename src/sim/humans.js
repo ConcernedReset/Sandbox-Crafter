@@ -1418,6 +1418,7 @@ export const Humans = {
       // Grudges (grudges.js): how angry it is and with whom, when an enemy
       // was last near, its tunnel job, and how it has hit back.
       anger: 0, grudge: null, enemyAt: 0,
+      wars: new Set(), sapFor: null, // the camps it's gone to war with; one it's still to send a tunneller against
       sap: null, sapRetry: 0, strikes: 0, sapsDone: 0, sapsFailed: 0,
       // Planting (planting.js): who's planting saplings, when it next counts
       // its trees, how many it has planted.

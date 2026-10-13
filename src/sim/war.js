@@ -246,6 +246,9 @@ export const War = {
     camp.raid = { enemy, until: this.tick + RAID_FOR, start: this.tick, party: party.map((o) => o.id) };
     camp.raidAt = -1;
     camp.raids++;
+    // The first raid between two camps is war, for both (grudges.js).
+    this.goToWar(camp, enemy);
+    this.goToWar(enemy, camp);
     if (missile !== null) {
       const [tx, ty] = this.aimPoint(enemy);
       this.launch(missile, tx + Math.round((this.rand() - 0.5) * 6), ty);

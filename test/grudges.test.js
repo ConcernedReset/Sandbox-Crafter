@@ -143,6 +143,30 @@ test('camp-mates by the fire hand a tunneller their spare gunpowder and metal (k
   assert.equal(w.has(p2.brain, ID.METAL), 2);
 });
 
+test('going to war (the first raid between two camps) sends a tunneller from each side; later raids send no more', () => {
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
+  assert.ok(w.startRaid(A.camp, B.camp), 'A raids B');
+  run(w, CHORES);
+  assert.equal(A.camp.sap?.enemy, B.camp, 'A sends one against B');
+  assert.equal(A.camp.sap.cause, 'war');
+  assert.equal(B.camp.sap?.enemy, A.camp, 'and B one against A');
+  assert.ok(A.camp.raid.party.every((id) => id !== A.camp.sap.id), '(not a raider)');
+  // A failed war job is tried again later, with no anger in it.
+  A.camp.anger = 0;
+  w.endSap(A.camp, true);
+  assert.equal(A.camp.sapFor, B.camp, 'to be sent again');
+  assert.equal(A.camp.anger, 0);
+  A.camp.sapRetry = w.tick;
+  run(w, CHORES);
+  assert.equal(A.camp.sap?.enemy, B.camp, 'sent again');
+  // The next raid isn't a new war.
+  w.endRaid(A.camp);
+  w.endSap(A.camp, false);
+  assert.ok(w.startRaid(A.camp, B.camp));
+  run(w, CHORES);
+  assert.equal(A.camp.sap, null, 'no more for that war');
+});
+
 test('a tunneller who dies drops the job, and the anger comes back', () => {
   const { w, A, B } = rivals(150, 1);
   assert.ok(w.startSap(A.camp, B.camp));
