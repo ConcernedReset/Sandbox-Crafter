@@ -679,10 +679,11 @@ Each frame (60 per second):
    is sent again later). A tunneller: one human kneads gunpowder into 8 cells
    of C4 (its camp-mates by the fire hand over what they can spare), mines
    metal for wire and fetches wood to line the tunnel, then digs from its
-   camp (from the end of its own mine tunnels, if they lead that way) all
-   the way to a spot 10 cells under the middle of the enemy's hut (deeper,
-   if other tunnels are in the way). It packs the end of the tunnel with the C4,
-   walks back out laying copper wire through the tunnel's wall and on along
+   camp (from the end of its own mine tunnels, if they lead that way)
+   straight to a spot 10 cells under the middle of the enemy's hut, digging
+   through any other mine tunnels in its way. It packs the end of the tunnel
+   with the C4, walks back out laying copper wire through the tunnel's wall
+   (strung across any tunnel it dug through) and on along
    the ground to a plunger just past its lawn, kneels and pushes it: a
    spark runs down the wire, the C4 goes off, and the blast craters up
    through the hut above. Cut the wire and the spark never gets there.

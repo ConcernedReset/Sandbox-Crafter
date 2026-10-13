@@ -14,7 +14,7 @@ import {
   USEFUL, DANGER, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
 } from './humans.js';
 
-const { POWDER, LIQUID, GAS } = State;
+const { POWDER, LIQUID } = State;
 const { WOOD, SCAFFOLDING } = ID;
 const SCAFFOLD_CUT = 4; // scaffolding cut from each piece of wood
 export const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
@@ -35,7 +35,6 @@ export const VEIN_R = 12; // deposits this near count as the same vein
 export const VEIN_WAIT = 600; // a vein a camp-mate's tunnel is on its way to: the others leave it this long
 const WAIT_SPOT = 60; // steps it waits for someone in the way of a spot it's going to
 const BAIL = 40; // liquid cells it bails out of a spot before it counts it flooded
-const ROUTE_NODES = 60000; // spots planAround looks at, at most, for a way round other tunnels
 
 export function initTunnels(world) {
   world.tunnels = {
@@ -257,10 +256,11 @@ export const Tunnels = {
     }
   },
 
-  // Where travel from e starts: its spot on the network, or (outside) every
-  // entrance, at the distance it would walk to it.
-  netSources(e) {
-    const net = this.tunnels, at = this.onNet(e.x, e.y), src = new Map();
+  // Where travel from e starts: its spot on the network, or (outside, or
+  // `out`: going out first) every entrance, at the distance it would walk
+  // to it.
+  netSources(e, out = false) {
+    const net = this.tunnels, at = out ? null : this.onNet(e.x, e.y), src = new Map();
     if (at === null) {
       for (const n of net.nodes.values()) if (n.entrance) src.set(n.id, Math.abs(n.x - e.x) + Math.abs(n.y - e.y));
     } else if (at.node !== null) src.set(at.node.id, 0);
@@ -280,11 +280,13 @@ export const Tunnels = {
 
   // The way from e to the network spot (x, y): { wps (waypoints, node by
   // node), outside (it walks overland to the first one, an entrance) }, or
-  // null if there's none.
-  netRoute(e, x, y) {
+  // null if there's none. In tunnels that don't join up with that spot's,
+  // it goes out and overland to an entrance of those (walkTo leaves the
+  // tunnels first).
+  netRoute(e, x, y, out = false) {
     const net = this.tunnels, to = this.onNet(x, y);
     if (to === null) return null;
-    const { at, src } = this.netSources(e);
+    const { at, src } = this.netSources(e, out);
     if (at !== null && at.edge !== null && to.edge === at.edge) return { wps: [{ x, y }], outside: false };
     const { dist, prev } = this.netDistances(src);
     let end;
@@ -293,7 +295,7 @@ export const Tunnels = {
       const ed = to.edge, c = this.spotCost(ed);
       end = (dist.get(ed.a) ?? Infinity) + to.k * c <= (dist.get(ed.b) ?? Infinity) + (ed.len - to.k) * c ? ed.a : ed.b;
     }
-    if (!dist.has(end)) return null;
+    if (!dist.has(end)) return at !== null ? this.netRoute(e, x, y, true) : null;
     const chain = [];
     for (let n = end; n !== undefined; n = prev.get(n)) chain.push(n);
     chain.reverse();
@@ -441,181 +443,6 @@ export const Tunnels = {
       }
     }
     return true;
-  },
-
-  // ---- ways round other tunnels ------------------------------------------------
-
-  // Which standing spots a new run may pass through: those whose box keeps
-  // TUNNEL_GAP solid cells from every other tunnel (but tunnel within
-  // `near` of (sx, sy), where it starts), is in the world, and is under
-  // ground (the top of its box not open to the sky: no going out over the
-  // hills). A Uint8Array over the world: 1 where a spot isn't allowed.
-  // (Each tunnel cell rules out a rectangle of spots, added up in a 2-D
-  // running sum.)
-  spotsBlocked(gx, gy, sx, sy, near) {
-    const { w, h, type } = this, mask = this.tunnels.mask;
-    // Open to the sky: nothing but air (or gas) from the cell up to the
-    // world's edge against the gravity arrow.
-    const sky = new Uint8Array(w * h);
-    const lines = gx === 0 ? w : h, len = gx === 0 ? h : w;
-    for (let a = 0; a < lines; a++) {
-      for (let s = 0; s < len; s++) {
-        const k = (gx + gy) > 0 ? s : len - 1 - s; // from the "up" edge
-        const x = gx === 0 ? a : k, y = gx === 0 ? k : a, c = y * w + x, t = type[c];
-        if (t !== 0 && DEFS[t].state !== GAS) break;
-        sky[c] = 1;
-      }
-    }
-    const span = (g) => { // the offsets from a spot of its box, with a margin of g
-      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-      for (const k of [-1 - g, 1 + g]) {
-        for (const up of [-g, BOX_UP - 1 + g]) {
-          const dx = k * gy - up * gx, dy = -k * gx - up * gy;
-          x0 = Math.min(x0, dx);
-          x1 = Math.max(x1, dx);
-          y0 = Math.min(y0, dy);
-          y1 = Math.max(y1, dy);
-        }
-      }
-      return { x0, x1, y0, y1 };
-    };
-    const m = span(TUNNEL_GAP), box = span(0), W = w + 1;
-    const sum = new Int32Array(W * (h + 1));
-    for (let c = 0; c < mask.length; c++) {
-      if ((mask[c] & INSIDE) === 0) continue;
-      const x = c % w, y = (c / w) | 0;
-      if (Math.abs(x - sx) <= near && Math.abs(y - sy) <= near) continue;
-      const ax = Math.max(0, x - m.x1), bx = Math.min(w - 1, x - m.x0), ay = Math.max(0, y - m.y1), by = Math.min(h - 1, y - m.y0);
-      sum[ay * W + ax]++;
-      sum[ay * W + bx + 1]--;
-      sum[(by + 1) * W + ax]--;
-      sum[(by + 1) * W + bx + 1]++;
-    }
-    const out = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * W + x;
-        if (x > 0) sum[i] += sum[i - 1];
-        if (y > 0) sum[i] += sum[i - W];
-        if (x > 0 && y > 0) sum[i] -= sum[i - W - 1];
-        const inside = x + box.x0 >= 0 && x + box.x1 < w && y + box.y0 >= 0 && y + box.y1 < h;
-        let open = false;
-        if (inside) {
-          for (let k = -1; k <= 1 && !open; k++) {
-            const cx = x + k * gy - (BOX_UP - 1) * gx, cy = y - k * gx - (BOX_UP - 1) * gy;
-            open = sky[cy * w + cx] === 1;
-          }
-        }
-        out[y * w + x] = sum[i] > 0 || !inside || open ? 1 : 0;
-      }
-    }
-    return out;
-  },
-
-  // Are all the spots along `legs` from (x, y) allowed in `blocked`?
-  clearAlong(blocked, x, y, legs) {
-    for (const leg of legs) {
-      for (let s = 0; s < leg.n; s++) {
-        x += leg.dx;
-        y += leg.dy;
-        if (blocked[y * this.w + x] === 1) return false;
-      }
-    }
-    return true;
-  },
-
-  // A way for a new run from (x0, y0) to (x1, y1) (down being (gx, gy))
-  // that keeps clear of other tunnels, round them if need be: A* over the
-  // spots spotsBlocked allows, 8 ways, then straightened into as few runs
-  // as it can be (each stretch the longest that legsTo can take clear).
-  // Legs, or null if there's none (in ROUTE_NODES spots looked at).
-  planAround(x0, y0, x1, y1, gx, gy, near = START_R) {
-    const { w, h } = this, blocked = this.spotsBlocked(gx, gy, x0, y0, near);
-    const goal = y1 * w + x1, start = y0 * w + x0;
-    if (blocked[goal] === 1) return null;
-    const cost = new Float32Array(w * h).fill(Infinity), from = new Int32Array(w * h).fill(-1);
-    const est = (i) => {
-      const dx = Math.abs((i % w) - x1), dy = Math.abs(((i / w) | 0) - y1);
-      return Math.max(dx, dy) + 0.414 * Math.min(dx, dy);
-    };
-    // (A binary heap of [estimated total, spot].)
-    const heap = [];
-    const push = (f, i) => {
-      heap.push([f, i]);
-      for (let k = heap.length - 1; k > 0;) {
-        const p = (k - 1) >> 1;
-        if (heap[p][0] <= heap[k][0]) break;
-        [heap[p], heap[k]] = [heap[k], heap[p]];
-        k = p;
-      }
-    };
-    const pop = () => {
-      const top = heap[0], last = heap.pop();
-      if (heap.length > 0) {
-        heap[0] = last;
-        for (let k = 0; ;) {
-          const l = 2 * k + 1, r = l + 1;
-          let m = k;
-          if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
-          if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
-          if (m === k) break;
-          [heap[m], heap[k]] = [heap[k], heap[m]];
-          k = m;
-        }
-      }
-      return top;
-    };
-    cost[start] = 0;
-    push(est(start), start);
-    let looked = 0, found = false;
-    while (heap.length > 0 && looked < ROUTE_NODES) {
-      const [f, i] = pop();
-      if (f > cost[i] + est(i) + 1e-3) continue; // (a stale entry)
-      if (i === goal) {
-        found = true;
-        break;
-      }
-      looked++;
-      const x = i % w, y = (i / w) | 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const nx = x + dx, ny = y + dy;
-          if ((dx === 0 && dy === 0) || nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          const j = ny * w + nx;
-          if (blocked[j] === 1) continue;
-          const c = cost[i] + (dx !== 0 && dy !== 0 ? 1.414 : 1);
-          if (c < cost[j]) {
-            cost[j] = c;
-            from[j] = i;
-            push(c + est(j), j);
-          }
-        }
-      }
-    }
-    if (!found) return null;
-    const pts = [];
-    for (let i = goal; i !== -1; i = from[i]) pts.push(i);
-    pts.reverse();
-    const legs = [];
-    for (let a = 0; a < pts.length - 1;) {
-      const ax = pts[a] % w, ay = (pts[a] / w) | 0;
-      let b = pts.length - 1, step = null;
-      for (; b > a + 1; b--) {
-        const s = this.legsTo(ax, ay, pts[b] % w, (pts[b] / w) | 0, gx, gy);
-        if (this.clearAlong(blocked, ax, ay, s)) {
-          step = s;
-          break;
-        }
-      }
-      if (step === null) step = this.legsTo(ax, ay, pts[a + 1] % w, (pts[a + 1] / w) | 0, gx, gy);
-      for (const l of step) {
-        const last = legs[legs.length - 1];
-        if (last !== undefined && last.dx === l.dx && last.dy === l.dy) last.n += l.n;
-        else legs.push({ ...l });
-      }
-      a = b > a + 1 && step !== null ? b : a + 1;
-    }
-    return legs;
   },
 
   // The legs of a plan from (x, y) to (tx, ty): from a new entrance, its
@@ -812,7 +639,7 @@ export const Tunnels = {
         net.gy = e.gy;
       }
       t.node = this.nodeAt(e.x, e.y) ?? this.addNode(e.x, e.y, true);
-      t.legs = t.planned ? t.planned.map((l) => ({ ...l })) : this.planLegs(e.x, e.y, true, t.tx, t.ty, e.gx, e.gy);
+      t.legs = this.planLegs(e.x, e.y, true, t.tx, t.ty, e.gx, e.gy);
       return;
     }
     if (t.route === null) t.route = this.netRoute(e, t.x, t.y);
@@ -838,8 +665,7 @@ export const Tunnels = {
       return;
     }
     t.node = at.node ?? this.splitEdge(at.edge, at.k);
-    // (A plan may come with its legs worked out: a way round other tunnels.)
-    t.legs = t.planned ? t.planned.map((l) => ({ ...l })) : this.legsTo(e.x, e.y, t.tx, t.ty, e.gx, e.gy);
+    t.legs = this.legsTo(e.x, e.y, t.tx, t.ty, e.gx, e.gy);
   },
 
   // A step along the network, ending the plan if it can't go on.

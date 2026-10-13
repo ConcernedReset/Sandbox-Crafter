@@ -20,8 +20,8 @@
 //      the wire, and wood to line the tunnel (camp-mates by the fire hand
 //      over what they can spare: humans.js's share);
 //   2. tunnels (tunnels.js) from its camp's own tunnels or a new entrance
-//      on its enemy side to a spot SAP_DEPTH (or, to keep clear of other
-//      tunnels, deeper) under the middle of the enemy hut's floor;
+//      on its enemy side, straight to a spot SAP_DEPTH under the middle of
+//      the enemy hut's floor, digging through any other tunnels in the way;
 //   3. packs the face at the end of the tunnel with C4;
 //   4. walks back out, laying copper wire in the tunnel's wall and floor,
 //      then along the ground to a plunger past the edge of its lawn;
@@ -60,19 +60,11 @@ export const SAP_C4 = 8; // cells of C4 in a charge
 export const SAP_POWDER = 2; // gunpowder kneaded into each
 export const WIRE_PER_METAL = 20; // cells of wire drawn from a piece of metal
 export const SAP_DEPTH = 10; // the tunnel's end: this far under the enemy hut's floor
-// (Or deeper, when there's no way there that keeps clear of other tunnels:
-// in Two tribes both camps' mines fill the ground between them, and the
-// enemy's copper mine runs under its hut: at 36 the way was clear; in Deep
-// tribes the coal mines fill 25 to 40 down, so deeper still. A target
-// out of the world is skipped.)
-const DEPTHS = [SAP_DEPTH, 14, 18, 22, 26, 30, 36, 42, 50, 60, 70];
-const ROUND_TRIES = 3; // and then the cheapest places to dig from it looks for a way round other tunnels from (planAround)
-const ROUND_DEPTHS = [SAP_DEPTH, 26, 50]; // at these depths
 const SAP_WOOD_R = 200; // how far from the camp it goes for wood (for lining; late on, the trees near are gone)
 const WOOD_TRIES = 3; // goes for wood without a spot dug since, before it digs with what lining it has
 const SAP_DIG_EVERY = 4; // steps per cell dug: twice as fast as a miner
 const OWN_R = 100; // its camp's tunnels: the network reached from entrances this near it (and nearer it than the enemy)
-const PLAN_TRIES = 20; // the cheapest places to dig from it checks for a clear way, at each depth
+const PLAN_TRIES = 20; // the cheapest places to dig from it checks for a way clear of other tunnels (else it digs through them)
 export const SAP_FOR = 54000; // the longest a tunnel job goes on
 export const SAP_GATHER_FOR = 18000; // the longest it takes getting what it needs, before it digs
 export const SAP_STALL = 6000; // and the longest it then goes without digging a spot further
@@ -231,7 +223,6 @@ export const Grudges = {
       plug: null, firedAt: -1, // the plunger, and when it was pushed
       waitUntil: 0, why: '', // it can't get on just now: it waits till then, for want of this
       woodTrips: 0, lining: 0, // times it has gone for wood since it last dug a spot; lining it had
-      legsLeft: null, // the runs still to dig, on a way round other tunnels
     };
     const b = best.brain;
     this.release(b);
@@ -341,7 +332,7 @@ export const Grudges = {
       const p = this.sapPlan(e, camp, s);
       if (p === null) return this.sapWait(b, camp, s, 'a way');
       let spots = p.travel;
-      for (const leg of p.legs ?? this.planLegs(p.x, p.y, p.entrance, p.tx, p.ty, e.gx, e.gy)) spots += leg.n;
+      for (const leg of this.planLegs(p.x, p.y, p.entrance, p.tx, p.ty, e.gx, e.gy)) spots += leg.n;
       const u = (p.x - camp.x) * camp.gy - (p.y - camp.y) * camp.gx;
       const lawn = this.lawn(camp), edge = lawn === null ? 0 : s.side > 0 ? lawn.u1 : -lawn.u0;
       const overland = Math.abs(Math.abs(u) - edge) + PLUNGER_U + 2;
@@ -382,8 +373,7 @@ export const Grudges = {
     s.ty = p.ty;
     s.depth = p.depth;
     this.release(b);
-    s.legsLeft = null;
-    b.tun = { tx: p.tx, ty: p.ty, x: p.x, y: p.y, entrance: p.entrance, route: null, legs: null, node: null, sap: true, every: SAP_DIG_EVERY, planned: p.legs };
+    b.tun = { tx: p.tx, ty: p.ty, x: p.x, y: p.y, entrance: p.entrance, route: null, legs: null, node: null, sap: true, every: SAP_DIG_EVERY };
     b.mineKey = '';
     b.job = 'tunnelling';
     b.pace = 0;
@@ -402,75 +392,56 @@ export const Grudges = {
     return c < 0 ? null : [c % this.w, (c / this.w) | 0];
   },
 
-  // The way to dig: on from where the tunnel got to; or else the cheapest
-  // start (travel, then digging at NEW_COST a spot) whose new run keeps
-  // clear of other tunnels: a spot on its own camp's tunnels (the network
-  // as reached from its entrances: miners' tunnels often run a long way
-  // towards the enemy), or a new entrance on the enemy side of the camp;
-  // at the first depth that has one. { x, y, entrance, travel (to get
-  // there), tx, ty, depth } or null.
+  // The way to dig: on from where the tunnel got to; or else straight from
+  // the cheapest start (travel, then digging at NEW_COST a spot): a spot on
+  // its own camp's tunnels (the network as reached from its entrances:
+  // miners' tunnels often run a long way towards the enemy), or a new
+  // entrance on the enemy side of the camp. Of the PLAN_TRIES cheapest, one
+  // whose run keeps clear of other tunnels if there is one; else the
+  // cheapest, digging straight through the tunnels in the way. { x, y,
+  // entrance, travel (to get there), tx, ty, depth } or null.
   sapPlan(e, camp, s) {
     const net = this.tunnels, { gx, gy } = e;
     if (net.nodes.size > 0 && (net.gx !== gx || net.gy !== gy)) return null; // dug under another gravity
+    const t = this.sapTarget(s.enemy, SAP_DEPTH);
+    if (t === null) return null;
+    const [tx, ty] = t;
     if (s.endX >= 0 && this.onNet(s.endX, s.endY) !== null) {
-      const t = this.sapTarget(s.enemy, s.depth);
-      // (The rest of a way round other tunnels, if it was on one.)
-      const legs = s.legsLeft !== null && s.legsLeft.length > 0 ? s.legsLeft.map((l) => ({ ...l })) : null;
-      if (t !== null) return { x: s.endX, y: s.endY, entrance: false, travel: 0, tx: t[0], ty: t[1], depth: s.depth, legs };
+      return { x: s.endX, y: s.endY, entrance: false, travel: 0, tx, ty, depth: SAP_DEPTH };
     }
     const far = (n, c) => Math.max(Math.abs(n.x - c.x), Math.abs(n.y - c.y));
     const own = new Map();
     for (const n of net.nodes.values()) {
       if (n.entrance && far(n, camp) <= OWN_R && far(n, camp) < far(n, s.enemy)) own.set(n.id, far(n, camp));
     }
-    const dist = own.size > 0 ? this.netDistances(own).dist : null;
+    const plans = [];
+    if (own.size > 0) {
+      const { dist } = this.netDistances(own);
+      for (const ed of net.edges.values()) {
+        const a = net.nodes.get(ed.a);
+        for (let k = 0; k <= ed.len; k++) {
+          const travel = this.costAlong(ed, k, dist);
+          if (!Number.isFinite(travel)) continue;
+          const x = a.x + k * ed.dx, y = a.y + k * ed.dy;
+          plans.push({ cost: travel + NEW_COST * this.octo(x, y, tx, ty, gx, gy), x, y, entrance: false, travel });
+        }
+      }
+    }
     const across = (p) => s.side * ((p.x - camp.x) * camp.gy - (p.y - camp.y) * camp.gx);
-    const starts = (tx, ty) => { // the places to dig from, cheapest first
-      const plans = [];
-      if (dist !== null) {
-        for (const ed of net.edges.values()) {
-          const a = net.nodes.get(ed.a);
-          for (let k = 0; k <= ed.len; k++) {
-            const travel = this.costAlong(ed, k, dist);
-            if (!Number.isFinite(travel)) continue;
-            const x = a.x + k * ed.dx, y = a.y + k * ed.dy;
-            plans.push({ cost: travel + NEW_COST * this.octo(x, y, tx, ty, gx, gy), x, y, entrance: false, travel });
-          }
-        }
-      }
-      for (const p of this.entranceSpots(e, camp, tx, ty)) {
-        if (across(p) > 0) plans.push({ cost: p.cost, x: p.x, y: p.y, entrance: true, travel: across(p) });
-      }
-      return plans.sort((p, q) => p.cost - q.cost);
-    };
-    // A straight way (one or two runs) at the first depth that has one.
-    for (const depth of DEPTHS) {
-      const t = this.sapTarget(s.enemy, depth);
-      if (t === null) continue;
-      const [tx, ty] = t, plans = starts(tx, ty);
-      for (let k = 0; k < plans.length && k < PLAN_TRIES; k++) {
-        const p = plans[k];
-        if (this.pathClear(p.x, p.y, this.planLegs(p.x, p.y, p.entrance, tx, ty, gx, gy), gx, gy)) {
-          return { x: p.x, y: p.y, entrance: p.entrance, travel: p.travel, tx, ty, depth, legs: null };
-        }
+    for (const p of this.entranceSpots(e, camp, tx, ty)) {
+      if (across(p) > 0) plans.push({ cost: p.cost, x: p.x, y: p.y, entrance: true, travel: across(p) });
+    }
+    if (plans.length === 0) return null;
+    plans.sort((p, q) => p.cost - q.cost);
+    let p = plans[0];
+    for (let k = 0; k < plans.length && k < PLAN_TRIES; k++) {
+      const q = plans[k];
+      if (this.pathClear(q.x, q.y, this.planLegs(q.x, q.y, q.entrance, tx, ty, gx, gy), gx, gy)) {
+        p = q;
+        break;
       }
     }
-    // Else a way round them (a new entrance's shaft first, straight down).
-    for (const depth of ROUND_DEPTHS) {
-      const t = this.sapTarget(s.enemy, depth);
-      if (t === null) continue;
-      const [tx, ty] = t, plans = starts(tx, ty);
-      for (let k = 0; k < plans.length && k < ROUND_TRIES; k++) {
-        const p = plans[k], shaft = p.entrance ? ENTRY_DEPTH : 0;
-        const bx = p.x + shaft * gx, by = p.y + shaft * gy;
-        if (shaft > 0 && !this.pathClear(p.x, p.y, [{ dx: gx, dy: gy, n: shaft }], gx, gy)) continue;
-        const legs = this.planAround(bx, by, tx, ty, gx, gy);
-        if (legs === null) continue;
-        if (shaft > 0) legs.unshift({ dx: gx, dy: gy, n: shaft });
-        return { x: p.x, y: p.y, entrance: p.entrance, travel: p.travel, tx, ty, depth, legs };
-      }
-    }
-    return null;
+    return { x: p.x, y: p.y, entrance: p.entrance, travel: p.travel, tx, ty, depth: SAP_DEPTH };
   },
 
   // Tunnelling (tunnels.js does the travel and the digging).
@@ -494,7 +465,6 @@ export const Grudges = {
     s.dy = dy;
     s.dug++;
     s.woodTrips = 0;
-    s.legsLeft = e.brain.tun?.planned ? e.brain.tun.legs : null; // (the rest of a way round, if it's on one)
     s.progressAt = this.tick;
   },
 
@@ -678,10 +648,11 @@ export const Grudges = {
   },
 
   // The cheapest run of wire (cells joined side to side or corner to
-  // corner, never the inside of a tunnel: through the ground (what wireOK
-  // allows), or, at AIR_COST a cell, strung across open air where the
-  // ground has been blown away) from the end laid so far (at first, the
-  // charge) to one of `targets`, within WIRE_REACH of e: laid, a cell of
+  // corner: through the ground (what wireOK allows, but never the inside
+  // of a tunnel), or, at AIR_COST a cell, strung across open air, where
+  // the ground has been blown away or across another tunnel it dug
+  // through) from the end laid so far (at first, the charge) to one of
+  // `targets`, within WIRE_REACH of e: laid, a cell of
   // wire per 1/WIRE_PER_METAL of a piece of metal. With no way (or no
   // metal) it's left for now.
   joinWire(e, b, s, targets) {
@@ -689,8 +660,7 @@ export const Grudges = {
     const want = new Set(targets.filter((c) => !s.wired.has(c)));
     if (want.size === 0) return;
     const step = (j) => {
-      if ((mask[j] & INSIDE) !== 0) return -1;
-      if (want.has(j) || this.wireOK(j)) return 1;
+      if (want.has(j) || ((mask[j] & INSIDE) === 0 && this.wireOK(j))) return 1;
       const t = type[j];
       return wall[j] === 0 && (t === 0 || DEFS[t].state === GAS) ? AIR_COST : -1;
     };

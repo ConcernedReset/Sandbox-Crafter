@@ -99,6 +99,17 @@ test('a route through the network goes node to node, from outside by an entrance
   assert.deepEqual(back.wps, [{ x: 30, y: 30 }, { x: 20, y: 20 }]);
 });
 
+test('from tunnels that never join up with the spot, the route goes out and overland to an entrance of its own', () => {
+  const w = makeWorld(100, 60, 1);
+  handNet(w);
+  const other = w.addNode(80, 20, true); // another mine: an entrance, and a shaft down to (80, 40)
+  w.addEdge(other, w.addNode(80, 40));
+  const route = w.netRoute({ x: 45, y: 30, gx: 0, gy: 1 }, 80, 30);
+  assert.ok(route !== null, 'a way');
+  assert.equal(route.outside, true, 'out and overland first');
+  assert.deepEqual(route.wps, [{ x: 80, y: 20 }, { x: 80, y: 30 }]);
+});
+
 test('dropping a stretch drops the nodes it cuts off', () => {
   const w = makeWorld(100, 60, 1);
   const { end } = handNet(w);

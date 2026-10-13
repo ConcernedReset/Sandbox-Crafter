@@ -226,30 +226,34 @@ test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plun
   assert.equal(w.charges.length, 0);
 });
 
-test('with other tunnels in the way of a straight one, a way round them (under ground, clear of them) is planned', () => {
-  const { w } = rivals();
-  // A curtain of old tunnel across the way, from just under the ground
-  // down to 18 deep; under it, just room to pass.
-  const top = w.h - 30;
-  for (let y = top + 1; y <= top + 18; y++) for (const x of [128, 129, 130]) w.tunnels.mask[y * w.w + x] |= INSIDE;
-  const x0 = 100, y0 = top + 9, x1 = 160, y1 = top + 9;
-  assert.equal(w.pathClear(x0, y0, w.legsTo(x0, y0, x1, y1, 0, 1), 0, 1), false, 'no straight way');
-  const legs = w.planAround(x0, y0, x1, y1, 0, 1);
-  assert.ok(legs !== null && legs.length <= 6, `round it, in a few runs (${JSON.stringify(legs)})`);
-  const blocked = w.spotsBlocked(0, 1, x0, y0, 8);
-  let x = x0, y = y0, deepest = 0;
-  for (const leg of legs) {
-    for (let k = 0; k < leg.n; k++) {
-      x += leg.dx;
-      y += leg.dy;
-      deepest = Math.max(deepest, y);
-      assert.equal(blocked[y * w.w + x], 0, `clear at ${x},${y}`);
+test('with another tunnel across the whole way, it digs straight through it and blows the hut up all the same', () => {
+  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30, WOOD: 10 });
+  for (const x of [25, 15]) fillRect(w, x, w.h - 45, x + 2, w.h - 31, ID.WOOD); // (trees, for lining)
+  // An old shaft in a block of stone between the camps, from just under
+  // the ground to the bottom: no way to the enemy keeps clear of it.
+  const top = w.h - 30, X = 160;
+  for (let y = top + 1; y < w.h; y++) {
+    for (let x = X - 10; x <= X + 10; x++) {
+      const c = y * w.w + x;
+      w.clearCell(c);
+      if (Math.abs(x - X) <= 1 && y >= top + 3 && y < w.h - 2) w.tunnels.mask[c] |= INSIDE;
+      else w.spawn(c, ID.STONE);
     }
   }
-  assert.deepEqual([x, y], [x1, y1], 'to the end');
-  assert.ok(deepest >= top + 18 + 4 + 6, `under the curtain (${deepest})`);
-  // Never out over the ground: blocked, a spot whose box is open to the sky.
-  assert.equal(blocked[(top - 1) * w.w + 115], 1);
+  const hut0 = hutLeft(w, B.camp);
+  assert.ok(w.startSap(A.camp, B.camp));
+  const crossed = new Set(), waits = new Set();
+  for (let f = 0; f < 25000 && A.camp.sapsDone + A.camp.sapsFailed === 0; f++) {
+    w.step();
+    const s = A.camp.sap;
+    if (s === null) continue;
+    if (s.why) waits.add(s.why);
+    if (s.endX >= X - 1 && s.endX <= X + 1) crossed.add(s.endY);
+  }
+  assert.equal(A.camp.sapsDone, 1, `done (failed ${A.camp.sapsFailed}; waited for ${[...waits]})`);
+  assert.ok(!waits.has('a way'), 'never short of a way');
+  assert.ok(crossed.size > 0, 'its tunnel ran through the shaft');
+  assert.ok(hutLeft(w, B.camp) <= hut0 / 2, `the hut blown up (${hutLeft(w, B.camp)} of ${hut0} left)`);
 });
 
 test('a charge going off (whatever sets it off) craters up through the hut over it', () => {

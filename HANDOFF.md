@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,760 tests, all passing, in two or three minutes (most of it the human situations)
+npm test    # node --test: about 1,770 tests, all passing, in two or three minutes (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -457,16 +457,17 @@ else; `test/build.test.js` checks the bundle runs.
   `sap: true` and `every: SAP_DIG_EVERY` (4), job 'tunnelling', which
   tunnels.js's `tunnelGo`/`tunnelDig` dig as for mining but call
   `sapDug` per spot and `sapArrived` at the end; `sapPlan` continues
-  from `s.endX/endY`, or takes the cheapest start whose run passes
-  `pathClear` (`PLAN_TRIES` per depth): a spot on its own camp's tunnels
-  (`netDistances` from its entrances within `OWN_R` and nearer it than
-  the enemy, plus `NEW_COST` a spot dug) or a new entrance on the enemy
-  side; to `sapTarget`: `SAP_DEPTH` (10) under the enemy hut's middle,
-  or the next of `DEPTHS`, down to 70, below the miners' tunnels (in
-  Two tribes, 36: nothing shallower kept clear of them, not even a run
-  that only touched them). In Two
-  tribes the near entrances were all too close to the camp's own mine
-  workings; planning only from new entrances found no way at all),
+  from `s.endX/endY`, or else digs straight from the cheapest start: a
+  spot on its own camp's tunnels (`netDistances` from its entrances
+  within `OWN_R` and nearer it than the enemy, plus `NEW_COST` a spot
+  dug) or a new entrance on the enemy side, to `sapTarget`: `SAP_DEPTH`
+  (10) under the enemy hut's middle. Of the `PLAN_TRIES` cheapest starts
+  it takes one whose run passes `pathClear` if there is one, else the
+  cheapest, digging straight through the tunnels in the way (`workSpot`
+  finds their spots open and it walks on, held, so it doesn't fall down
+  a shaft). It used to look deeper (down to 70), then for a way round
+  (A* over spots clear of other tunnels); in long games the ground
+  between the camps was so full of mines that it often found none),
   'charging' (`sapCharge`: `chargeCells`, the cells against its spot
   farthest ahead, filled a cell every `PLACE_EVERY` with `putDown`;
   then a charge in `world.charges`), 'wiring' (`sapWire`: out through
@@ -477,9 +478,10 @@ else; `test/build.test.js` checks the bundle runs.
   there, `plungerHere` puts it at the wire's end where it stands; `layWire` lays Copper under or
   beside its feet as it moves, joined to the end so far by `joinWire`,
   the cheapest short run (Dijkstra with a bucket per cost) through
-  `wireOK` cells, or open air at `AIR_COST` (round a cratered tunnel
-  mouth the wire is strung across the gap; ground-only, it broke there),
-  never a tunnel's inside; a cell of wire per 1/20 metal; `putDown`, so `madeByHuman`
+  `wireOK` cells (never in a tunnel's inside), or open air at
+  `AIR_COST`, a tunnel's inside too (round a cratered tunnel mouth, or
+  across another tunnel it dug through, the wire is strung across the
+  gap; ground-only, it broke there); a cell of wire per 1/20 metal; `putDown`, so `madeByHuman`
   keeps miners off it, and lining it replaces loses `LINED`), 'firing'
   (`sapFire`: kneel `SAP_PRESS`, `sparkAt` the plunger cell; the spark
   runs along the copper and `updateSpark` ignites the C4). Anything it
@@ -562,16 +564,12 @@ else; `test/build.test.js` checks the bundle runs.
   digging; `planTunnel` takes the network distances, worked out once).
   Before, each human took the deposit nearest itself, and two often dug
   parallel tunnels, from two new entrances, to one vein.
-  Where no straight plan is clear, `planAround` finds a way round other
-  tunnels: `spotsBlocked` marks the spots a run can't pass (within
-  `TUNNEL_GAP` of a tunnel, out of the world, or open to the sky: never
-  out over the ground), A* over the rest (up to `ROUTE_NODES`), then the
-  path straightened into as few `legsTo` runs as stay clear; a plan's
-  worked-out legs go in `tun.planned`, which `tunnelGo` uses. (Only the
-  tunneller uses it so far; in Deep tribes long runs it still found no
-  way late in a game, the ground between the camps full of mines.)
   Side-by-side runs merge into one cavern humans can't climb out of. `mine` = `tunnelGo` (`netRoute` waypoints, splitting a
-  run into a junction where it starts) then `tunnelDig` (`growTunnel`).
+  run into a junction where it starts; from tunnels that don't join up
+  with the start, the route goes out and overland to one of its
+  entrances (`netSources(e, true)`): before, it came back null, and a
+  tunneller in its own mine whose plan started in another mine planned,
+  dropped and planned again every step until it gave up) then `tunnelDig` (`growTunnel`).
   `stepAlong` moves spot to spot, re-lines, and repairs (`workSpot`);
   undiggable blockage drops the run (`dropStretch`, `prune`). `brain.hold`
   stops `stepHuman` dropping a human in shafts and stairs; `overTunnel`
