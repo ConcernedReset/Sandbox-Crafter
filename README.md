@@ -587,8 +587,10 @@ Each frame (60 per second):
    whole: a miner goes for the vein that takes the least new digging (often
    one the camp's tunnels already lead to), and leaves a vein a camp-mate
    is already digging towards until that tunnel gets there, then mines it
-   through that tunnel rather than digging another. Cutting a tree at its foot brings it down
-   (its leaves scatter). A camp with nowhere for a hut moves somewhere
+   through that tunnel rather than digging another. Taking any piece of a
+   tree, or cutting through one on its way, brings the whole tree down (its
+   leaves scatter), so none is left hanging out of reach; and a human that
+   fells one gathers all the wood that falls, not just a load. A camp with nowhere for a hut moves somewhere
    that has room, or, with nowhere it can get to, does without one.
    Humans walk right through each other. A shot is 4 pellets in a tight spread for 1 gunpowder; each
    pellet flies up to 80 cells (twice the 40 at which a human picks a

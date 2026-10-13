@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID } from '../src/sim/elements.js';
-import { METALS } from '../src/sim/humans.js';
+import { METALS, FUEL_R, WOOD_ONLY } from '../src/sim/humans.js';
 import { PLANT_GAP, PLANT_R, WOOD_LOW, PLANT_N } from '../src/sim/planting.js';
 import { VEIN_R } from '../src/sim/tunnels.js';
 import { aiPlan, campLabel } from '../src/render/ai-overlay.js';
@@ -98,6 +98,32 @@ test('the camp sends a miner to the vein that takes the least digging, not just 
   ore(w, far, g + 8, far + 3, g + 10); // farther, but just under the ground
   assert.ok(w.startMining(a, a.brain, camp, 'coal', 4));
   assert.ok(Math.abs(a.brain.tun.tx - far) <= 4, `the shallow one (${a.brain.tun.tx}: near ${near}, far ${far})`);
+});
+
+test('a human out for wood fells the whole tree and gathers all the wood that falls, more than a load', () => {
+  const w = field(320, 9);
+  const { camp, people: [e] } = settle(w, 160, 1);
+  const g = w.h - 30, x0 = camp.x + 60;
+  for (let y = g - 30; y < g; y++) w.spawn(y * w.w + x0, ID.WOOD); // a trunk 30 tall
+  for (let x = x0 + 1; x <= x0 + 5; x++) w.spawn((g - 20) * w.w + x, ID.WOOD); // a branch
+  for (let y = g - 36; y < g - 30; y++) for (let x = x0 - 4; x <= x0 + 4; x++) w.spawn(y * w.w + x, ID.LEAVES); // the crown
+  const tree = 35;
+  while (w.takeOut(e.brain, ID.WOOD));
+  e.brain.weapon = 0;
+  assert.ok(w.gather(e, e.brain, camp, WOOD_ONLY, FUEL_R, 'gathering wood'));
+  let f = 0;
+  for (; f < 5000 && (e.brain.job === 'gathering wood' || e.brain.felled !== null); f++) w.step();
+  let left = 0, high = 0;
+  for (let y = 0; y < g; y++) {
+    for (let x = x0 - 20; x <= x0 + 20; x++) {
+      if (w.type[y * w.w + x] !== ID.WOOD) continue;
+      left++;
+      if (y < g - 6) high++;
+    }
+  }
+  assert.equal(high, 0, 'nothing left up in the air');
+  assert.ok(w.has(e.brain, ID.WOOD) + w.pileCount(camp, new Uint8Array(4096).fill(0).map((_, t) => (t === ID.WOOD ? 1 : 0))) >= tree - 3, `it has the tree's wood (${w.has(e.brain, ID.WOOD)} in hand, ${left} left about, after ${f} steps)`);
+  assert.ok(w.has(e.brain, ID.WOOD) > 10 || left <= 3, 'more than a load');
 });
 
 test('a camp whose trees have run out plants saplings round it, spaced out past its lawn, and they grow', () => {

@@ -336,7 +336,7 @@ test('a human climbs a sheer wall, slowly, without digging into it', () => {
   assert.ok(climbing >= 12 * 12, `climbing slowly (${climbing} steps on the wall)`);
 });
 
-test('a human cuts through a tree trunk in its way rather than climbing the tree', () => {
+test('a human cuts through a tree trunk in its way rather than climbing the tree (and the tree comes down)', () => {
   const w = makeWorld(160, 60, 2);
   fillRect(w, 0, 55, 159, 59, ID.STONE);
   fillRect(w, 70, 30, 71, 54, ID.WOOD); // a trunk 2 wide
@@ -354,7 +354,10 @@ test('a human cuts through a tree trunk in its way rather than climbing the tree
     highest = Math.min(highest, e.y);
   }
   assert.ok(e.x >= 100, `past the tree in ${f} steps (at ${e.x},${e.y})`);
-  assert.equal(highest, 54, 'it never left the ground');
+  assert.ok(highest > 42, `it never climbed the tree (at most over the wood that fell: ${54 - highest} up)`);
+  let high = 0;
+  for (let y = 0; y < 40; y++) for (let x = 60; x < 80; x++) if (w.type[y * 160 + x] === ID.WOOD) high++;
+  assert.equal(high, 0, 'the tree came down');
 });
 
 test('a human climbs all the way over a cliff to wood on the lower side', () => {

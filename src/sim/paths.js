@@ -14,11 +14,12 @@
 // the plan (followPath) makes exactly the planned moves, planning again if
 // it's knocked off it or a move fails. Mixed into World.prototype.
 
-import { DEFS, State } from './elements.js';
+import { DEFS, ID, State } from './elements.js';
 import { SHAPED } from './creatures.js';
 import { DANGER, CLEARABLE, USEFUL, HELD_PICKAXE } from './humans.js';
 
 const { SOLID, POWDER, LIQUID } = State;
+const { WOOD } = ID;
 const CLIMB = 2; // the highest step a human walks up (humans.js)
 const MAX_FALL = 80; // the farthest drop it plans
 const MAX_DIG = 12; // the most cells it plans to dig for one step
@@ -454,6 +455,7 @@ export const Paths = {
           const cell = cells[0], t = this.type[cell];
           if (USEFUL[t]) this.stow(b, t);
           this.clearCell(cell);
+          if (t === WOOD) this.fell(cell % this.w, (cell / this.w) | 0); // (cut through a trunk: the tree comes down)
           if (b.tool !== 0) b.held = HELD_PICKAXE;
           b.stuck = 0;
           b.pace = every - DIG_EVERY;

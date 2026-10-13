@@ -565,6 +565,7 @@ export const Aircraft = {
           else if (roll < 0.33) this.spawn(c, ID.FIRE);
         } else if (DEFS[t].state === SOLID && this.rand() < 0.7) {
           this.loose[c] = 1; // rubble
+          this.wakeAt(nx, ny);
         }
       }
     }

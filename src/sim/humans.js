@@ -31,8 +31,11 @@ const SWIM_TURN = 10; // strokes against a wall before it turns and swims the ot
 export const GIVE_UP = 300; // steps without getting closer before it gives up on a target
 export const BAN_FOR = 1800; // and leaves that target alone
 const NO_WAY_FOR = 300; // steps before it looks again for a way to a place it found none to
-const FELL_MAX = 800; // the most cells of a tree that come down when it's felled
-const TREE = setOf(['WOOD', 'LEAVES']);
+const FELL_MAX = 800; // the most cells of a tree's wood that come down when it's felled
+const LEAF_REACH = 12; // and its leaves this near its wood (through leaves) scatter
+const TREE_WOOD = setOf(['WOOD', 'SAPLING']); // a tree's wood, and the tip it grows from
+const FELL_R = 30; // having felled a tree, it gathers all the wood this near where it cut
+const FELL_FOR = 1500; // for this long at most (wood it can't get to, say)
 const BAN_R = 5; // (and what's like it this close: the rest of that log is no easier to reach)
 export const DANGER_R = 16; // it runs from danger this close
 const SAFE_R = 24; // until there's none this close
@@ -46,6 +49,7 @@ const KEEP_WARM = 0.2; // this much of the way back each step
 const SHORE_R = 40; // how far it looks for a shore
 export const FRAME_KNEEL = 2, FRAME_SIT = 3;
 const NEAR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const NEAR8 = [...NEAR4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
 export const DANGER = setOf(['LAVA', 'ACID', 'NAPALM', 'GREEK_FIRE', 'GREY_GOO', 'VIRUS', 'ANTIMATTER', 'BLACK_HOLE']);
 export const CAMP_JOIN = 60; // it joins a camp this close
 export const CAMP_AWAY_R = 150; // farther than this from its camp
@@ -127,6 +131,7 @@ export function newBrain() {
     armour: 0, // hits its armour can still take (0: none)
     held: 0, // what it shows in its hand: an element, HELD_PICKAXE or HELD_GUN
     fetchSet: null, fetchR: 0, fetchSide: false, fetchKeep: null, // what it's fetching, and where from (keep: (x, y) => is it one it wants)
+    felled: null, // { x, y, until, keep }: the tree it felled, whose wood it's gathering, all of it
     mineKey: '', wantN: 0, // what it's mining (a RESOURCES key) and how many it wants
     skip: new Map(), // resource key -> tick until which it doesn't look for it
     refill: true, // it wants gunpowder (a full stack the first time)
@@ -511,8 +516,10 @@ export const Humans = {
         else if (first < 0) first = out[p];
       }
       if (ok && first >= 0) {
-        if (USEFUL[this.type[first]]) this.stow(b, this.type[first]);
+        const t = this.type[first];
+        if (USEFUL[t]) this.stow(b, t);
         this.clearCell(first);
+        if (t === WOOD) this.fell(first % this.w, (first / this.w) | 0); // (its tree comes down)
         if (b.tool !== 0) b.held = HELD_PICKAXE;
         return true;
       }
@@ -646,30 +653,79 @@ export const Humans = {
     return true;
   },
 
-  // Wood taken from (x, y) with more trunk above it: the tree comes down. Its
-  // wood (but nothing humans put there) falls loose, like sand, and piles up
-  // where it can be gathered; its leaves scatter (a heap of them would bury
-  // the camp).
+  // Wood taken from (x, y), or dug out there, by a human: the tree it was
+  // part of (the wood and leaves touching that cell, but nothing humans put
+  // there) comes down, whatever piece was taken (a branch, the top, a cell
+  // cut on a walk), so none is left hanging out of reach. Its wood falls
+  // loose, like sand, and piles up where it can be gathered; its leaves
+  // scatter (a heap of them would bury the camp). How many cells came down.
   fell(x, y) {
-    const { gravity: g, w } = this;
-    const ax = x - g.downX, ay = y - g.downY;
-    if (!this.inBounds(ax, ay) || this.type[ay * w + ax] !== WOOD || this.madeByHuman(ay * w + ax)) return;
-    const seen = new Set([ay * w + ax]), todo = [ay * w + ax];
-    while (todo.length > 0 && seen.size < FELL_MAX) {
-      const c = todo.pop();
-      if (this.type[c] === ID.LEAVES) this.clearCell(c);
-      else this.loose[c] = 1;
-      const cx = c % w, cy = (c / w) | 0;
-      for (const [dx, dy] of NEAR4) {
-        const nx = cx + dx, ny = cy + dy;
-        if (!this.inBounds(nx, ny)) continue;
+    const { w } = this;
+    const seen = new Set(), todo = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if ((dx === 0 && dy === 0) || !this.inBounds(nx, ny)) continue;
         const j = ny * w + nx;
-        if (!seen.has(j) && TREE[this.type[j]] && !this.madeByHuman(j)) {
+        if (TREE_WOOD[this.type[j]] && !this.madeByHuman(j) && !seen.has(j)) {
           seen.add(j);
           todo.push(j);
         }
       }
     }
+    // The tree is its wood, joined side to side or corner to corner (a
+    // branch climbs away from its trunk corner to corner), found breadth
+    // first; it falls loose. (Through leaves too, the search wandered off
+    // into the crowns of the forest round it and ran out before it had all
+    // of its own tree, leaving pieces hanging.)
+    const wood = [];
+    for (let k = 0; k < todo.length && wood.length < FELL_MAX; k++) {
+      const c = todo[k], cx = c % w, cy = (c / w) | 0;
+      if (this.type[c] === ID.SAPLING) this.convert(c, WOOD, true, -1); // (a growing tree's tip: wood like the rest)
+      this.loose[c] = 1;
+      this.wakeAt(cx, cy); // (a crown high up in still air sleeps: it would hang there)
+      wood.push(c);
+      for (const [dx, dy] of NEAR8) {
+        const nx = cx + dx, ny = cy + dy;
+        if (!this.inBounds(nx, ny)) continue;
+        const j = ny * w + nx;
+        if (!seen.has(j) && TREE_WOOD[this.type[j]] && !this.madeByHuman(j)) {
+          seen.add(j);
+          todo.push(j);
+        }
+      }
+    }
+    // Its leaves scatter: those within LEAF_REACH of its wood (through
+    // leaves).
+    let front = [];
+    for (const c of wood) {
+      for (const [dx, dy] of NEAR8) {
+        const nx = c % w + dx, ny = ((c / w) | 0) + dy;
+        if (!this.inBounds(nx, ny)) continue;
+        const j = ny * w + nx;
+        if (!seen.has(j) && this.type[j] === ID.LEAVES) {
+          seen.add(j);
+          front.push(j);
+        }
+      }
+    }
+    for (let d = 0; d < LEAF_REACH && front.length > 0; d++) {
+      const next = [];
+      for (const c of front) {
+        this.clearCell(c);
+        for (const [dx, dy] of NEAR8) {
+          const nx = c % w + dx, ny = ((c / w) | 0) + dy;
+          if (!this.inBounds(nx, ny)) continue;
+          const j = ny * w + nx;
+          if (!seen.has(j) && this.type[j] === ID.LEAVES) {
+            seen.add(j);
+            next.push(j);
+          }
+        }
+      }
+      front = next;
+    }
+    return wood.length;
   },
 
   pose(e, fr) {
@@ -1070,7 +1126,7 @@ export const Humans = {
   // still to deliver, the fire it's lighting.
   carryingOn(e, b, camp) {
     switch (b.job) {
-      case 'gathering wood':
+      case 'gathering wood': return (b.target >= 0 && b.fetchSet[this.type[b.target]] === 1) || b.felled !== null;
       case 'fetching stone': return b.target >= 0 && b.fetchSet[this.type[b.target]] === 1;
       case 'carrying wood': return this.holding(b, FUEL) > 0;
       case 'building the hut': return camp.hut !== null && !camp.hut.done
@@ -1650,6 +1706,7 @@ export const Humans = {
     const t = b.target;
     if (t < 0 || !b.fetchSet[this.type[t]]) {
       this.release(b);
+      if (this.gatherFelled(e, b)) return; // (a piece of its tree still falling: on to the next)
       b.job = 'wandering';
       b.think = 0;
       return;
@@ -1659,11 +1716,28 @@ export const Humans = {
     this.release(b);
     if (this.stow(b, u)) {
       this.clearCell(t);
-      if (u === WOOD) this.fell(t % this.w, (t / this.w) | 0);
+      const x = t % this.w, y = (t / this.w) | 0;
+      if (u === WOOD && this.fell(x, y) > 0 && b.felled === null) b.felled = { x, y, until: this.tick + FELL_FOR, keep: b.fetchKeep };
+      if (this.gatherFelled(e, b)) return;
       if (this.holding(b, b.fetchSet) < GATHER && this.gather(e, b, b.camp, b.fetchSet, b.fetchR, b.job, b.fetchSide, b.fetchKeep)) return;
     }
     b.job = b.job === 'fetching stone' ? 'building the hut' : 'wandering';
     b.think = 0;
+  },
+
+  // Having felled a tree, it gathers all of its wood, however much (not
+  // just a load): the nearest piece within FELL_R of where it cut, until
+  // there's none it can get to, or FELL_FOR is up. True if that gave it a
+  // piece to fetch.
+  gatherFelled(e, b) {
+    const f = b.felled;
+    if (f === null) return false;
+    const near = (x, y) => Math.max(Math.abs(x - f.x), Math.abs(y - f.y)) <= FELL_R && (f.keep === null || f.keep(x, y));
+    if (b.camp !== null && this.tick <= f.until
+      && this.gather(e, b, b.camp, WOOD_ONLY, Math.max(b.fetchR, FUEL_R), 'gathering wood', false, near)) return true;
+    b.felled = null;
+    b.fetchKeep = f.keep;
+    return false;
   },
 
   // Take the fuel to the camp and put it on the pile (or down beside a

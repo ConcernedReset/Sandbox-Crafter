@@ -153,8 +153,10 @@ export const Tunnels = {
       if ((t === SCAFFOLDING || t === WOOD) && (mask[c] & LINED) !== 0) this.stow(b, t); // its own lining
       else if (!this.diggable(c, this.digLimit(b))) return 'blocked';
       else if (USEFUL[t]) this.stow(b, t);
+      const tree = t === WOOD && (mask[c] & LINED) === 0 && !this.madeByHuman(c);
       mask[c] &= ~LINED;
       this.clearCell(c);
+      if (tree) this.fell(c % this.w, (c / this.w) | 0); // (a tree's wood dug through: it comes down)
       return 'work';
     }
     return 'clear';

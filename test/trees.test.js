@@ -75,6 +75,43 @@ test('a tree grows up against the gravity arrow', () => {
   assert.ok(countOf(w, ID.LEAVES) >= 20);
 });
 
+test('taking any piece of a tree (the tip of a branch) brings the whole of it down: none is left hanging', () => {
+  const w = makeWorld(60, 60, 1);
+  fillRect(w, 0, 55, 59, 59, ID.DIRT);
+  fillRect(w, 30, 30, 30, 54, ID.WOOD); // a trunk
+  fillRect(w, 31, 40, 36, 40, ID.WOOD); // a branch
+  fillRect(w, 26, 26, 34, 29, ID.LEAVES); // and its crown
+  w.clearCell(40 * 60 + 36); // its tip
+  assert.ok(w.fell(36, 40) > 20, 'the tree came down');
+  for (let f = 0; f < 300; f++) w.step();
+  let high = 0;
+  for (let y = 0; y < 45; y++) for (let x = 0; x < 60; x++) if (w.type[y * 60 + x] === ID.WOOD) high++;
+  assert.equal(high, 0, 'no wood left up high');
+  assert.equal(countOf(w, ID.LEAVES), 0, 'its leaves scattered');
+});
+
+test("a growing tree whose trunk is burned through stops growing: its tip falls, and no tree grows on in the air", () => {
+  const w = makeWorld(60, 80, 1);
+  fillRect(w, 0, 75, 59, 79, ID.STONE); // (no soil but under it: its tip can't take root again where it falls)
+  w.clearCell(75 * 60 + 30);
+  w.spawn(75 * 60 + 30, ID.DIRT);
+  w.spawn(74 * 60 + 30, ID.SAPLING);
+  let tip = -1;
+  for (let f = 0; f < 3000; f++) { // until its trunk is 6 tall, still growing
+    w.step();
+    tip = w.type.findIndex((t) => t === ID.SAPLING);
+    if (tip >= 0 && ((tip / 60) | 0) <= 68) break;
+  }
+  assert.ok(tip >= 0 && ((tip / 60) | 0) <= 68, 'growing');
+  for (let y = 71; y <= 73; y++) w.clearCell(y * 60 + 30); // its trunk burned through (not by a human: nothing comes down)
+  const wood = countOf(w, ID.WOOD);
+  for (let f = 0; f < 1500; f++) w.step();
+  let high = 0;
+  for (let y = 0; y < 66; y++) for (let x = 0; x < 60; x++) if (w.type[y * 60 + x] === ID.WOOD || w.type[y * 60 + x] === ID.LEAVES) high++;
+  assert.equal(high, 0, 'nothing grew on up there');
+  assert.ok(countOf(w, ID.WOOD) <= wood + 1, 'it stopped growing');
+});
+
 test('a tree whose trunk is cut at the foot comes down where its wood can be gathered', () => {
   const w = makeWorld(60, 60, 1);
   fillRect(w, 0, 55, 59, 59, ID.DIRT);

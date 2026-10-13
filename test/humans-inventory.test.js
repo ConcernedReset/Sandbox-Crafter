@@ -17,18 +17,18 @@ test('a human holds as much of anything as it picks up', () => {
   assert.equal(w.has(b, ID.WOOD), 24);
 });
 
-test('a gatherer sets out for 10 at a time, but keeps what it digs through on the way', () => {
+test('a gatherer that fells a tree gathers all of its wood, not just a load; it keeps what it digs through on the way', () => {
   const w = makeWorld(160, 60, 2);
   fillRect(w, 0, 55, 159, 59, ID.STONE);
-  fillRect(w, 20, 40, 45, 54, ID.WOOD); // far more than 10
+  fillRect(w, 20, 40, 45, 54, ID.WOOD); // far more than a load of 10: it all comes down at the first piece taken
   w.spawn(45 * 160 + 90, ID.HUMAN);
   let most = 0;
   for (let f = 0; f < 3000; f++) {
     w.step();
     const e = w.creatures[0];
-    if (e?.brain?.job === 'gathering wood') most = Math.max(most, e.brain.items.get(ID.WOOD) ?? 0);
+    if (e?.brain) most = Math.max(most, e.brain.items.get(ID.WOOD) ?? 0);
   }
-  assert.ok(most > 0 && most <= 10, `never sets out for more than 10 (${most})`);
+  assert.ok(most > 100, `all of it, not 10 at a time (${most})`);
   const b = newBrain();
   for (let k = 0; k < 12; k++) w.stow(b, ID.COAL);
   assert.equal(w.has(b, ID.COAL), 12, 'nothing dug through is wasted');

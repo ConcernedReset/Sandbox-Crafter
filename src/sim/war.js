@@ -360,7 +360,10 @@ export const War = {
     for (let v = v0; v >= v1; v--) {
       for (let u = u0; u <= u1; u++) {
         const c = this.campCell(camp, u, v);
-        if (c >= 0 && this.type[c] !== 0 && this.wild(c)) this.clearCell(c);
+        if (c < 0 || this.type[c] === 0 || !this.wild(c)) continue;
+        const wood = this.type[c] === WOOD;
+        this.clearCell(c);
+        if (wood) this.fell(c % this.w, (c / this.w) | 0); // (the rest of the tree comes down)
       }
     }
   },

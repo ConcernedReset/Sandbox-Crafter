@@ -71,6 +71,16 @@ export const Sleep = {
     return this.chunkFull[(y >> SHIFT) * this.cw + (x >> SHIFT)] === 1;
   },
 
+  // Wake the chunk holding (x, y): something in it changed that the
+  // snapshot doesn't see (a solid knocked loose, say, which has to fall).
+  wakeAt(x, y) {
+    const c = (y >> SHIFT) * this.cw + (x >> SHIFT);
+    this.chunkAwake[c] = 1;
+    this.chunkFull[c] = 0;
+    this.chunkStill[c] = 0;
+    this.chunkCool[c] = 0;
+  },
+
   wakeAll() {
     this.chunkAwake.fill(1);
     this.chunkFull.fill(0);

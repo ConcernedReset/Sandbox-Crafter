@@ -35,6 +35,14 @@ export const Trees = {
       return true;
     }
     if (this.rand() >= GROW_CHANCE) return true;
+    // Its trunk cut through somewhere under it (burned, blown away, cut),
+    // so it no longer reaches the soil: it stops growing and falls like a
+    // seed, and may take root again where it lands. (It used to grow on in
+    // the air: a tree hanging over nothing.)
+    if (!this.trunkRooted(x, y, gx, gy)) {
+      this.ctype[i] = 0;
+      return false;
+    }
     const height = (c >> 8) & 63, left = this.life[i];
     const ax = x - gx, ay = y - gy;
     // The trunk grows through its own branches' leaves.
@@ -54,6 +62,19 @@ export const Trees = {
     }
     this.crown(x, y, c);
     this.convert(i, WOOD, false, -1);
+    return true;
+  },
+
+  // Does the trunk under a growing tip at (x, y) reach down to soil (or the
+  // world's edge)?
+  trunkRooted(x, y, gx, gy) {
+    for (let d = 1; d <= 64; d++) {
+      const bx = x + d * gx, by = y + d * gy;
+      if (!this.inBounds(bx, by)) return true;
+      const t = this.type[by * this.w + bx];
+      if (SOIL.has(t)) return true;
+      if (t !== WOOD) return false;
+    }
     return true;
   },
 

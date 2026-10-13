@@ -597,8 +597,26 @@ else; `test/build.test.js` checks the bundle runs.
   leaving a cell another shares hands it over at once (`handOver`, also on
   death and removal), so nothing falls into the gap.
 - **Reliability** (the Wilderness pass): Giving
-  up on a target bans everything of its kind within `BAN_R`. Taking wood
-  with trunk above fells the tree (`fell`: its wood and leaves fall loose).
+  up on a target bans everything of its kind within `BAN_R`. Any tree
+  wood a human takes away or digs out fells the tree it was part of
+  (`fell(x, y)`: its wood, and a growing tip (`TREE_WOOD`: Sapling,
+  turned to wood), found breadth first through wood joined side to side
+  or corner to corner (branches climb away corner to corner), but nothing
+  humans put there, falls loose (each chunk woken with `wakeAt`: a crown
+  high in still air sleeps, and would hang); leaves within `LEAF_REACH`
+  of it, through leaves, scatter. Called from `fetch`, `stepAcross`
+  and `followPath` digging through, `workSpot` in a tunnel,
+  `clearWild` and the lawn's levelling). It used to need trunk right
+  above the cell, and search through leaves too, four ways: a branch, a
+  crown, a trunk cut through on a walk, a tree whose search wandered off
+  into the forest's canopy and ran out, or a growing tip cut off (which
+  grew a new tree in the air) were left hanging out of reach. A growing
+  tip (trees.js) also checks its trunk still reaches the soil
+  (`trunkRooted`) before it grows; cut off any way, it falls like a seed.
+  Felling one while fetching sets `brain.felled`:
+  `gatherFelled` then fetches every piece within `FELL_R` of the cut,
+  past `GATHER` (for up to `FELL_FOR`; 'gathering wood' carries on while
+  it's set).
   Hut sites: up to `HUT_R` (40) from the pile, a climbable step of flat,
   growth cleared (`CLEARABLE`, `clearSite`), and `walkable` from the pile
   (no rock in the way). Fetch targets need room for a body to stand within
