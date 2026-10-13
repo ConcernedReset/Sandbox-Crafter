@@ -11,10 +11,10 @@
 import { DEFS, ID, State, SPECIAL } from './elements.js';
 import { SHAPED } from './creatures.js';
 import {
-  USEFUL, DANGER, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R,
+  USEFUL, DANGER, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R, TREE_WOOD, CLEARABLE,
 } from './humans.js';
 
-const { POWDER, LIQUID } = State;
+const { POWDER, LIQUID, GAS } = State;
 const { WOOD, SCAFFOLDING } = ID;
 const SCAFFOLD_CUT = 4; // scaffolding cut from each piece of wood
 export const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
@@ -82,23 +82,46 @@ export const Tunnels = {
     for (const c of box) mask[c] |= INSIDE;
   },
 
-  // The loose cells round the box at (x, y) that could fall into a tunnel:
-  // powders with the inside directly below them, or diagonally below.
+  // The cells round the box at (x, y) to line: loose ones that could fall
+  // into a tunnel (powders with the inside directly below them, or
+  // diagonally below), and open air under ground beside it, over it or
+  // under its floor (a run through a cave gets walls, a roof and a floor;
+  // not out in the open, nor another tunnel's inside).
   looseRound(x, y) {
     const { gx, gy, mask } = this.tunnels;
     const out = [];
-    for (let up = 1; up <= BOX_UP; up++) {
+    for (let up = -1; up <= BOX_UP; up++) {
       for (let k = -2; k <= 2; k++) {
-        if (up < BOX_UP && k >= -1 && k <= 1) continue; // the box itself
+        const box = up >= 0 && up < BOX_UP && k >= -1 && k <= 1;
+        if (box) continue; // the box itself
         const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
         if (!this.inBounds(cx, cy)) continue;
         const c = cy * this.w + cx, t = this.type[c];
-        if (t === 0 || SHAPED[t] || DEFS[t].state !== POWDER || (mask[c] & INSIDE) !== 0) continue;
+        if ((mask[c] & INSIDE) !== 0 || (t !== 0 && SHAPED[t])) continue;
+        if (t === 0 || DEFS[t].state === GAS) {
+          // (Not the corners: the walls, roof and floor close it.)
+          if ((up === -1 || up === BOX_UP) && (k === -2 || k === 2)) continue;
+          if (!this.openToSky(cx, cy, gx, gy)) out.push(c);
+          continue;
+        }
+        if (up < 1 || DEFS[t].state !== POWDER) continue;
         const dx = cx + gx, dy = cy + gy;
         if (this.isInside(dx, dy) || this.isInside(dx + gy, dy - gx) || this.isInside(dx - gy, dy + gx)) out.push(c);
       }
     }
     return out;
+  },
+
+  // Is there no ground over (x, y), up to the world's edge: nothing but
+  // air, gas, creatures, plants and trees, or what humans put there (its
+  // own lining over it would wall in a mine's mouth, a cell at a time)?
+  openToSky(x, y, gx, gy) {
+    for (; this.inBounds(x, y); x -= gx, y -= gy) {
+      const c = y * this.w + x, t = this.type[c];
+      if (t === 0 || DEFS[t].state === GAS || SHAPED[t] || CLEARABLE[t] || TREE_WOOD[t] || this.madeByHuman(c)) continue;
+      return false;
+    }
+    return true;
   },
 
   // Cut 4 scaffolding from a piece of wood in its pack: true if it had one.
@@ -402,7 +425,9 @@ export const Tunnels = {
   // beside the camp (past where humans sit by the fire, who would block its
   // mouth), ENTRY_GAP or more clear of its hut and the lawn round it
   // (grounds.js) and of tunnels, ENTRY_SPACE from other entrances, not in
-  // another camp's lawn. [{ x, y, cost }].
+  // another camp's lawn, and not on a tree (the top of a trunk is "ground"
+  // to groundAt, and a miner climbed the tree to dig its mine from there).
+  // [{ x, y, cost }].
   entranceSpots(e, camp, tx, ty) {
     const lawn = this.lawn(camp), out = [];
     for (const s of [1, -1]) {
@@ -411,8 +436,8 @@ export const Tunnels = {
         if (lawn !== null && u >= lawn.u0 - ENTRY_GAP && u <= lawn.u1 + ENTRY_GAP) continue;
         const g = this.groundAt(camp, u);
         if (g === null) continue;
-        const c = this.campCell(camp, u, g - 1);
-        if (c < 0 || this.type[c] !== 0) continue;
+        const c = this.campCell(camp, u, g - 1), f = this.campCell(camp, u, g);
+        if (c < 0 || this.type[c] !== 0 || (TREE_WOOD[this.type[f]] && !this.madeByHuman(f))) continue;
         const x = c % this.w, y = (c / this.w) | 0;
         if (this.inLawn(x, y, ENTRY_DEPTH + 6) || this.nearTunnel(x, y, ENTRY_GAP) || this.nearEntrance(e, x, y)) continue;
         const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;
@@ -741,7 +766,8 @@ export const Tunnels = {
     if (++b.pace < (t.every ?? DIG_EVERY)) return;
     b.pace = 0;
     const leg = t.legs[0], x = e.x + leg.dx, y = e.y + leg.dy;
-    const r = this.workSpot(e, b, x, y);
+    let r = this.workSpot(e, b, x, y);
+    for (let k = 1; r === 'work' && k < (t.burst ?? 1); k++) r = this.workSpot(e, b, x, y); // (a tunneller's burst)
     if (r === 'work') {
       b.stuck = 0;
       return;

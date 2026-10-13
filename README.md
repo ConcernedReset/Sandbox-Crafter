@@ -575,7 +575,7 @@ Each frame (60 per second):
    armour. To reach what's buried it digs a **tunnel**, at 45° steps
    (level, stairs, or a shaft it climbs up and down), lining it with
    **Scaffolding** wherever dirt or sand would fall in, so the ground
-   around stays put. It cuts 4 scaffolding from each piece of wood in its
+   around stays put, and walling, roofing and flooring it across caves. It cuts 4 scaffolding from each piece of wood in its
    pack; running short, it goes up for wood and
    comes back. Every tunnel joins one
    network the humans share: entrances, junctions, bends and ends, which
@@ -681,7 +681,8 @@ Each frame (60 per second):
    metal for wire and fetches wood to line the tunnel, then digs from its
    camp (from the end of its own mine tunnels, if they lead that way)
    straight to a spot 10 cells under the middle of the enemy's hut, digging
-   through any other mine tunnels in its way. It packs the end of the tunnel
+   fast, and through any other mine tunnels in its way; on the job it keeps
+   out of fights, but shoots back when shot at. It packs the end of the tunnel
    with the C4, walks back out laying copper wire through the tunnel's wall
    (strung across any tunnel it dug through) and on along
    the ground to a plunger just past its lawn, kneels and pushes it: a

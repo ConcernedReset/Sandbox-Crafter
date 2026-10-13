@@ -124,6 +124,29 @@ test('with no helicopter or missile it sends a tunneller instead: one with a pic
   assert.ok(!A.camp.raid.party.includes(p2.id), 'not a raider');
 });
 
+test('a tunneller on its job keeps out of fights: with an armed enemy in sight its camp-mate shoots, it does not, till shot at', () => {
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
+  // One of B's, armed, just beside A's people.
+  w.spawn((w.h - 50) * w.w + 30, ID.HUMAN);
+  run(w, 40); // (landed)
+  const foe = w.creatures.filter((c) => c.kind === ID.HUMAN).at(-1);
+  foe.brain.camp = B.camp;
+  B.camp.members.add(foe.id);
+  foe.brain.weapon = 1;
+  for (let k = 0; k < 12; k++) w.stow(foe.brain, ID.GUNPOWDER);
+  assert.ok(w.startSap(A.camp, B.camp));
+  const sapper = A.people.find((o) => o.id === A.camp.sap.id), mate = A.people.find((o) => o !== sapper);
+  for (const o of A.people) assert.ok(w.sees(o, foe), 'both see it');
+  for (const o of A.people) w.think(o, o.brain);
+  assert.equal(mate.brain.job, 'shooting', 'the camp-mate fights');
+  assert.notEqual(sapper.brain.job, 'shooting', 'the tunneller gets on with its job');
+  // Shot at, it shoots back.
+  sapper.brain.hitBy = B.camp;
+  sapper.brain.hitAt = w.tick;
+  w.think(sapper, sapper.brain);
+  assert.equal(sapper.brain.job, 'shooting', 'shot at, it shoots back');
+});
+
 test('camp-mates by the fire hand a tunneller their spare gunpowder and metal (keeping what they need; not the engineer)', () => {
   const { w, A } = rivals(150, 3); // (12 gunpowder each)
   const [p0, p1, p2] = A.people;
@@ -254,6 +277,43 @@ test('with another tunnel across the whole way, it digs straight through it and 
   assert.ok(!waits.has('a way'), 'never short of a way');
   assert.ok(crossed.size > 0, 'its tunnel ran through the shaft');
   assert.ok(hutLeft(w, B.camp) <= hut0 / 2, `the hut blown up (${hutLeft(w, B.camp)} of ${hut0} left)`);
+});
+
+test('across a cave its wire is strung below it, never through its own tunnel or round itself; and it digs fast', () => {
+  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30, WOOD: 10 });
+  for (const x of [25, 15]) fillRect(w, x, w.h - 45, x + 2, w.h - 31, ID.WOOD); // (trees, for lining)
+  // A cave in a block of stone between the camps: nothing but air (no
+  // tunnel), from just under the ground to near the bottom.
+  const top = w.h - 30, X = 160;
+  for (let y = top + 1; y < w.h; y++) {
+    for (let x = X - 15; x <= X + 15; x++) {
+      const c = y * w.w + x;
+      w.clearCell(c);
+      if (!(Math.abs(x - X) <= 5 && y >= top + 3 && y < w.h - 2)) w.spawn(c, ID.STONE);
+    }
+  }
+  assert.ok(w.startSap(A.camp, B.camp));
+  const e = A.people[0];
+  let dugAt = -1, chargedAt = -1, wrapped = 0;
+  for (let f = 0; f < 25000 && A.camp.sapsDone + A.camp.sapsFailed === 0; f++) {
+    w.step();
+    const s = A.camp.sap;
+    if (s === null) continue;
+    if (s.dug > 0 && dugAt < 0) dugAt = f;
+    if (s.stage === 'charging' && chargedAt < 0) chargedAt = f;
+    if (s.stage === 'wiring') {
+      // Wire in the box its body stands in, in a tunnel.
+      for (let up = 0; up < 6; up++) {
+        for (let k = -1; k <= 1; k++) {
+          const c = (e.y - up) * w.w + e.x + k;
+          if (w.type[c] === ID.COPPER && (w.tunnels.mask[c] & INSIDE) !== 0) wrapped++;
+        }
+      }
+    }
+  }
+  assert.equal(A.camp.sapsDone, 1, `done (failed ${A.camp.sapsFailed})`);
+  assert.equal(wrapped, 0, 'never wire round its body');
+  assert.ok(chargedAt > dugAt && chargedAt - dugAt < 3000, `dug all the way in ${chargedAt - dugAt} steps`);
 });
 
 test('a charge going off (whatever sets it off) craters up through the hut over it', () => {

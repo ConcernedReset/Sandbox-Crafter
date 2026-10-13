@@ -19,7 +19,7 @@ Plain ES modules, no dependencies, no build step. Node 18+.
 
 ```sh
 npm start   # serves the folder at http://localhost:8080 (PORT to change)
-npm test    # node --test: about 1,770 tests, all passing, in two or three minutes (most of it the human situations)
+npm test    # node --test: about 1,775 tests, all passing, in two or three minutes (most of it the human situations)
 ```
 
 `file://` won't work because browsers block ES modules there; use the server,
@@ -241,8 +241,12 @@ else; `test/build.test.js` checks the bundle runs.
   is checked against all of them, so any pose fits) and, per pose (2
   frames x 2 facings), its feet. A place is standing if some pose rests on
   something (`footInfo`: ground, water to swim in, or tunnel "boards"
-  exactly as `overTunnel` holds a body: open tunnel inside, but not right
-  on a network spot), or hanging if there's a wall to climb (`wallBeside`).
+  as `overTunnel` holds a body: open tunnel inside, but not right on a
+  network spot, and only at a mouth (`onBoards`: open air, not tunnel,
+  over its head); `overTunnel` holds it up anywhere off the spots, but
+  planning ways through a mine's workings on boards led overland ways
+  down its shafts, and a human leaving by the mouth walked straight back
+  in), or hanging if there's a wall to climb (`wallBeside`).
   Moves: walk a cell (up to a 2 step, else duck a step down; then drop to
   wherever it lands, `MAX_FALL` 80), dig a cell across (level, up or
   down a step; only cells it can dig, never anything `madeByHuman`),
@@ -454,7 +458,10 @@ else; `test/build.test.js` checks the bundle runs.
   as far as `SAP_WOOD_R`, but after `WOOD_TRIES` trips with no spot dug
   it digs with what it has; more lining in hand counts as headway for
   `SAP_STALL`; then `b.tun` with
-  `sap: true` and `every: SAP_DIG_EVERY` (4), job 'tunnelling', which
+  `sap: true`, `every: SAP_DIG_EVERY` (1) and `burst: SAP_DIG_BURST`
+  (3: `tunnelDig` works the spot up to 3 times a step; a miner, once
+  every 8; at 4 it took about 40 steps a spot, and wars were often won
+  or lost before the tunnel got there), job 'tunnelling', which
   tunnels.js's `tunnelGo`/`tunnelDig` dig as for mining but call
   `sapDug` per spot and `sapArrived` at the end; `sapPlan` continues
   from `s.endX/endY`, or else digs straight from the cheapest start: a
@@ -481,7 +488,9 @@ else; `test/build.test.js` checks the bundle runs.
   `wireOK` cells (never in a tunnel's inside), or open air at
   `AIR_COST`, a tunnel's inside too (round a cratered tunnel mouth, or
   across another tunnel it dug through, the wire is strung across the
-  gap; ground-only, it broke there); a cell of wire per 1/20 metal; `putDown`, so `madeByHuman`
+  gap; ground-only, it broke there), but never its own tunnel's inside
+  (`s.own`, the boxes of the spots it dug, from `sapDug`) nor its body's
+  box: strung through them, across a cave it wrapped itself in wire; a cell of wire per 1/20 metal; `putDown`, so `madeByHuman`
   keeps miners off it, and lining it replaces loses `LINED`), 'firing'
   (`sapFire`: kneel `SAP_PRESS`, `sparkAt` the plunger cell; the spark
   runs along the copper and `updateSpark` ignites the C4). Anything it
@@ -490,7 +499,10 @@ else; `test/build.test.js` checks the bundle runs.
   gives up (`endSap(camp, true)`: anger back to full, `sapRetry` after
   `SAP_RETRY`) after `SAP_GATHER_FOR` gathering, `SAP_STALL` without a
   spot dug, `SAP_FOR` in all, `SAP_FIZZLE` after pushing with no bang,
-  or if it dies or leaves (`leaveCamp`); `strayed` ignores it, and
+  or if it dies or leaves (`leaveCamp`); `strayed` ignores it, `think`
+  doesn't send it fighting (`isSapper`: it still flees) unless an
+  enemy's bullet hit it in the last `DEFEND_FOR` (300) steps (never
+  shooting back, it was shot down in the enemy mines it dug across), and
   `startRaid` never takes it. `stepCharges` (from `stepWar`, which now
   also runs while there are charges): a charge any of whose cells isn't C4
   any more is blown `BLOW_DELAY` later (`blowCharge`: `crater`s from
@@ -541,14 +553,23 @@ else; `test/build.test.js` checks the bundle runs.
 - **Tunnels** (`tunnels.js`): mining digs tunnels. A spot is where a
   human's feet go; its inside is the 3x6 body box. `workSpot` lines first
   (`looseRound`: powders with the inside below or diagonally below are
-  swapped for wood, useful ones pocketed), then digs the box top row first,
+  swapped for wood, useful ones pocketed; and open air beside the box,
+  over it or under its floor, but for the corners, where it is under
+  ground: `openToSky` false, natural ground over it (plants, trees,
+  creatures and what humans put there don't count: leaves over a mouth
+  once got its above-ground sides lined, and that lining roofed the
+  cells under it, a cell at a time, till the mouth was walled in); so a
+  run across a cave gets walls, a roof and a floor, and another tunnel's
+  inside is left open), then digs the box top row first,
   taking its own lining back. `world.tunnels` holds one network: nodes
   (`entrance`, `junction`, `bend`, `end`: `nodeKind`), straight edges at
   45° steps, the way down it was dug with, and a cell `mask` (INSIDE,
   LINED). `planTunnel` picks the cheapest start (network travel, shafts
   1.5x, plus 4x per new spot, two legs diagonal then straight: `legsTo`) or
   a new entrance (`entranceSpots`: 14-90 cells from camp, clear of the
-  hut's lawn and of tunnels, `ENTRY_SPACE` (20) from other entrances).
+  hut's lawn and of tunnels, `ENTRY_SPACE` (20) from other entrances,
+  not on a tree: `groundAt` takes the top of a trunk for ground, and
+  miners climbed trees to dig from there).
   Plans are tried cheapest first (up to `PLAN_TRIES`) and taken only if
   the new run keeps `TUNNEL_GAP` (4) solid cells from every other tunnel
   outside `START_R` (8) of its start (`pathClear`); going on along a seam

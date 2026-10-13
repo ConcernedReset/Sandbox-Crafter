@@ -130,18 +130,20 @@ test('over rolling hills it keeps to its plan (its feet land where planned)', ()
   assert.ok(replans <= 1, `planned again ${replans} times`);
 });
 
-test("tunnel insides hold it up as boards, as the game does (but not right on the network's spots)", () => {
+test("a tunnel's mouth holds it up as boards (but not right on the network's spots, nor down in the mine)", () => {
   const w = makeWorld(120, 60, 1);
   floor(w);
   fillRect(w, 0, 40, 119, 54, ID.DIRT);
   const e = human(w, 20, 20);
-  // An entrance shaft at x 60, and a big open working underground.
-  for (let y = 30; y <= 50; y++) for (let x = 59; x <= 61; x++) { w.clearCell(y * 120 + x); w.tunnels.mask[y * 120 + x] |= 1; }
+  // An entrance shaft at x 60 (its mouth's box standing up out of the
+  // ground), and a big open working underground.
+  for (let y = 34; y <= 50; y++) for (let x = 59; x <= 61; x++) { w.clearCell(y * 120 + x); w.tunnels.mask[y * 120 + x] |= 1; }
   for (let y = 42; y <= 50; y++) for (let x = 40; x <= 80; x++) { w.clearCell(y * 120 + x); w.tunnels.mask[y * 120 + x] |= 1; }
   w.addNode(60, 39, true);
   const body = bodyOf(e.kind);
   assert.equal(w.footing(body, 60, 39, 0, 1), 2, 'boards over the mouth (an entrance)');
-  assert.equal(w.footing(body, 50, 45, 0, 1), 2, 'and in the air of the workings');
+  assert.equal(w.footing(body, 60, 40, 0, 1), 0, 'but not a step down the shaft');
+  assert.equal(w.footing(body, 50, 48, 0, 1), 0, 'nor down in the workings (overland ways would run through the mine)');
   w.addEdge(w.addNode(45, 45), w.addNode(55, 45)); // a run along the workings
   assert.equal(w.footing(body, 50, 45, 0, 1), 0, 'but not right on a spot of the network');
   const r = w.findPath(e, 100, e.y, 1, 30);

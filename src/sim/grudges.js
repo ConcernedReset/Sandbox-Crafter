@@ -62,7 +62,7 @@ export const WIRE_PER_METAL = 20; // cells of wire drawn from a piece of metal
 export const SAP_DEPTH = 10; // the tunnel's end: this far under the enemy hut's floor
 const SAP_WOOD_R = 200; // how far from the camp it goes for wood (for lining; late on, the trees near are gone)
 const WOOD_TRIES = 3; // goes for wood without a spot dug since, before it digs with what lining it has
-const SAP_DIG_EVERY = 4; // steps per cell dug: twice as fast as a miner
+const SAP_DIG_EVERY = 1, SAP_DIG_BURST = 3; // a burst of up to 3 cells dug every step: 24 times as fast as a miner
 const OWN_R = 100; // its camp's tunnels: the network reached from entrances this near it (and nearer it than the enemy)
 const PLAN_TRIES = 20; // the cheapest places to dig from it checks for a way clear of other tunnels (else it digs through them)
 export const SAP_FOR = 54000; // the longest a tunnel job goes on
@@ -223,6 +223,7 @@ export const Grudges = {
       plug: null, firedAt: -1, // the plunger, and when it was pushed
       waitUntil: 0, why: '', // it can't get on just now: it waits till then, for want of this
       woodTrips: 0, lining: 0, // times it has gone for wood since it last dug a spot; lining it had
+      own: new Set(), // the inside of the tunnel it dug (the wire never goes there)
     };
     const b = best.brain;
     this.release(b);
@@ -373,7 +374,7 @@ export const Grudges = {
     s.ty = p.ty;
     s.depth = p.depth;
     this.release(b);
-    b.tun = { tx: p.tx, ty: p.ty, x: p.x, y: p.y, entrance: p.entrance, route: null, legs: null, node: null, sap: true, every: SAP_DIG_EVERY };
+    b.tun = { tx: p.tx, ty: p.ty, x: p.x, y: p.y, entrance: p.entrance, route: null, legs: null, node: null, sap: true, every: SAP_DIG_EVERY, burst: SAP_DIG_BURST };
     b.mineKey = '';
     b.job = 'tunnelling';
     b.pace = 0;
@@ -465,6 +466,8 @@ export const Grudges = {
     s.dy = dy;
     s.dug++;
     s.woodTrips = 0;
+    const box = this.tunnelBox;
+    if (this.boxCells(x, y, e.gx, e.gy, box)) for (const c of box) s.own.add(c);
     s.progressAt = this.tick;
   },
 
@@ -651,7 +654,7 @@ export const Grudges = {
   // corner: through the ground (what wireOK allows, but never the inside
   // of a tunnel), or, at AIR_COST a cell, strung across open air, where
   // the ground has been blown away or across another tunnel it dug
-  // through) from the end laid so far (at first, the charge) to one of
+  // through, but never in its own tunnel) from the end laid so far (at first, the charge) to one of
   // `targets`, within WIRE_REACH of e: laid, a cell of
   // wire per 1/WIRE_PER_METAL of a piece of metal. With no way (or no
   // metal) it's left for now.
@@ -659,7 +662,11 @@ export const Grudges = {
     const { w, type, wall } = this, mask = this.tunnels.mask;
     const want = new Set(targets.filter((c) => !s.wired.has(c)));
     if (want.size === 0) return;
+    // (Never in its own tunnel's inside, nor where its body is: across a
+    // gap, wire strung through them wrapped it up in its own wire.)
+    const body = new Set(this.boxCells(e.x, e.y, e.gx, e.gy, this.tunnelBox) ? this.tunnelBox : []);
     const step = (j) => {
+      if ((mask[j] & INSIDE) !== 0 && (s.own.has(j) || body.has(j))) return -1;
       if (want.has(j) || ((mask[j] & INSIDE) === 0 && this.wireOK(j))) return 1;
       const t = type[j];
       return wall[j] === 0 && (t === 0 || DEFS[t].state === GAS) ? AIR_COST : -1;

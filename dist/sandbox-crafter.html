@@ -11940,6 +11940,7 @@ const AMMO_LOW = 4; // gunpowder below this, it goes for more
 const PELLETS = 4; // a shot: 4 pellets in a tight spread
 const SPREAD = 0.035; // radians between pellets
 const FIGHT_R = 40; // it shoots at threats and rivals this close
+const DEFEND_FOR = 300; // a tunneller on its job shoots back only this soon after an enemy's bullet hits it
 const SHOT_R = 2 * FIGHT_R; // how far a pellet flies
 const FIRE_EVERY = 40; // steps between shots
 const THREAT = setOf(['SPIDER', 'PHOENIX']);
@@ -12630,7 +12631,11 @@ const Humans = {
       return;
     }
     if (b.job === 'fleeing') b.job = 'wandering';
-    if (this.armed(b)) {
+    // (A tunneller on its job keeps out of fights, but for shooting back:
+    // grudges.js. Unarmed, it walked on through enemy mines it dug across
+    // and was shot down.)
+    const shotAt = b.hitBy !== null && this.tick - b.hitAt <= DEFEND_FOR;
+    if (this.armed(b) && (!this.isSapper(e) || shotAt)) {
       const foe = this.findFoe(e, b);
       if (foe !== null) {
         if (b.foe !== foe.id) b.reload = FIRE_EVERY - 8; // a gun at the ready
@@ -13762,7 +13767,7 @@ const Humans = {
   },
 };
 
-return { THINK_EVERY, WALK_EVERY, RUN_EVERY, GIVE_UP, BAN_FOR, DANGER_R, BREATH, FRAME_KNEEL, DANGER, CAMP_JOIN, CAMP_AWAY_R, FUEL_R, HUT_W, HUT_WALL, DOOR, STONE_R, MATERIAL, CLEARABLE, HAND_DIG, TOOL_DIG, DIG_EVERY, METALS, RESOURCES, USEFUL, MINE_R, CRAFT_FIRE_TIME, ARMOUR_HITS, AMMO_LOW, PELLETS, FIRE_EVERY, SEAM_R, WOOD_ONLY, GATHER, SHARE_R, HELD_PICKAXE, newBrain, inventoryNote, Humans };
+return { THINK_EVERY, WALK_EVERY, RUN_EVERY, GIVE_UP, BAN_FOR, TREE_WOOD, DANGER_R, BREATH, FRAME_KNEEL, DANGER, CAMP_JOIN, CAMP_AWAY_R, FUEL_R, HUT_W, HUT_WALL, DOOR, STONE_R, MATERIAL, CLEARABLE, HAND_DIG, TOOL_DIG, DIG_EVERY, METALS, RESOURCES, USEFUL, MINE_R, CRAFT_FIRE_TIME, ARMOUR_HITS, AMMO_LOW, PELLETS, FIRE_EVERY, SEAM_R, WOOD_ONLY, GATHER, SHARE_R, HELD_PICKAXE, newBrain, inventoryNote, Humans };
 })();
 
 __modules["src/sim/trees.js"] = (() => {
@@ -13958,9 +13963,9 @@ __modules["src/sim/tunnels.js"] = (() => {
 
 const { DEFS, ID, State, SPECIAL } = __modules["src/sim/elements.js"];
 const { SHAPED } = __modules["src/sim/creatures.js"];
-const { USEFUL, DANGER, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R } = __modules["src/sim/humans.js"];
+const { USEFUL, DANGER, WALK_EVERY, GIVE_UP, DIG_EVERY, BAN_FOR, HELD_PICKAXE, RESOURCES, WOOD_ONLY, FUEL_R, SEAM_R, TREE_WOOD, CLEARABLE } = __modules["src/sim/humans.js"];
 
-const { POWDER, LIQUID } = State;
+const { POWDER, LIQUID, GAS } = State;
 const { WOOD, SCAFFOLDING } = ID;
 const SCAFFOLD_CUT = 4; // scaffolding cut from each piece of wood
 const INSIDE = 1, LINED = 2; // world.tunnels.mask bits
@@ -14028,23 +14033,46 @@ const Tunnels = {
     for (const c of box) mask[c] |= INSIDE;
   },
 
-  // The loose cells round the box at (x, y) that could fall into a tunnel:
-  // powders with the inside directly below them, or diagonally below.
+  // The cells round the box at (x, y) to line: loose ones that could fall
+  // into a tunnel (powders with the inside directly below them, or
+  // diagonally below), and open air under ground beside it, over it or
+  // under its floor (a run through a cave gets walls, a roof and a floor;
+  // not out in the open, nor another tunnel's inside).
   looseRound(x, y) {
     const { gx, gy, mask } = this.tunnels;
     const out = [];
-    for (let up = 1; up <= BOX_UP; up++) {
+    for (let up = -1; up <= BOX_UP; up++) {
       for (let k = -2; k <= 2; k++) {
-        if (up < BOX_UP && k >= -1 && k <= 1) continue; // the box itself
+        const box = up >= 0 && up < BOX_UP && k >= -1 && k <= 1;
+        if (box) continue; // the box itself
         const cx = x + k * gy - up * gx, cy = y - k * gx - up * gy;
         if (!this.inBounds(cx, cy)) continue;
         const c = cy * this.w + cx, t = this.type[c];
-        if (t === 0 || SHAPED[t] || DEFS[t].state !== POWDER || (mask[c] & INSIDE) !== 0) continue;
+        if ((mask[c] & INSIDE) !== 0 || (t !== 0 && SHAPED[t])) continue;
+        if (t === 0 || DEFS[t].state === GAS) {
+          // (Not the corners: the walls, roof and floor close it.)
+          if ((up === -1 || up === BOX_UP) && (k === -2 || k === 2)) continue;
+          if (!this.openToSky(cx, cy, gx, gy)) out.push(c);
+          continue;
+        }
+        if (up < 1 || DEFS[t].state !== POWDER) continue;
         const dx = cx + gx, dy = cy + gy;
         if (this.isInside(dx, dy) || this.isInside(dx + gy, dy - gx) || this.isInside(dx - gy, dy + gx)) out.push(c);
       }
     }
     return out;
+  },
+
+  // Is there no ground over (x, y), up to the world's edge: nothing but
+  // air, gas, creatures, plants and trees, or what humans put there (its
+  // own lining over it would wall in a mine's mouth, a cell at a time)?
+  openToSky(x, y, gx, gy) {
+    for (; this.inBounds(x, y); x -= gx, y -= gy) {
+      const c = y * this.w + x, t = this.type[c];
+      if (t === 0 || DEFS[t].state === GAS || SHAPED[t] || CLEARABLE[t] || TREE_WOOD[t] || this.madeByHuman(c)) continue;
+      return false;
+    }
+    return true;
   },
 
   // Cut 4 scaffolding from a piece of wood in its pack: true if it had one.
@@ -14348,7 +14376,9 @@ const Tunnels = {
   // beside the camp (past where humans sit by the fire, who would block its
   // mouth), ENTRY_GAP or more clear of its hut and the lawn round it
   // (grounds.js) and of tunnels, ENTRY_SPACE from other entrances, not in
-  // another camp's lawn. [{ x, y, cost }].
+  // another camp's lawn, and not on a tree (the top of a trunk is "ground"
+  // to groundAt, and a miner climbed the tree to dig its mine from there).
+  // [{ x, y, cost }].
   entranceSpots(e, camp, tx, ty) {
     const lawn = this.lawn(camp), out = [];
     for (const s of [1, -1]) {
@@ -14357,8 +14387,8 @@ const Tunnels = {
         if (lawn !== null && u >= lawn.u0 - ENTRY_GAP && u <= lawn.u1 + ENTRY_GAP) continue;
         const g = this.groundAt(camp, u);
         if (g === null) continue;
-        const c = this.campCell(camp, u, g - 1);
-        if (c < 0 || this.type[c] !== 0) continue;
+        const c = this.campCell(camp, u, g - 1), f = this.campCell(camp, u, g);
+        if (c < 0 || this.type[c] !== 0 || (TREE_WOOD[this.type[f]] && !this.madeByHuman(f))) continue;
         const x = c % this.w, y = (c / this.w) | 0;
         if (this.inLawn(x, y, ENTRY_DEPTH + 6) || this.nearTunnel(x, y, ENTRY_GAP) || this.nearEntrance(e, x, y)) continue;
         const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;
@@ -14687,7 +14717,8 @@ const Tunnels = {
     if (++b.pace < (t.every ?? DIG_EVERY)) return;
     b.pace = 0;
     const leg = t.legs[0], x = e.x + leg.dx, y = e.y + leg.dy;
-    const r = this.workSpot(e, b, x, y);
+    let r = this.workSpot(e, b, x, y);
+    for (let k = 1; r === 'work' && k < (t.burst ?? 1); k++) r = this.workSpot(e, b, x, y); // (a tunneller's burst)
     if (r === 'work') {
       b.stuck = 0;
       return;
@@ -14975,7 +15006,7 @@ const { DEFS, ID, State } = __modules["src/sim/elements.js"];
 const { SHAPED } = __modules["src/sim/creatures.js"];
 const { DANGER, CLEARABLE, USEFUL, HELD_PICKAXE } = __modules["src/sim/humans.js"];
 
-const { SOLID, POWDER, LIQUID } = State;
+const { SOLID, POWDER, LIQUID, GAS } = State;
 const { WOOD } = ID;
 const CLIMB = 2; // the highest step a human walks up (humans.js)
 const MAX_FALL = 80; // the farthest drop it plans
@@ -14985,6 +15016,7 @@ const MARGIN = 60; // how far outside the box round it and its target it looks
 const WEIGHT = 1.3; // a little greedy: quicker, and near enough the best
 const WALK = 1, STEP_UP = 0.3, DUCK = 1.2, CLIMB_COST = 3, SWIM = 3, DIG_CELL = 2, FALL_CELL = 0.05;
 const BOARDS = 2; // walking a cell over a tunnel's open inside (on "boards"): kept to, not sought out
+const HEAD_UP = 6; // the cell over a standing body's head
 const MOVE = { start: 0, walk: 1, dig: 2, climb: 3 };
 const MAX_REPLANS = 6; // plans for one target before it walks straight at it instead
 const WALL_EVERY = 12, DIG_EVERY = 8; // steps a cell climbed, and a cell dug (humans.js)
@@ -15170,7 +15202,7 @@ const Paths = {
       if (!this.inBounds(cx, cy)) return 2; // the world's edge holds it up
       const t = this.type[cy * this.w + cx];
       if (t === 0) {
-        if (this.isInside(cx, cy) && this.onBoards(x, y)) return 2;
+        if (this.isInside(cx, cy) && this.onBoards(x, y, gx, gy)) return 2;
         continue;
       }
       if (SHAPED[t] && !MACHINE[t]) continue;
@@ -15182,10 +15214,18 @@ const Paths = {
   },
 
   // Standing at (x, y) over a tunnel's inside, is it held up as if on
-  // boards (overTunnel): not right on one of its spots (but an entrance)?
-  onBoards(x, y) {
+  // boards (overTunnel): not right on one of its spots (but an entrance),
+  // and out at its mouth: open air over its head, not the tunnel's own
+  // inside or rock (inside a mine, boards everywhere off its spots made
+  // overland ways run down its shafts and along its runs, and a human
+  // leaving by the mouth walked straight back down).
+  onBoards(x, y, gx, gy) {
     const at = this.onNet(x, y);
-    return at === null || (at.node !== null && at.node.entrance);
+    if (at !== null && !(at.node !== null && at.node.entrance)) return false;
+    const hx = x - HEAD_UP * gx, hy = y - HEAD_UP * gy;
+    if (!this.inBounds(hx, hy)) return true;
+    const c = hy * this.w + hx, t = this.type[c];
+    return !this.isInside(hx, hy) && (t === 0 || DEFS[t].state === GAS);
   },
 
   // A wall beside a body at (x, y) to climb (as climbWall sees one): the
@@ -16517,7 +16557,7 @@ const WIRE_PER_METAL = 20; // cells of wire drawn from a piece of metal
 const SAP_DEPTH = 10; // the tunnel's end: this far under the enemy hut's floor
 const SAP_WOOD_R = 200; // how far from the camp it goes for wood (for lining; late on, the trees near are gone)
 const WOOD_TRIES = 3; // goes for wood without a spot dug since, before it digs with what lining it has
-const SAP_DIG_EVERY = 4; // steps per cell dug: twice as fast as a miner
+const SAP_DIG_EVERY = 1, SAP_DIG_BURST = 3; // a burst of up to 3 cells dug every step: 24 times as fast as a miner
 const OWN_R = 100; // its camp's tunnels: the network reached from entrances this near it (and nearer it than the enemy)
 const PLAN_TRIES = 20; // the cheapest places to dig from it checks for a way clear of other tunnels (else it digs through them)
 const SAP_FOR = 54000; // the longest a tunnel job goes on
@@ -16678,6 +16718,7 @@ const Grudges = {
       plug: null, firedAt: -1, // the plunger, and when it was pushed
       waitUntil: 0, why: '', // it can't get on just now: it waits till then, for want of this
       woodTrips: 0, lining: 0, // times it has gone for wood since it last dug a spot; lining it had
+      own: new Set(), // the inside of the tunnel it dug (the wire never goes there)
     };
     const b = best.brain;
     this.release(b);
@@ -16828,7 +16869,7 @@ const Grudges = {
     s.ty = p.ty;
     s.depth = p.depth;
     this.release(b);
-    b.tun = { tx: p.tx, ty: p.ty, x: p.x, y: p.y, entrance: p.entrance, route: null, legs: null, node: null, sap: true, every: SAP_DIG_EVERY };
+    b.tun = { tx: p.tx, ty: p.ty, x: p.x, y: p.y, entrance: p.entrance, route: null, legs: null, node: null, sap: true, every: SAP_DIG_EVERY, burst: SAP_DIG_BURST };
     b.mineKey = '';
     b.job = 'tunnelling';
     b.pace = 0;
@@ -16920,6 +16961,8 @@ const Grudges = {
     s.dy = dy;
     s.dug++;
     s.woodTrips = 0;
+    const box = this.tunnelBox;
+    if (this.boxCells(x, y, e.gx, e.gy, box)) for (const c of box) s.own.add(c);
     s.progressAt = this.tick;
   },
 
@@ -17106,7 +17149,7 @@ const Grudges = {
   // corner: through the ground (what wireOK allows, but never the inside
   // of a tunnel), or, at AIR_COST a cell, strung across open air, where
   // the ground has been blown away or across another tunnel it dug
-  // through) from the end laid so far (at first, the charge) to one of
+  // through, but never in its own tunnel) from the end laid so far (at first, the charge) to one of
   // `targets`, within WIRE_REACH of e: laid, a cell of
   // wire per 1/WIRE_PER_METAL of a piece of metal. With no way (or no
   // metal) it's left for now.
@@ -17114,7 +17157,11 @@ const Grudges = {
     const { w, type, wall } = this, mask = this.tunnels.mask;
     const want = new Set(targets.filter((c) => !s.wired.has(c)));
     if (want.size === 0) return;
+    // (Never in its own tunnel's inside, nor where its body is: across a
+    // gap, wire strung through them wrapped it up in its own wire.)
+    const body = new Set(this.boxCells(e.x, e.y, e.gx, e.gy, this.tunnelBox) ? this.tunnelBox : []);
     const step = (j) => {
+      if ((mask[j] & INSIDE) !== 0 && (s.own.has(j) || body.has(j))) return -1;
       if (want.has(j) || ((mask[j] & INSIDE) === 0 && this.wireOK(j))) return 1;
       const t = type[j];
       return wall[j] === 0 && (t === 0 || DEFS[t].state === GAS) ? AIR_COST : -1;

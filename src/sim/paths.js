@@ -18,7 +18,7 @@ import { DEFS, ID, State } from './elements.js';
 import { SHAPED } from './creatures.js';
 import { DANGER, CLEARABLE, USEFUL, HELD_PICKAXE } from './humans.js';
 
-const { SOLID, POWDER, LIQUID } = State;
+const { SOLID, POWDER, LIQUID, GAS } = State;
 const { WOOD } = ID;
 const CLIMB = 2; // the highest step a human walks up (humans.js)
 const MAX_FALL = 80; // the farthest drop it plans
@@ -28,6 +28,7 @@ const MARGIN = 60; // how far outside the box round it and its target it looks
 const WEIGHT = 1.3; // a little greedy: quicker, and near enough the best
 const WALK = 1, STEP_UP = 0.3, DUCK = 1.2, CLIMB_COST = 3, SWIM = 3, DIG_CELL = 2, FALL_CELL = 0.05;
 const BOARDS = 2; // walking a cell over a tunnel's open inside (on "boards"): kept to, not sought out
+const HEAD_UP = 6; // the cell over a standing body's head
 export const MOVE = { start: 0, walk: 1, dig: 2, climb: 3 };
 const MAX_REPLANS = 6; // plans for one target before it walks straight at it instead
 const WALL_EVERY = 12, DIG_EVERY = 8; // steps a cell climbed, and a cell dug (humans.js)
@@ -213,7 +214,7 @@ export const Paths = {
       if (!this.inBounds(cx, cy)) return 2; // the world's edge holds it up
       const t = this.type[cy * this.w + cx];
       if (t === 0) {
-        if (this.isInside(cx, cy) && this.onBoards(x, y)) return 2;
+        if (this.isInside(cx, cy) && this.onBoards(x, y, gx, gy)) return 2;
         continue;
       }
       if (SHAPED[t] && !MACHINE[t]) continue;
@@ -225,10 +226,18 @@ export const Paths = {
   },
 
   // Standing at (x, y) over a tunnel's inside, is it held up as if on
-  // boards (overTunnel): not right on one of its spots (but an entrance)?
-  onBoards(x, y) {
+  // boards (overTunnel): not right on one of its spots (but an entrance),
+  // and out at its mouth: open air over its head, not the tunnel's own
+  // inside or rock (inside a mine, boards everywhere off its spots made
+  // overland ways run down its shafts and along its runs, and a human
+  // leaving by the mouth walked straight back down).
+  onBoards(x, y, gx, gy) {
     const at = this.onNet(x, y);
-    return at === null || (at.node !== null && at.node.entrance);
+    if (at !== null && !(at.node !== null && at.node.entrance)) return false;
+    const hx = x - HEAD_UP * gx, hy = y - HEAD_UP * gy;
+    if (!this.inBounds(hx, hy)) return true;
+    const c = hy * this.w + hx, t = this.type[c];
+    return !this.isInside(hx, hy) && (t === 0 || DEFS[t].state === GAS);
   },
 
   // A wall beside a body at (x, y) to climb (as climbWall sees one): the

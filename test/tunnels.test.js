@@ -60,6 +60,26 @@ test('a level run through stone needs no lining', () => {
   assert.equal(w.workSpot(digger, newBrain(), 42, 30), 'blocked', 'no pickaxe: stone stops it');
 });
 
+test('a run through a cave gets scaffolding walls, roof and floor; out in the open air, none', () => {
+  const w = makeWorld(80, 60, 1);
+  fillRect(w, 0, 10, 79, 59, ID.STONE);
+  for (let y = 20; y <= 50; y++) for (let x = 25; x <= 55; x++) w.clearCell(y * 80 + x); // the cave
+  const b = woody();
+  b.tool = 1;
+  open(w, b, 20, 35);
+  carve(w, b, 20, 35, 1, 0, 20); // across it, from x 20 to 40
+  const at = (x, y) => w.type[y * 80 + x];
+  for (let x = 30; x <= 38; x++) {
+    assert.equal(at(x, 36), ID.SCAFFOLDING, `a floor at ${x}`);
+    assert.equal(at(x, 29), ID.SCAFFOLDING, `a roof at ${x}`);
+  }
+  // Up in the open air over the ground, nothing is walled.
+  const o = makeWorld(80, 60, 1);
+  fillRect(o, 0, 40, 79, 59, ID.STONE);
+  open(o, woody(), 30, 39);
+  assert.equal(countOf(o, ID.SCAFFOLDING), 0);
+});
+
 test('without wood, a spot that needs lining waits for it', () => {
   const w = makeWorld(40, 40, 1);
   fillRect(w, 0, 0, 39, 39, ID.DIRT);

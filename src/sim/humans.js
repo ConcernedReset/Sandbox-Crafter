@@ -33,7 +33,7 @@ export const BAN_FOR = 1800; // and leaves that target alone
 const NO_WAY_FOR = 300; // steps before it looks again for a way to a place it found none to
 const FELL_MAX = 800; // the most cells of a tree's wood that come down when it's felled
 const LEAF_REACH = 12; // and its leaves this near its wood (through leaves) scatter
-const TREE_WOOD = setOf(['WOOD', 'SAPLING']); // a tree's wood, and the tip it grows from
+export const TREE_WOOD = setOf(['WOOD', 'SAPLING']); // a tree's wood, and the tip it grows from
 const FELL_R = 30; // having felled a tree, it gathers all the wood this near where it cut
 const FELL_FOR = 1500; // for this long at most (wood it can't get to, say)
 const BAN_R = 5; // (and what's like it this close: the rest of that log is no easier to reach)
@@ -101,6 +101,7 @@ export const AMMO_LOW = 4; // gunpowder below this, it goes for more
 export const PELLETS = 4; // a shot: 4 pellets in a tight spread
 const SPREAD = 0.035; // radians between pellets
 const FIGHT_R = 40; // it shoots at threats and rivals this close
+const DEFEND_FOR = 300; // a tunneller on its job shoots back only this soon after an enemy's bullet hits it
 const SHOT_R = 2 * FIGHT_R; // how far a pellet flies
 export const FIRE_EVERY = 40; // steps between shots
 const THREAT = setOf(['SPIDER', 'PHOENIX']);
@@ -791,7 +792,11 @@ export const Humans = {
       return;
     }
     if (b.job === 'fleeing') b.job = 'wandering';
-    if (this.armed(b)) {
+    // (A tunneller on its job keeps out of fights, but for shooting back:
+    // grudges.js. Unarmed, it walked on through enemy mines it dug across
+    // and was shot down.)
+    const shotAt = b.hitBy !== null && this.tick - b.hitAt <= DEFEND_FOR;
+    if (this.armed(b) && (!this.isSapper(e) || shotAt)) {
       const foe = this.findFoe(e, b);
       if (foe !== null) {
         if (b.foe !== foe.id) b.reload = FIRE_EVERY - 8; // a gun at the ready
