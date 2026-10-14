@@ -5,12 +5,13 @@ import { ID } from '../src/sim/elements.js';
 import { AA_CAP } from '../src/sim/war.js';
 import { makeWorld, fillRect, run } from './helpers.js';
 
-// A world `width` wide and `h` high with flat dirt over stone, ground 30
-// cells up from the bottom.
-export function field(width = 300, seed = 1, h = 90) {
+// A world `width` wide and `h` high with flat dirt over stone, ground
+// `below` cells up from the bottom (its top row: w.ground).
+export function field(width = 300, seed = 1, h = 90, below = 30) {
   const w = makeWorld(width, h, seed);
+  w.ground = h - below;
   fillRect(w, 0, h - 5, width - 1, h - 1, ID.STONE);
-  fillRect(w, 0, h - 30, width - 1, h - 6, ID.DIRT);
+  fillRect(w, 0, h - below, width - 1, h - 6, ID.DIRT);
   return w;
 }
 
@@ -18,7 +19,8 @@ export function field(width = 300, seed = 1, h = 90) {
 // with a pickaxe, a gun, armour, gunpowder and wood (and `carry`: element
 // -> how many). { camp, people }.
 export function settle(w, x, n, carry = {}) {
-  const camp = w.makeCamp(x, w.h - 31);
+  const ground = w.ground ?? w.h - 30;
+  const camp = w.makeCamp(x, ground - 1);
   camp.lit = true;
   camp.burned = 99999;
   camp.hut = w.planHut(camp);
@@ -28,7 +30,7 @@ export function settle(w, x, n, carry = {}) {
   for (let u = -1; u <= 1; u++) w.spawn(w.campCell(camp, u, 0), ID.CAMPFIRE);
   const people = [];
   for (let k = 0; k < n; k++) {
-    w.spawn((w.h - 50) * w.w + x - 12 + 6 * k, ID.HUMAN);
+    w.spawn((ground - 20) * w.w + x - 12 + 6 * k, ID.HUMAN);
     run(w, 12);
     const e = w.creatures.filter((c) => c.kind === ID.HUMAN).at(-1);
     e.brain.camp = camp;

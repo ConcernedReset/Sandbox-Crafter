@@ -686,10 +686,11 @@ Each frame (60 per second):
    of C4 (its camp-mates by the fire hand over what they can spare), mines
    metal for wire and fetches wood to line the tunnel, then digs from its
    camp (from the end of its own mine tunnels, if they lead that way)
-   straight to a spot 10 cells under the middle of the enemy's hut, digging
-   fast, and through any other mine tunnels in its way; on the job it keeps
-   out of fights, but shoots back when shot at. It packs the end of the tunnel
-   with the C4, walks back out laying copper wire through the tunnel's wall
+   straight to a spot 30 cells under the middle of the enemy's hut, digging
+   fast, and through any other mine tunnels in its way, then straight back
+   up till its head is 2 cells under the ground the hut stands on; on the
+   job it keeps out of fights, but shoots back when shot at. It packs the
+   top of the tunnel with the C4, walks back out laying copper wire through the tunnel's wall
    (strung across any tunnel it dug through) and on along
    the ground to a plunger just past its lawn, kneels and pushes it: a
    spark runs down the wire, the C4 goes off, and the blast craters up

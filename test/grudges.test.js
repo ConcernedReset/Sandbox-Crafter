@@ -18,14 +18,20 @@ import { run, fillRect } from './helpers.js';
 import { field, settle, built, CHORES, alive } from './camps.js';
 
 // Two settled camps `gap` apart: A (with `n` humans carrying `carry`) and
-// B (with one).
+// B (with one), on ground 70 deep (room for a tunnel SAP_DEPTH under a hut).
 function rivals(gap = 150, n = 1, carry = {}, seed = 1) {
-  const w = field(gap + 110, seed);
+  const w = field(gap + 110, seed, 130, 70);
   const A = settle(w, 55, n, carry);
   const B = settle(w, 55 + gap, 1);
   return { w, A, B };
 }
-const hutLeft = (w, camp) => camp.hut.cells.filter((c) => w.builtAt(c)).length;
+// How much of a camp's hut (as it was when first asked: blown up, the
+// camp gives up on it and plans another) still stands.
+const huts = new WeakMap();
+const hutLeft = (w, camp) => {
+  if (!huts.has(camp)) huts.set(camp, camp.hut);
+  return huts.get(camp).cells.filter((c) => w.builtAt(c)).length;
+};
 const near = (w, a, b) => Math.max(Math.abs((a % w.w) - (b % w.w)), Math.abs(((a / w.w) | 0) - ((b / w.w) | 0))) <= 1;
 
 test("an enemy's bullet angers the camp of the human it hits, at the shooter's camp", () => {
@@ -71,7 +77,7 @@ test('enemies near the camp anger it every second; once they have gone it cools,
   B.people[0].brain.weapon = 0;
   const x = B.camp.x - 20;
   w.removeCreature(a);
-  w.spawn((w.h - 40) * w.w + x, ID.HUMAN);
+  w.spawn((w.ground - 10) * w.w + x, ID.HUMAN);
   run(w, 12);
   const o = w.creatures.find((e) => e.kind === ID.HUMAN && e.brain && e.brain.camp === null);
   o.brain.camp = A.camp;
@@ -127,7 +133,7 @@ test('with no helicopter or missile it sends a tunneller instead: one with a pic
 test('a tunneller on its job keeps out of fights: with an armed enemy in sight its camp-mate shoots, it does not, till shot at', () => {
   const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
   // One of B's, armed, just beside A's people.
-  w.spawn((w.h - 50) * w.w + 30, ID.HUMAN);
+  w.spawn((w.ground - 20) * w.w + 30, ID.HUMAN);
   run(w, 40); // (landed)
   const foe = w.creatures.filter((c) => c.kind === ID.HUMAN).at(-1);
   foe.brain.camp = B.camp;
@@ -202,16 +208,18 @@ test('a tunneller who dies drops the job, and the anger comes back', () => {
 
 test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plunger at home and blows the hut up', () => {
   const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30, WOOD: 10 });
+  for (const o of B.people) o.brain.weapon = 0; // (B's human keeps out of it: this is about the tunnel)
   const [e] = A.people;
-  for (const x of [25, 15]) fillRect(w, x, w.h - 45, x + 2, w.h - 31, ID.WOOD); // (trees, for lining)
+  for (const x of [25, 15]) fillRect(w, x, w.ground - 15, x + 2, w.ground - 1, ID.WOOD); // (trees, for lining)
   const hut0 = hutLeft(w, B.camp), powder0 = w.has(e.brain, ID.GUNPOWDER);
   A.camp.anger = ANGER_MAX;
   A.camp.grudge = B.camp;
-  let firing = null, drawn = 0, labels = new Set(), wireNote = '';
+  let firing = null, drawn = 0, labels = new Set(), wireNote = '', deepest = -1;
   for (let f = 0; f < 20000 && A.camp.sapsDone + A.camp.sapsFailed === 0; f++) {
     w.step();
     const s = A.camp.sap;
     if (s && f % 50 === 0) labels.add(aiPlan(w, e).label.split(' ')[0]);
+    if (s && s.endY > deepest) deepest = s.endY;
     if (s?.stage === 'firing' && firing === null) {
       firing = { wire: s.wire.slice(), charge: s.charge.cells.slice(), plug: s.plug, gunpowder: w.has(e.brain, ID.GUNPOWDER) };
       firing.human = firing.wire.every((c) => w.type[c] === ID.COPPER && w.madeByHuman(c));
@@ -225,10 +233,15 @@ test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plun
   assert.equal(A.camp.sapsDone, 1, `done (failed ${A.camp.sapsFailed})`);
   assert.ok(firing, 'it got to the plunger');
   // The charge, under the middle of the hut.
-  const hut = B.camp.hut, cx = firing.charge.reduce((s, c) => s + (c % w.w), 0) / firing.charge.length;
+  const hut = huts.get(B.camp), cx = firing.charge.reduce((s, c) => s + (c % w.w), 0) / firing.charge.length;
   const mid = w.campCell(B.camp, hut.u0 + (HUT_W >> 1), hut.floor);
   assert.equal(firing.charge.length, SAP_C4);
   assert.ok(Math.abs(cx - (mid % w.w)) <= 4, `under the hut (${cx} vs ${mid % w.w})`);
+  // Dug SAP_DEPTH under the hut's floor, then up: the C4 just under the
+  // ground the hut stands on (its head was 2 cells under it).
+  const floorY = (mid / w.w) | 0, cy = firing.charge.reduce((s, c) => s + ((c / w.w) | 0), 0) / firing.charge.length;
+  assert.ok(deepest - floorY >= SAP_DEPTH, `ran ${deepest - floorY} under the floor`);
+  assert.ok(cy - floorY >= 1 && cy - floorY <= 4, `C4 ${cy - floorY} under the floor`);
   assert.ok(powder0 - firing.gunpowder >= SAP_C4 * SAP_POWDER, 'gunpowder kneaded into C4 (and some shot)');
   // The wire: copper, from the charge to the plunger, every cell touching the last.
   const { wire, plug } = firing;
@@ -251,10 +264,11 @@ test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plun
 
 test('with another tunnel across the whole way, it digs straight through it and blows the hut up all the same', () => {
   const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30, WOOD: 10 });
-  for (const x of [25, 15]) fillRect(w, x, w.h - 45, x + 2, w.h - 31, ID.WOOD); // (trees, for lining)
+  for (const o of B.people) o.brain.weapon = 0; // (B's human keeps out of it: this is about the tunnel)
+  for (const x of [25, 15]) fillRect(w, x, w.ground - 15, x + 2, w.ground - 1, ID.WOOD); // (trees, for lining)
   // An old shaft in a block of stone between the camps, from just under
   // the ground to the bottom: no way to the enemy keeps clear of it.
-  const top = w.h - 30, X = 160;
+  const top = w.ground, X = 160;
   for (let y = top + 1; y < w.h; y++) {
     for (let x = X - 10; x <= X + 10; x++) {
       const c = y * w.w + x;
@@ -281,10 +295,11 @@ test('with another tunnel across the whole way, it digs straight through it and 
 
 test('across a cave its wire is strung below it, never through its own tunnel or round itself; and it digs fast', () => {
   const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30, WOOD: 10 });
-  for (const x of [25, 15]) fillRect(w, x, w.h - 45, x + 2, w.h - 31, ID.WOOD); // (trees, for lining)
+  for (const o of B.people) o.brain.weapon = 0; // (B's human keeps out of it: this is about the tunnel)
+  for (const x of [25, 15]) fillRect(w, x, w.ground - 15, x + 2, w.ground - 1, ID.WOOD); // (trees, for lining)
   // A cave in a block of stone between the camps: nothing but air (no
   // tunnel), from just under the ground to near the bottom.
-  const top = w.h - 30, X = 160;
+  const top = w.ground, X = 160;
   for (let y = top + 1; y < w.h; y++) {
     for (let x = X - 15; x <= X + 15; x++) {
       const c = y * w.w + x;
@@ -422,7 +437,7 @@ test("a tunneller that can't get what it needs waits by the fire; in the end it 
 test("a tunneller that can't dig its way keeps at it; after a while with no headway it gives up, and the camp tries again later", () => {
   const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30 });
   // Rock nobody can dig, all round A's camp.
-  for (let y = w.h - 30; y < w.h; y++) for (let x = 0; x < w.w; x++) {
+  for (let y = w.ground; y < w.h; y++) for (let x = 0; x < w.w; x++) {
     const c = y * w.w + x;
     if (w.type[c] === ID.DIRT || w.type[c] === ID.STONE) {
       w.clearCell(c);

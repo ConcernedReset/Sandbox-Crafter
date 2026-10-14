@@ -15560,8 +15560,10 @@ __modules["src/sim/grudges.js"] = (() => {
 //      over what they can spare: humans.js's share);
 //   2. tunnels (tunnels.js) from its camp's own tunnels or a new entrance
 //      on its enemy side, straight to a spot SAP_DEPTH under the middle of
-//      the enemy hut's floor, digging through any other tunnels in the way;
-//   3. packs the face at the end of the tunnel with C4;
+//      the enemy hut's floor, digging through any other tunnels in the way,
+//      then straight up from there till its head is 2 cells under the
+//      ground the hut stands on (SAP_TOP);
+//   3. packs the face at the top of the tunnel with C4;
 //   4. walks back out, laying copper wire in the tunnel's wall and floor,
 //      then along the ground to a plunger past the edge of its lawn;
 //   5. kneels and pushes the plunger: a spark runs down the wire and sets
@@ -15597,7 +15599,8 @@ const SAP_RETRY = 3600; // a tunnel job it couldn't get on with: tried again thi
 const SAP_C4 = 8; // cells of C4 in a charge
 const SAP_POWDER = 2; // gunpowder kneaded into each
 const WIRE_PER_METAL = 20; // cells of wire drawn from a piece of metal
-const SAP_DEPTH = 10; // the tunnel's end: this far under the enemy hut's floor
+const SAP_DEPTH = 30; // the tunnel runs this far under the enemy hut's floor (the row it stands in)
+const SAP_TOP = 8; // then climbs to here: its head 2 cells under the ground the hut stands on
 const SAP_WOOD_R = 200; // how far from the camp it goes for wood (for lining; late on, the trees near are gone)
 const WOOD_TRIES = 3; // goes for wood without a spot dug since, before it digs with what lining it has
 const SAP_DIG_EVERY = 1, SAP_DIG_BURST = 3; // a burst of up to 3 cells dug every step: 24 times as fast as a miner
@@ -15877,7 +15880,7 @@ const Grudges = {
     if (s.metal === 0) {
       const p = this.sapPlan(e, camp, s);
       if (p === null) return this.sapWait(b, camp, s, 'a way');
-      let spots = p.travel;
+      let spots = p.travel + (p.depth > SAP_TOP ? p.depth - SAP_TOP : 0); // (and the climb)
       for (const leg of this.planLegs(p.x, p.y, p.entrance, p.tx, p.ty, e.gx, e.gy)) spots += leg.n;
       const u = (p.x - camp.x) * camp.gy - (p.y - camp.y) * camp.gx;
       const lawn = this.lawn(camp), edge = lawn === null ? 0 : s.side > 0 ? lawn.u1 : -lawn.u0;
@@ -15928,8 +15931,9 @@ const Grudges = {
     return true;
   },
 
-  // Where the tunnel ends: SAP_DEPTH (or `depth`) under the middle of the
-  // enemy hut's floor (or its fire, with no hut). [x, y] or null.
+  // A spot `depth` under the middle of the enemy hut's floor (or its
+  // fire, with no hut): where the tunnel runs to, and where it climbs to.
+  // [x, y] or null.
   sapTarget(enemy, depth) {
     const hut = enemy.hut;
     const u = hut !== null ? hut.u0 + (HUT_W >> 1) : 0;
@@ -15949,11 +15953,11 @@ const Grudges = {
   sapPlan(e, camp, s) {
     const net = this.tunnels, { gx, gy } = e;
     if (net.nodes.size > 0 && (net.gx !== gx || net.gy !== gy)) return null; // dug under another gravity
-    const t = this.sapTarget(s.enemy, SAP_DEPTH);
+    const t = this.sapTarget(s.enemy, s.depth);
     if (t === null) return null;
     const [tx, ty] = t;
     if (s.endX >= 0 && this.onNet(s.endX, s.endY) !== null) {
-      return { x: s.endX, y: s.endY, entrance: false, travel: 0, tx, ty, depth: SAP_DEPTH };
+      return { x: s.endX, y: s.endY, entrance: false, travel: 0, tx, ty, depth: s.depth };
     }
     const far = (n, c) => Math.max(Math.abs(n.x - c.x), Math.abs(n.y - c.y));
     const own = new Map();
@@ -15987,7 +15991,7 @@ const Grudges = {
         break;
       }
     }
-    return { x: p.x, y: p.y, entrance: p.entrance, travel: p.travel, tx, ty, depth: SAP_DEPTH };
+    return { x: p.x, y: p.y, entrance: p.entrance, travel: p.travel, tx, ty, depth: s.depth };
   },
 
   // Tunnelling (tunnels.js does the travel and the digging).
@@ -16011,8 +16015,9 @@ const Grudges = {
     s.dy = dy;
     s.dug++;
     s.woodTrips = 0;
-    const box = this.tunnelBox;
+    const box = this.tunnelBox; // (and the spot it came from: the first is where it started)
     if (this.boxCells(x, y, e.gx, e.gy, box)) for (const c of box) s.own.add(c);
+    if (this.boxCells(x - dx, y - dy, e.gx, e.gy, box)) for (const c of box) s.own.add(c);
     s.progressAt = this.tick;
   },
 
@@ -16022,6 +16027,16 @@ const Grudges = {
     if (!s || s.id !== e.id) {
       this.endTunnel(b);
       return;
+    }
+    // Deep under the hut: on up, straight, to SAP_TOP.
+    const top = s.depth !== SAP_TOP ? this.sapTarget(s.enemy, SAP_TOP) : null;
+    if (top !== null) {
+      const t = b.tun;
+      s.depth = SAP_TOP;
+      s.tx = t.tx = top[0];
+      s.ty = t.ty = top[1];
+      t.legs = this.legsTo(e.x, e.y, top[0], top[1], e.gx, e.gy);
+      if (t.legs.length > 0) return;
     }
     b.tun = null;
     s.endX = e.x;
@@ -16061,9 +16076,13 @@ const Grudges = {
       x += c % this.w;
       y += (c / this.w) | 0;
     }
+    x = Math.round(x / s.placed.length);
+    y = Math.round(y / s.placed.length);
+    // (Its depth under the hut's floor: where it stood, less how far up the
+    // charge is from its feet; the blast's top crater at the floor.)
+    const up = (e.x - x) * e.gx + (e.y - y) * e.gy;
     s.charge = {
-      cells: s.placed.slice(), x: Math.round(x / s.placed.length), y: Math.round(y / s.placed.length),
-      gx: e.gx, gy: e.gy, depth: s.depth, by: camp, wire: s.wired, blownAt: -1,
+      cells: s.placed.slice(), x, y, gx: e.gx, gy: e.gy, depth: Math.max(1, s.depth - up), by: camp, wire: s.wired, blownAt: -1,
     };
     this.charges.push(s.charge);
     s.stage = 'wiring';
@@ -16179,11 +16198,13 @@ const Grudges = {
     return cells;
   },
 
-  // Wire to under its feet (or beside them, in a shaft), joined on to the
-  // end laid so far.
+  // Wire to under its feet (or beside them, in a shaft, or over its head:
+  // down the shaft it climbed, a wire on the wall the tunnel ran in from
+  // comes out on its roof, with no way to the floor but through the
+  // tunnel), joined on to the end laid so far.
   layWire(e, b, s) {
     const { gx, gy } = e, out = [], air = [];
-    for (const [k, up] of [[0, -1], [-1, -1], [1, -1], [-2, 0], [2, 0], [-2, -1], [2, -1]]) {
+    for (const [k, up] of [[0, -1], [-1, -1], [1, -1], [-2, 0], [2, 0], [-2, -1], [2, -1], [0, 6], [-1, 6], [1, 6]]) {
       const x = e.x + k * gy - up * gx, y = e.y - k * gx - up * gy;
       if (!this.inBounds(x, y)) continue;
       const c = y * this.w + x, t = this.type[c];
@@ -16211,7 +16232,7 @@ const Grudges = {
     // gap, wire strung through them wrapped it up in its own wire.)
     const body = new Set(this.boxCells(e.x, e.y, e.gx, e.gy, this.tunnelBox) ? this.tunnelBox : []);
     const step = (j) => {
-      if ((mask[j] & INSIDE) !== 0 && (s.own.has(j) || body.has(j))) return -1;
+      if (s.own.has(j) || body.has(j)) return -1; // (its mouth's box, open air, may not be marked inside)
       if (want.has(j) || ((mask[j] & INSIDE) === 0 && this.wireOK(j))) return 1;
       const t = type[j];
       return wall[j] === 0 && (t === 0 || DEFS[t].state === GAS) ? AIR_COST : -1;
@@ -16430,7 +16451,7 @@ const Grudges = {
 };
 
 
-return { ANGER_MAX, ANGER_RUSH, ANGER_HIT, ANGER_KILL, ANGER_MISSILE, ANGER_BLAST, ANGER_NEAR_R, ANGER_R, CALM_FOR, SAP_RETRY, SAP_C4, SAP_POWDER, WIRE_PER_METAL, SAP_DEPTH, SAP_FOR, SAP_GATHER_FOR, SAP_STALL, SAP_FIZZLE, Grudges };
+return { ANGER_MAX, ANGER_RUSH, ANGER_HIT, ANGER_KILL, ANGER_MISSILE, ANGER_BLAST, ANGER_NEAR_R, ANGER_R, CALM_FOR, SAP_RETRY, SAP_C4, SAP_POWDER, WIRE_PER_METAL, SAP_DEPTH, SAP_TOP, SAP_FOR, SAP_GATHER_FOR, SAP_STALL, SAP_FIZZLE, Grudges };
 })();
 
 __modules["src/sim/war.js"] = (() => {

@@ -482,7 +482,17 @@ else; `test/build.test.js` checks the bundle runs.
   spot on its own camp's tunnels (`netDistances` from its entrances
   within `OWN_R` and nearer it than the enemy, plus `NEW_COST` a spot
   dug) or a new entrance on the enemy side, to `sapTarget`: `SAP_DEPTH`
-  (10) under the enemy hut's middle. Of the `PLAN_TRIES` cheapest starts
+  (30; it was 10) under the enemy hut's middle (under its floor, the row
+  the hut stands in). There `sapArrived` turns it straight up (`s.depth`
+  to `SAP_TOP`, 8: its head 2 cells under the ground) and it digs on; at
+  the top it charges, and the charge's `depth` is measured from the C4,
+  so the blast's top crater is at the floor. Its wire also follows the
+  roof (`layWire`'s cells over its head: down the shaft, a wire on the
+  wall the run came in from reaches the roof, with no way to the floor
+  but through the tunnel), and never goes in `s.own` (the boxes of the
+  spots it dug and its first spot: the mouth's open box above ground isn't
+  marked inside). Tests run it on deeper ground (`field(..., 130, 70)`,
+  `w.ground`). Of the `PLAN_TRIES` cheapest starts
   it takes one whose run passes `pathClear` if there is one, else the
   cheapest, digging straight through the tunnels in the way (`workSpot`
   finds their spots open and it walks on, held, so it doesn't fall down
