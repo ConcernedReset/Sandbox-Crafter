@@ -521,3 +521,20 @@ test('the testing tools act on one tribe when one is picked', () => {
   assert.ok(A.people.every((o) => w.has(o.brain, ID.METAL) >= 100));
   assert.equal(w.has(B.people[0].brain, ID.METAL), before, "B's humans get nothing");
 });
+
+test("a tunneller already under keeps on when the war ends (it never hears); one still gathering drops the job", () => {
+  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 60, METAL: 30 });
+  assert.ok(w.startSap(A.camp, B.camp));
+  w.endWars();
+  assert.equal(A.camp.sap, null, 'gathering, it hears and stops');
+  assert.ok(w.startSap(A.camp, B.camp));
+  const s = A.camp.sap;
+  s.stage = 'digging';
+  s.dug = 5;
+  w.endWars();
+  assert.equal(A.camp.sap, s, 'under, it carries on');
+  assert.equal(A.camp.anger, 0, 'though its camp is at peace');
+  s.stage = 'wiring';
+  w.endWars(A.camp);
+  assert.equal(A.camp.sap, s, 'laying the wire home, too');
+});

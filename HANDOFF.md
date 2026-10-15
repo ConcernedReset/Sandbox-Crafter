@@ -433,7 +433,9 @@ else; `test/build.test.js` checks the bundle runs.
   `makePeace(camp, foe)`): `startWars` (`goToWar`
   with every other camp, full anger at `nearestRival`, `startRaid` at
   once, else `raidAt` now), `endWars` (anger, `wars`, `sapFor` cleared;
-  the tunneller freed (`freeSapper`, no failure counted); raiders'
+  the tunneller freed (`freeSapper`, no failure counted) unless it's
+  under (`sapUnder`: a spot dug; it finishes the job: news doesn't reach
+  it, and the bang angers the other camp again); raiders'
   `brain.raid` cleared, so helicopters fly home; `raidAt` 0: the clock
   starts again with a war machine), `kitOut` (every human: pickaxe, gun,
   `ARMOUR_HITS` armour, and `KIT`: wood 200, stone 100, metal 100,

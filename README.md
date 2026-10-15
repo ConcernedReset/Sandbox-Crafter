@@ -201,7 +201,8 @@ back to system ones; progress is saved per file location.)
   buttons over the world help with testing, acting on every tribe or just
   the one picked (numbered and coloured as on the map): **Start wars** (every camp furious with its
   nearest rival, raiding at once where it can, and sending a tunneller),
-  **End wars** (anger gone, raids called off, tunnel jobs dropped) and
+  **End wars** (anger gone, raids called off, tunnel jobs dropped, but a
+  tunneller already underground never hears and finishes its job) and
   **Max gear** (every human gets a pickaxe, a gun, whole armour and
   plenty of wood, stone, metal, copper, coal and gunpowder).
 - **Show AI data** (`⋯` menu) draws, for each human, a fading trail of

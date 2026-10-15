@@ -872,8 +872,9 @@ export const Grudges = {
 
   // Camp's wars end: all of them (`foe` null), or just its war with `foe`:
   // anger at it gone, raids on it called off (raiders and helicopters
-  // home), the tunnel job against it dropped. Ending them all, the raid
-  // clock starts afresh.
+  // home), the tunnel job against it dropped, but for a tunneller already
+  // under (a spot dug): down there it never hears, and finishes the job.
+  // Ending them all, the raid clock starts afresh.
   makePeace(camp, foe) {
     const all = foe === null;
     if (all || camp.grudge === foe) {
@@ -883,7 +884,7 @@ export const Grudges = {
     if (all) camp.wars.clear();
     else camp.wars.delete(foe);
     if (all || camp.sapFor === foe) camp.sapFor = null;
-    if (camp.sap !== null && (all || camp.sap.enemy === foe)) {
+    if (camp.sap !== null && (all || camp.sap.enemy === foe) && !this.sapUnder(camp.sap)) {
       const s = camp.sap;
       camp.sap = null;
       this.freeSapper(s);
@@ -900,6 +901,12 @@ export const Grudges = {
       camp.raidAt = 0;
     }
     if (all) camp.raidAt = 0;
+  },
+
+  // Is the tunneller under (it has dug a spot: from then on it's at the
+  // job till the bang, out of reach of news)?
+  sapUnder(s) {
+    return s.stage !== 'gathering' && (s.dug > 0 || s.stage !== 'digging');
   },
 
   // Every human (or `only`'s) gets a pickaxe, a gun, whole armour and
