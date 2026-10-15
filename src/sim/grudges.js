@@ -59,7 +59,8 @@ const ANGER_HUMAN = 1, ANGER_HELI = 2; // each human, each helicopter
 const ANGER_COOL = 0.25; // and with none near, it cools this much a second
 export const CALM_FOR = 1800; // it hits back once no enemy has been near for this long
 export const SAP_RETRY = 3600; // a tunnel job it couldn't get on with: tried again this much later
-export const SAP_C4 = 8; // cells of C4 in a charge
+export const SAP_C4 = 24; // cells of C4 in a charge (it was 8)
+const POCKET = 3; // packed into the ground this near the spot it stands in: the face ahead first
 export const SAP_POWDER = 2; // gunpowder kneaded into each
 export const WIRE_PER_METAL = 20; // cells of wire drawn from a piece of metal
 export const SAP_DEPTH = 30; // the tunnel runs this far under the enemy hut's floor (the row it stands in)
@@ -80,6 +81,7 @@ const WIRE_REACH = 10; // how far from its feet it joins the wire up
 const AIR_COST = 6; // a cell of wire strung across open air counts as this many through the ground
 const BLOW_DELAY = 4; // steps after the charge first goes off: the craters
 const BLOW_CHARGE = 7, BLOW_MID = 8, BLOW_TOP = 11; // their sizes: at the charge, on the way up, in the hut
+const BLOW_C4 = 8; // the craters are those sizes for a charge this big; they grow as the cube root of a bigger one
 const BLOW_UP = HUT_WALL >> 1; // the top one, this far over the hut's floor: its middle (at the floor, it left a tall hut's top standing)
 const BLOW_STEP = 8; // (one every this many cells, at most)
 const PLUNGER_U = 4; // where it kneels at the plunger: this far past the edge of the lawn (the plunger 3 nearer)
@@ -554,8 +556,9 @@ export const Grudges = {
     this.layWire(e, b, s);
   },
 
-  // The cells round the face at the tunnel's end (where it stands, going
-  // (s.dx, s.dy)), the farthest ahead first: where the C4 goes.
+  // The ground within POCKET of the tunnel's end (where it stands, going
+  // (s.dx, s.dy)), the farthest ahead first: where the C4 goes (a pocket
+  // of it, over and round its head at the top of the climb).
   chargeCells(e, s) {
     const { gx, gy } = e, mask = this.tunnels.mask, w = this.w;
     const cx = e.x - 2.5 * gx, cy = e.y - 2.5 * gy; // the middle of its body
@@ -568,13 +571,13 @@ export const Grudges = {
         if (!this.inBounds(x, y)) continue;
         const c = y * w + x;
         if ((mask[c] & INSIDE) !== 0 || !this.wireOK(c)) continue;
-        let skin = false; // against the spot (the inside of the tunnel's end)
-        for (let dy = -1; dy <= 1 && !skin; dy++) {
-          for (let dx = -1; dx <= 1 && !skin; dx++) {
-            if (this.inBounds(x + dx, y + dy) && spot.has((y + dy) * w + x + dx)) skin = true;
+        let near = false; // within POCKET of the spot (the inside of the tunnel's end)
+        for (let dy = -POCKET; dy <= POCKET && !near; dy++) {
+          for (let dx = -POCKET; dx <= POCKET && !near; dx++) {
+            if (this.inBounds(x + dx, y + dy) && spot.has((y + dy) * w + x + dx)) near = true;
           }
         }
-        if (!skin) continue;
+        if (!near) continue;
         out.push({ c, ahead: (x - cx) * s.dx + (y - cy) * s.dy, d: Math.abs(x - cx) + Math.abs(y - cy) });
       }
     }
@@ -830,11 +833,12 @@ export const Grudges = {
   // its floor), and the camp there (if any) angered.
   blowCharge(ch) {
     const reach = ch.depth + BLOW_UP, n = Math.max(2, Math.ceil(reach / BLOW_STEP));
+    const grow = Math.max(1, Math.cbrt(ch.cells.length / BLOW_C4));
     let tx = ch.x, ty = ch.y;
     for (let k = 0; k <= n; k++) {
       tx = Math.round(ch.x - (ch.gx * reach * k) / n);
       ty = Math.round(ch.y - (ch.gy * reach * k) / n);
-      if (this.inBounds(tx, ty)) this.crater(tx, ty, k === 0 ? BLOW_CHARGE : k === n ? BLOW_TOP : BLOW_MID);
+      if (this.inBounds(tx, ty)) this.crater(tx, ty, Math.round(grow * (k === 0 ? BLOW_CHARGE : k === n ? BLOW_TOP : BLOW_MID)));
     }
     this.angerAround(tx, ty, ch.by, ANGER_BLAST, ANGER_NEAR_R);
   },

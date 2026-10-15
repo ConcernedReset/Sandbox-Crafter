@@ -461,7 +461,7 @@ else; `test/build.test.js` checks the bundle runs.
   picks a tunneller (a pickaxe, not the engineer, not raiding) into
   `camp.sap`: `{ id, enemy, side, stage, ... }`. `sapWork` (in
   `chooseWork` right after `raidWork`) runs it by stage: 'gathering'
-  (`sapGather`: gunpowder kneaded into `SAP_C4` (8) C4 items at
+  (`sapGather`: gunpowder kneaded into `SAP_C4` (24; it was 8) C4 items at
   `SAP_POWDER` (2) each, keeping `AMMO_LOW` for its gun; by the fire,
   camp-mates hand over what they can spare (`share`, humans.js); its
   wood trips only take wood nearer home than the enemy (`gather`'s
@@ -486,7 +486,9 @@ else; `test/build.test.js` checks the bundle runs.
   the hut stands in). There `sapArrived` turns it straight up (`s.depth`
   to `SAP_TOP`, 8: its head 2 cells under the ground) and it digs on; at
   the top it charges, and the charge's `depth` is measured from the C4;
-  `blowCharge`'s craters go on `BLOW_UP` (half `HUT_WALL`) past the
+  `blowCharge`'s craters (sized for `BLOW_C4` 8 cells, and grown by the
+  cube root of a bigger charge: 24 cells, 1.44 times) go on `BLOW_UP`
+  (half `HUT_WALL`) past the
   floor, the top one in the middle of the hut (at the floor, a long game's
   first bomb left a 9-tall hut's roof and upper walls standing). Its wire also follows the
   roof (`layWire`'s cells over its head: down the shaft, a wire on the
@@ -501,8 +503,9 @@ else; `test/build.test.js` checks the bundle runs.
   a shaft). It used to look deeper (down to 70), then for a way round
   (A* over spots clear of other tunnels); in long games the ground
   between the camps was so full of mines that it often found none),
-  'charging' (`sapCharge`: `chargeCells`, the cells against its spot
-  farthest ahead, filled a cell every `PLACE_EVERY` with `putDown`;
+  'charging' (`sapCharge`: `chargeCells`, ground within `POCKET` (3)
+  of its spot, farthest ahead first: a pocket over and round its head at
+  the top of the climb (only the cells against its spot held 8, not 24), filled a cell every `PLACE_EVERY` with `putDown`;
   then a charge in `world.charges`), 'wiring' (`sapWire`: out through
   `leaveTunnel`, then `walkTo` the `plungerSpot` (`PLUNGER_U` past the
   lawn, out to `PLUNGER_FAR` more, on the side it came out, else the

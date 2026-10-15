@@ -113,7 +113,7 @@ test('at full anger, once calm, a camp with a helicopter ready raids the camp it
 });
 
 test('with no helicopter or missile it sends a tunneller instead: one with a pickaxe, not its engineer', () => {
-  const { w, A, B } = rivals(150, 3, { GUNPOWDER: 20, METAL: 30 });
+  const { w, A, B } = rivals(150, 3, { GUNPOWDER: 60, METAL: 30 });
   const [p0, p1, p2] = A.people;
   A.camp.engineer = p0.id;
   p1.brain.tool = 0;
@@ -131,7 +131,7 @@ test('with no helicopter or missile it sends a tunneller instead: one with a pic
 });
 
 test('a tunneller on its job keeps out of fights: with an armed enemy in sight its camp-mate shoots, it does not, till shot at', () => {
-  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 60, METAL: 30 });
   // One of B's, armed, just beside A's people.
   w.spawn((w.ground - 20) * w.w + 30, ID.HUMAN);
   run(w, 40); // (landed)
@@ -173,7 +173,7 @@ test('camp-mates by the fire hand a tunneller their spare gunpowder and metal (k
 });
 
 test('going to war (the first raid between two camps) sends a tunneller from each side; later raids send no more', () => {
-  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 60, METAL: 30 });
   assert.ok(w.startRaid(A.camp, B.camp), 'A raids B');
   run(w, CHORES);
   assert.equal(A.camp.sap?.enemy, B.camp, 'A sends one against B');
@@ -207,7 +207,7 @@ test('a tunneller who dies drops the job, and the anger comes back', () => {
 });
 
 test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plunger at home and blows the hut up', () => {
-  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30, WOOD: 10 });
+  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 60, METAL: 30, WOOD: 10 });
   for (const o of B.people) o.brain.weapon = 0; // (B's human keeps out of it: this is about the tunnel)
   const [e] = A.people;
   for (const x of [25, 15]) fillRect(w, x, w.ground - 15, x + 2, w.ground - 1, ID.WOOD); // (trees, for lining)
@@ -241,7 +241,7 @@ test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plun
   // ground the hut stands on (its head was 2 cells under it).
   const floorY = (mid / w.w) | 0, cy = firing.charge.reduce((s, c) => s + ((c / w.w) | 0), 0) / firing.charge.length;
   assert.ok(deepest - floorY >= SAP_DEPTH, `ran ${deepest - floorY} under the floor`);
-  assert.ok(cy - floorY >= 1 && cy - floorY <= 4, `C4 ${cy - floorY} under the floor`);
+  assert.ok(cy - floorY >= 1 && cy - floorY <= 5, `C4 ${cy - floorY} under the floor`);
   assert.ok(powder0 - firing.gunpowder >= SAP_C4 * SAP_POWDER, 'gunpowder kneaded into C4 (and some shot)');
   // The wire: copper, from the charge to the plunger, every cell touching the last.
   const { wire, plug } = firing;
@@ -263,7 +263,7 @@ test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plun
 });
 
 test('with another tunnel across the whole way, it digs straight through it and blows the hut up all the same', () => {
-  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30, WOOD: 10 });
+  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 60, METAL: 30, WOOD: 10 });
   for (const o of B.people) o.brain.weapon = 0; // (B's human keeps out of it: this is about the tunnel)
   for (const x of [25, 15]) fillRect(w, x, w.ground - 15, x + 2, w.ground - 1, ID.WOOD); // (trees, for lining)
   // An old shaft in a block of stone between the camps, from just under
@@ -294,7 +294,7 @@ test('with another tunnel across the whole way, it digs straight through it and 
 });
 
 test('across a cave its wire is strung below it, never through its own tunnel or round itself; and it digs fast', () => {
-  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30, WOOD: 10 });
+  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 60, METAL: 30, WOOD: 10 });
   for (const o of B.people) o.brain.weapon = 0; // (B's human keeps out of it: this is about the tunnel)
   for (const x of [25, 15]) fillRect(w, x, w.ground - 15, x + 2, w.ground - 1, ID.WOOD); // (trees, for lining)
   // A cave in a block of stone between the camps: nothing but air (no
@@ -435,7 +435,7 @@ test("a tunneller that can't get what it needs waits by the fire; in the end it 
 });
 
 test("a tunneller that can't dig its way keeps at it; after a while with no headway it gives up, and the camp tries again later", () => {
-  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 20, METAL: 30 });
+  const { w, A, B } = rivals(150, 1, { GUNPOWDER: 60, METAL: 30 });
   // Rock nobody can dig, all round A's camp.
   for (let y = w.ground; y < w.h; y++) for (let x = 0; x < w.w; x++) {
     const c = y * w.w + x;
@@ -475,7 +475,7 @@ test('at full anger the clock to the next raid runs 10 times as fast', () => {
 });
 
 test('the testing tools: start wars, end them, and kit every human out', () => {
-  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 60, METAL: 30 });
   w.startWars();
   assert.ok(A.camp.wars.has(B.camp) && B.camp.wars.has(A.camp), 'at war both ways');
   assert.equal(A.camp.anger, ANGER_MAX);
@@ -502,7 +502,7 @@ test('the testing tools: start wars, end them, and kit every human out', () => {
 });
 
 test('the testing tools act on one tribe when one is picked', () => {
-  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 20, METAL: 30 });
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 60, METAL: 30 });
   w.startWars(A.camp);
   assert.equal(A.camp.anger, ANGER_MAX, 'A is furious');
   assert.equal(B.camp.anger, 0, 'B is not');

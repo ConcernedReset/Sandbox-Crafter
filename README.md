@@ -682,7 +682,7 @@ Each frame (60 per second):
    neither it sends a **tunneller**. A camp also sends one when it **goes to
    war**: the first raid between two camps, either way, sends one from each
    side against the other, whatever else it has (one that doesn't get there
-   is sent again later). A tunneller: one human kneads gunpowder into 8 cells
+   is sent again later). A tunneller: one human kneads gunpowder into 24 cells
    of C4 (its camp-mates by the fire hand over what they can spare), mines
    metal for wire and fetches wood to line the tunnel, then digs from its
    camp (from the end of its own mine tunnels, if they lead that way)
