@@ -691,8 +691,9 @@ Each frame (60 per second):
    fast, and through any other mine tunnels in its way, then straight back
    up till its head is 2 cells under the ground the hut stands on; on the
    job it keeps out of fights, but shoots back when shot at. It packs the
-   top of the tunnel with the C4, walks back out laying copper wire through the tunnel's wall
-   (strung across any tunnel it dug through) and on along
+   top of the tunnel with the C4, walks back out the way it dug, laying copper
+   wire through the tunnel's wall (strung across any tunnel it dug through;
+   another camp's wire in its way it lifts out and puts back) and on along
    the ground to a plunger just past its lawn, kneels and pushes it: a
    spark runs down the wire, the C4 goes off, and the blast craters up
    through the hut above. Cut the wire and the spark never gets there.

@@ -39,7 +39,7 @@
 import { DEFS, ID, State } from './elements.js';
 import { SHAPED } from './creatures.js';
 import {
-  WALK_EVERY, AMMO_LOW, WOOD_ONLY, FRAME_KNEEL, METALS, DANGER, HUT_W, HUT_WALL, HELD_PICKAXE, ARMOUR_HITS,
+  WALK_EVERY, AMMO_LOW, WOOD_ONLY, FRAME_KNEEL, METALS, DANGER, HUT_W, HUT_WALL, HELD_PICKAXE, ARMOUR_HITS, GIVE_UP,
 } from './humans.js';
 import { INSIDE, LINED, NEW_COST, TUNNEL_LINING, ENTRY_DEPTH } from './tunnels.js';
 
@@ -79,6 +79,9 @@ const SAP_PRESS = 60; // steps kneeling at the plunger before it pushes it
 export const SAP_FIZZLE = 1800; // and waiting for the bang before it gives up
 const WIRE_REACH = 10; // how far from its feet it joins the wire up
 const AIR_COST = 6; // a cell of wire strung across open air counts as this many through the ground
+const CROSS_COST = 18; // and across another tunnel's open inside, this many (it's in that tunnel's way: round through the ground, if it can)
+const BEHIND_COST = 36; // and through its own tunnel, where it has walked out of it already, this many, and only with the end laid so far more than WIRE_REACH behind (a last resort: another camp's wire along a crossing tunnel's roof walls off all but that)
+const JOIN_MAX = 40; // the farthest the end laid so far may be from it and still be joined on (across a crossing it lays none)
 const BLOW_DELAY = 4; // steps after the charge first goes off: the craters
 const BLOW_CHARGE = 7, BLOW_MID = 8, BLOW_TOP = 11; // their sizes: at the charge, on the way up, in the hut
 const BLOW_C4 = 8; // the craters are those sizes for a charge this big; they grow as the cube root of a bigger one
@@ -233,6 +236,8 @@ export const Grudges = {
       waitUntil: 0, why: '', // it can't get on just now: it waits till then, for want of this
       woodTrips: 0, lining: 0, // times it has gone for wood since it last dug a spot; lining it had
       own: new Set(), // the inside of the tunnel it dug (the wire never goes there)
+      trail: [], // the spots it dug, in order, from where it started: its way back
+      lifted: [], // another camp's wire it has lifted out of its way, to put back behind it
     };
     const b = best.brain;
     this.release(b);
@@ -444,8 +449,12 @@ export const Grudges = {
       }
     }
     const across = (p) => s.side * ((p.x - camp.x) * camp.gy - (p.y - camp.y) * camp.gx);
+    // (A new entrance on its own half, nearer its camp than the enemy's:
+    // its wire runs overland from there home, and from one on the enemy's
+    // half it ran right over the enemy tunneller's mouth, walling its wire
+    // in.)
     for (const p of this.entranceSpots(e, camp, tx, ty)) {
-      if (across(p) > 0) plans.push({ cost: p.cost, x: p.x, y: p.y, entrance: true, travel: across(p) });
+      if (across(p) > 0 && far(p, camp) < far(p, s.enemy)) plans.push({ cost: p.cost, x: p.x, y: p.y, entrance: true, travel: across(p) });
     }
     if (plans.length === 0) return null;
     plans.sort((p, q) => p.cost - q.cost);
@@ -481,6 +490,8 @@ export const Grudges = {
     s.dy = dy;
     s.dug++;
     s.woodTrips = 0;
+    if (s.trail.length === 0) s.trail.push((y - dy) * this.w + x - dx);
+    s.trail.push(y * this.w + x);
     const box = this.tunnelBox; // (and the spot it came from: the first is where it started)
     if (this.boxCells(x, y, e.gx, e.gy, box)) for (const c of box) s.own.add(c);
     if (this.boxCells(x - dx, y - dy, e.gx, e.gy, box)) for (const c of box) s.own.add(c);
@@ -605,7 +616,7 @@ export const Grudges = {
       b.think = 0;
       return;
     }
-    if (this.leaveTunnel(e, b)) {
+    if (this.retrace(e, b, s) || this.leaveTunnel(e, b)) {
       this.layWire(e, b, s);
       return;
     }
@@ -638,6 +649,58 @@ export const Grudges = {
     s.stage = 'firing';
     b.job = 'detonating';
     b.pace = 0;
+  },
+
+  // Back the way it dug, a spot at a time (s.trail, last first), to where
+  // it started; from there, out as usual. (Through a mine it dug across,
+  // the network's nearest way out ran along that mine, and it walked off
+  // and left its wire behind.) Another camp's wire strung across its way
+  // (where their tunnels cross) it lifts out, and puts back once it's
+  // past. True while it's on its way; something else it can't get past,
+  // and it goes out the usual way.
+  retrace(e, b, s) {
+    const tr = s.trail, w = this.w, box = this.tunnelBox;
+    if (s.lifted.length > 0) {
+      const body = new Set(this.boxCells(e.x, e.y, e.gx, e.gy, box) ? box : []);
+      s.lifted = s.lifted.filter((j) => {
+        if (body.has(j)) return true;
+        if (this.type[j] === 0) this.putDown(j, COPPER);
+        return false;
+      });
+    }
+    s.ahead ??= new Set(tr); // (the spots it has still to walk back through)
+    while (tr.length > 0 && tr[tr.length - 1] === e.y * w + e.x) s.ahead.delete(tr.pop());
+    if (tr.length === 0) return false;
+    const c = tr[tr.length - 1], cx = c % w, cy = (c / w) | 0;
+    if (this.boxCells(cx, cy, e.gx, e.gy, box)) {
+      for (const j of box) {
+        if (this.type[j] !== COPPER || s.wired.has(j) || !this.madeByHuman(j)) continue;
+        this.clearCell(j);
+        s.lifted.push(j);
+      }
+    }
+    const r = this.stepAlong(e, b, cx, cy);
+    if (r === 'blocked' || r === 'wood' || (r === 'wait' && ++b.stuck > GIVE_UP)) {
+      tr.length = 0;
+      s.ahead = null;
+      return false;
+    }
+    return true;
+  },
+
+  // Is cell j of its own tunnel behind it, walking back out (in no box of
+  // a spot it has still to go through)? Not walking back its own way, it
+  // can't tell: no.
+  sapBehind(s, j) {
+    if (!s.ahead || s.trail.length === 0) return false;
+    const { gx, gy } = this.tunnels, w = this.w, x = j % w, y = (j / w) | 0;
+    for (let up = 0; up < 6; up++) {
+      for (let k = -1; k <= 1; k++) {
+        const sx = x - k * gy + up * gx, sy = y + k * gx + up * gy; // a spot whose box holds j
+        if (this.inBounds(sx, sy) && s.ahead.has(sy * w + sx)) return false;
+      }
+    }
+    return true;
   },
 
   // The plunger at the wire's end, if that's within reach of where e
@@ -698,12 +761,32 @@ export const Grudges = {
     // (Never in its own tunnel's inside, nor where its body is: across a
     // gap, wire strung through them wrapped it up in its own wire.)
     const body = new Set(this.boxCells(e.x, e.y, e.gx, e.gy, this.tunnelBox) ? this.tunnelBox : []);
+    let behind = false; // (its own tunnel behind it only once the end laid so far is falling behind)
     const step = (j) => {
-      if (s.own.has(j) || body.has(j)) return -1; // (its mouth's box, open air, may not be marked inside)
+      if (body.has(j)) return -1;
+      if (s.own.has(j)) return behind && this.sapBehind(s, j) ? BEHIND_COST : -1; // (its mouth's box, open air, may not be marked inside)
       if (want.has(j) || ((mask[j] & INSIDE) === 0 && this.wireOK(j))) return 1;
       const t = type[j];
-      return wall[j] === 0 && (t === 0 || DEFS[t].state === GAS) ? AIR_COST : -1;
+      if (wall[j] !== 0 || (t !== 0 && DEFS[t].state !== GAS)) return -1;
+      return (mask[j] & INSIDE) !== 0 ? CROSS_COST : AIR_COST;
     };
+    // (Within WIRE_REACH of it and of the end laid so far, or of the box
+    // between them: across another tunnel it finds nowhere to lay any, and
+    // walks on.)
+    const starts = s.last >= 0 ? [s.last] : s.charge.cells;
+    let x0 = e.x, x1 = e.x, y0 = e.y, y1 = e.y;
+    for (const c of starts) {
+      x0 = Math.min(x0, c % w);
+      x1 = Math.max(x1, c % w);
+      y0 = Math.min(y0, (c / w) | 0);
+      y1 = Math.max(y1, (c / w) | 0);
+    }
+    if (x1 - x0 > JOIN_MAX || y1 - y0 > JOIN_MAX) return;
+    behind = x1 - x0 > WIRE_REACH || y1 - y0 > WIRE_REACH;
+    x0 -= WIRE_REACH;
+    x1 += WIRE_REACH;
+    y0 -= WIRE_REACH;
+    y1 += WIRE_REACH;
     // (Dijkstra, with a bucket for each cost.)
     const dist = new Map(), prev = new Map(), buckets = [];
     const reach = (c, d, p) => {
@@ -711,7 +794,7 @@ export const Grudges = {
       prev.set(c, p);
       (buckets[d] ??= []).push(c);
     };
-    for (const c of s.last >= 0 ? [s.last] : s.charge.cells) reach(c, 0, -1);
+    for (const c of starts) reach(c, 0, -1);
     let end = -1;
     for (let d = 0; d < buckets.length && end < 0; d++) {
       const list = buckets[d];
@@ -728,7 +811,7 @@ export const Grudges = {
           for (let dx = -1; dx <= 1; dx++) {
             const nx = x + dx, ny = y + dy;
             if ((dx === 0 && dy === 0) || !this.inBounds(nx, ny)) continue;
-            if (Math.abs(nx - e.x) > WIRE_REACH || Math.abs(ny - e.y) > WIRE_REACH) continue;
+            if (nx < x0 || nx > x1 || ny < y0 || ny > y1) continue;
             const j = ny * w + nx, k = step(j);
             if (k > 0 && d + k < (dist.get(j) ?? Infinity)) reach(j, d + k, c);
           }

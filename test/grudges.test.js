@@ -257,8 +257,13 @@ test('a tunneller digs under the enemy hut, packs it with C4, wires it to a plun
   for (const job of ['tunnelling', 'placing', 'laying', 'detonating']) assert.ok(labels.has(job), `labelled ${job}: ${[...labels]}`);
   // The bang.
   assert.ok(hutLeft(w, B.camp) <= hut0 / 2, `the hut blown up (${hutLeft(w, B.camp)} of ${hut0} left)`);
-  assert.ok(B.camp.anger >= ANGER_BLAST, 'B is furious');
-  assert.equal(B.camp.grudge, A.camp);
+  // B furious (if anyone's left: its one human may have been in the hut).
+  if (w.camps.includes(B.camp)) {
+    assert.ok(B.camp.anger >= ANGER_BLAST, 'B is furious');
+    assert.equal(B.camp.grudge, A.camp);
+  } else {
+    assert.ok(!B.people.some((o) => w.creatures.includes(o)), 'B gone: its human killed');
+  }
   assert.equal(w.charges.length, 0);
 });
 
@@ -537,4 +542,39 @@ test("a tunneller already under keeps on when the war ends (it never hears); one
   s.stage = 'wiring';
   w.endWars(A.camp);
   assert.equal(A.camp.sap, s, 'laying the wire home, too');
+});
+
+test('both camps tunnelling at once, their tunnels cross: each walks back its own way, past the other wire, and both blow', () => {
+  const carry = { GUNPOWDER: 60, METAL: 30, WOOD: 80 }; // (lining for the whole way: no trips for wood)
+  const { w, A, B } = rivals(150, 1, carry);
+  for (const [t, n] of Object.entries(carry)) for (let k = 0; k < n; k++) w.stow(B.people[0].brain, ID[t]);
+  for (const x of [25, 15, 240, 250]) fillRect(w, x, w.ground - 15, x + 2, w.ground - 1, ID.WOOD); // (trees, for lining)
+  for (const o of [...A.people, ...B.people]) o.brain.weapon = 0; // (nobody shoots: this is about the tunnels)
+  w.startWars();
+  run(w, CHORES * 2);
+  assert.ok(A.camp.sap && B.camp.sap, 'a tunneller each');
+  const ends = new Map();
+  for (let f = 0; f < 30000 && ends.size < 2; f++) {
+    for (const o of w.creatures) if (o.brain) o.brain.weapon = 0; // (a gun crafted from metal left over, too)
+    w.step();
+    for (const c of [A.camp, B.camp]) if (!ends.has(c) && c.sapsDone + c.sapsFailed > 0) ends.set(c, c.sapsDone);
+  }
+  assert.equal(ends.get(A.camp), 1, `A's done (failed ${A.camp.sapsFailed})`);
+  assert.equal(ends.get(B.camp), 1, `B's done (failed ${B.camp.sapsFailed})`);
+});
+
+test('a camp that moves is the same camp: its wars, grudge and tunnel job go with it', () => {
+  const { w, A, B } = rivals(150, 2, { GUNPOWDER: 60, METAL: 30 });
+  w.startWars(A.camp);
+  run(w, CHORES * 2);
+  const s = A.camp.sap, x = A.camp.x;
+  assert.ok(s !== null);
+  assert.ok(w.moveCamp(A.camp), 'it found somewhere');
+  assert.notEqual(A.camp.x, x, 'moved');
+  assert.ok(w.camps.includes(A.camp), 'still the same camp');
+  assert.equal(A.camp.sap, s);
+  assert.ok(A.camp.wars.has(B.camp));
+  assert.equal(A.camp.grudge, B.camp);
+  assert.equal(A.camp.hut, null, 'a new hut to build');
+  assert.ok(A.people.every((o) => o.brain.camp === A.camp));
 });

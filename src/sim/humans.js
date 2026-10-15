@@ -69,6 +69,10 @@ const FLAMES = setOf(['FIRE']); // real fire, which it won't walk through
 const ON_FIRE = setOf(['WOOD', 'COAL', 'PEAT', 'SAWDUST', 'CAMPFIRE']); // fuel on a burning pile, alight or not
 export const HUT_W = 9; // the hut's width
 export const HUT_WALL = 9; // its walls' height
+// What a camp that moves starts afresh (moveCamp): its place, fire, hut,
+// lawn and war machines.
+const CAMP_SITE = ['x', 'y', 'lit', 'burned', 'hut', 'hutRetry', 'hutFails', 'noHut', 'flat', 'flattener', 'claims', 'lighter',
+  'pad', 'aa', 'launcher', 'planRetry', 'badSites', 'heli', 'engineer', 'firstWar'];
 export const DOOR = 7; // the doorway's height: a cell of headroom (growth, ash or a bump underfoot)
 const HUT_GAP = 4; // the least space between the hut and the pile
 export const STONE_R = 120; // how far from the camp it fetches building material
@@ -1436,7 +1440,11 @@ export const Humans = {
   // A camp with no room for a hut moves: to the nearest spot, either side,
   // within CAMP_MOVE_R, that its humans can get to (no rock in the way),
   // where a pile fits and a hut would too. Its members go with it (and make
-  // a new fire there). True if it found somewhere.
+  // a new fire there). It's the same camp, moved (CAMP_SITE: what's tied
+  // to the old site starts afresh): its wars, grudges and tunnel job go
+  // with it, and other camps' with it still stand (as a new camp, a
+  // tunneller on its way under it, or its own, lost its job). True if it
+  // found somewhere.
   moveCamp(camp) {
     const { gx, gy } = camp;
     for (let d = 16; d <= CAMP_MOVE_R; d += 4) {
@@ -1447,19 +1455,18 @@ export const Humans = {
           const x = x0 + v * gx, y = y0 + v * gy;
           if (!this.inBounds(x, y) || !this.campSpot(x, y, gx, gy)) continue;
           if (!this.walkable(camp, 0, s * d) || this.planHut({ x, y, gx, gy, hut: null }) === null) continue;
-          const moved = this.makeCamp(x, y, gx, gy);
-          this.clearFirePit(moved);
+          const fresh = this.makeCamp(x, y, gx, gy);
+          this.camps.splice(this.camps.indexOf(fresh), 1);
+          for (const key of CAMP_SITE) camp[key] = fresh[key];
+          this.clearFirePit(camp);
           for (const id of camp.members) {
             const o = this.creatureById[id];
-            if (o && o.brain !== null) {
+            if (o && o.brain !== null && camp.sap?.id !== id) { // (its tunneller doesn't hear)
               this.release(o.brain);
-              o.brain.camp = moved;
               o.brain.job = 'wandering';
               o.brain.think = 0;
             }
-            moved.members.add(id);
           }
-          this.camps.splice(this.camps.indexOf(camp), 1);
           return true;
         }
       }

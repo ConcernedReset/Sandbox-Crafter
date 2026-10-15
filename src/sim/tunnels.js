@@ -426,7 +426,9 @@ export const Tunnels = {
   // mouth), ENTRY_GAP or more clear of its hut and the lawn round it
   // (grounds.js) and of tunnels, ENTRY_SPACE from other entrances, not in
   // another camp's lawn, and not on a tree (the top of a trunk is "ground"
-  // to groundAt, and a miner climbed the tree to dig its mine from there).
+  // to groundAt, and a miner climbed the tree to dig its mine from there)
+  // nor on anything humans put there (a tunneller's wire along the ground:
+  // it can't dig that, and tried to start there over and over).
   // [{ x, y, cost }].
   entranceSpots(e, camp, tx, ty) {
     const lawn = this.lawn(camp), out = [];
@@ -437,7 +439,7 @@ export const Tunnels = {
         const g = this.groundAt(camp, u);
         if (g === null) continue;
         const c = this.campCell(camp, u, g - 1), f = this.campCell(camp, u, g);
-        if (c < 0 || this.type[c] !== 0 || (TREE_WOOD[this.type[f]] && !this.madeByHuman(f))) continue;
+        if (c < 0 || this.type[c] !== 0 || this.madeByHuman(f) || TREE_WOOD[this.type[f]]) continue;
         const x = c % this.w, y = (c / this.w) | 0;
         if (this.inLawn(x, y, ENTRY_DEPTH + 6) || this.nearTunnel(x, y, ENTRY_GAP) || this.nearEntrance(e, x, y)) continue;
         const bx = x + ENTRY_DEPTH * camp.gx, by = y + ENTRY_DEPTH * camp.gy;

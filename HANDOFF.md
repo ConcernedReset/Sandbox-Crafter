@@ -483,7 +483,10 @@ else; `test/build.test.js` checks the bundle runs.
   from `s.endX/endY`, or else digs straight from the cheapest start: a
   spot on its own camp's tunnels (`netDistances` from its entrances
   within `OWN_R` and nearer it than the enemy, plus `NEW_COST` a spot
-  dug) or a new entrance on the enemy side, to `sapTarget`: `SAP_DEPTH`
+  dug) or a new entrance on the enemy side but its own half (nearer its
+  camp than the enemy's: its wire runs overland from there home, and from
+  the enemy's half it ran right over the enemy tunneller's mouth and
+  walled that one's wire in), to `sapTarget`: `SAP_DEPTH`
   (30; it was 10) under the enemy hut's middle (under its floor, the row
   the hut stands in). There `sapArrived` turns it straight up (`s.depth`
   to `SAP_TOP`, 8: its head 2 cells under the ground) and it digs on; at
@@ -508,7 +511,13 @@ else; `test/build.test.js` checks the bundle runs.
   'charging' (`sapCharge`: `chargeCells`, ground within `POCKET` (3)
   of its spot, farthest ahead first: a pocket over and round its head at
   the top of the climb (only the cells against its spot held 8, not 24), filled a cell every `PLACE_EVERY` with `putDown`;
-  then a charge in `world.charges`), 'wiring' (`sapWire`: out through
+  then a charge in `world.charges`), 'wiring' (`sapWire`: back the way
+  it dug first (`retrace`: `s.trail`, the spots `sapDug` saw, last
+  first, a `stepAlong` at a time; through a mine it dug across, the
+  network's nearest way out ran along that mine and it walked off from
+  its wire), lifting another camp's wire out of its way and putting it
+  back behind it (`s.lifted`: where two camps' tunnels cross, each one's
+  wire lies across the other's way); then out through
   `leaveTunnel`, then `walkTo` the `plungerSpot` (`PLUNGER_U` past the
   lawn, out to `PLUNGER_FAR` more, on the side it came out, else the
   other: ground with no tunnel under it; the plunger 3 cells nearer the
@@ -517,7 +526,13 @@ else; `test/build.test.js` checks the bundle runs.
   beside its feet as it moves, joined to the end so far by `joinWire`,
   the cheapest short run (Dijkstra with a bucket per cost) through
   `wireOK` cells (never in a tunnel's inside), or open air at
-  `AIR_COST`, a tunnel's inside too (round a cratered tunnel mouth, or
+  `AIR_COST` (another tunnel's open inside at `CROSS_COST`, 18: it's in
+  that tunnel's way, so round through the ground where it can; its own
+  tunnel where it has walked out of it already, `sapBehind`, at
+  `BEHIND_COST`, 36, a last resort: another camp's wire along a crossing
+  tunnel's roof walls off all but that; the search box takes in both its
+  feet and the end laid so far, up to `JOIN_MAX` 40 apart, so a crossing
+  where it lays none doesn't leave the wire behind), a tunnel's inside too (round a cratered tunnel mouth, or
   across another tunnel it dug through, the wire is strung across the
   gap; ground-only, it broke there), but never its own tunnel's inside
   (`s.own`, the boxes of the spots it dug, from `sapDug`) nor its body's
@@ -600,7 +615,8 @@ else; `test/build.test.js` checks the bundle runs.
   a new entrance (`entranceSpots`: 14-90 cells from camp, clear of the
   hut's lawn and of tunnels, `ENTRY_SPACE` (20) from other entrances,
   not on a tree: `groundAt` takes the top of a trunk for ground, and
-  miners climbed trees to dig from there).
+  miners climbed trees to dig from there; nor on anything humans put
+  there: a tunneller's wire along the ground, which it can't dig).
   Plans are tried cheapest first (up to `PLAN_TRIES`) and taken only if
   the new run keeps `TUNNEL_GAP` (4) solid cells from every other tunnel
   outside `START_R` (8) of its start (`pathClear`); going on along a seam
@@ -690,7 +706,10 @@ else; `test/build.test.js` checks the bundle runs.
   (3000) steps on end, standing, leaves it (`strayed`, in `chooseWork`)
   and joins or makes a camp where it is. A
   camp with no hut site twice over moves (`moveCamp`, to a reachable spot
-  where a hut fits, `walkable` now also refusing water and drops) or, with
+  where a hut fits, `walkable` now also refusing water and drops; the
+  same camp object, `CAMP_SITE` fields started afresh, so its wars,
+  grudge and tunnel job, and other camps' with it, go on: as a new
+  object, a tunneller on the way under it lost its target) or, with
   nowhere to go, does without (`noHut`: crafting starts without a hut);
   fuel in hand goes on a low fire whoever is tending; entrances keep
   `ENTRY_GAP` from tunnels and from entrances others have planned
