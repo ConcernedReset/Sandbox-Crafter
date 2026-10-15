@@ -39,7 +39,7 @@
 import { DEFS, ID, State } from './elements.js';
 import { SHAPED } from './creatures.js';
 import {
-  WALK_EVERY, AMMO_LOW, WOOD_ONLY, FRAME_KNEEL, METALS, DANGER, HUT_W, HELD_PICKAXE, ARMOUR_HITS,
+  WALK_EVERY, AMMO_LOW, WOOD_ONLY, FRAME_KNEEL, METALS, DANGER, HUT_W, HUT_WALL, HELD_PICKAXE, ARMOUR_HITS,
 } from './humans.js';
 import { INSIDE, LINED, NEW_COST, TUNNEL_LINING, ENTRY_DEPTH } from './tunnels.js';
 
@@ -79,7 +79,8 @@ export const SAP_FIZZLE = 1800; // and waiting for the bang before it gives up
 const WIRE_REACH = 10; // how far from its feet it joins the wire up
 const AIR_COST = 6; // a cell of wire strung across open air counts as this many through the ground
 const BLOW_DELAY = 4; // steps after the charge first goes off: the craters
-const BLOW_CHARGE = 7, BLOW_MID = 8, BLOW_TOP = 11; // their sizes: at the charge, on the way up, at the hut's floor
+const BLOW_CHARGE = 7, BLOW_MID = 8, BLOW_TOP = 11; // their sizes: at the charge, on the way up, in the hut
+const BLOW_UP = HUT_WALL >> 1; // the top one, this far over the hut's floor: its middle (at the floor, it left a tall hut's top standing)
 const BLOW_STEP = 8; // (one every this many cells, at most)
 const PLUNGER_U = 4; // where it kneels at the plunger: this far past the edge of the lawn (the plunger 3 nearer)
 const PLUNGER_FAR = 16; // (or up to this much farther, where there's ground for it)
@@ -825,14 +826,14 @@ export const Grudges = {
     }
   },
 
-  // Craters from the charge up to where the hut's floor was over it, and
-  // the camp there (if any) angered.
+  // Craters from the charge up through the hut over it (to BLOW_UP over
+  // its floor), and the camp there (if any) angered.
   blowCharge(ch) {
-    const n = Math.max(2, Math.ceil(ch.depth / BLOW_STEP));
+    const reach = ch.depth + BLOW_UP, n = Math.max(2, Math.ceil(reach / BLOW_STEP));
     let tx = ch.x, ty = ch.y;
     for (let k = 0; k <= n; k++) {
-      tx = Math.round(ch.x - (ch.gx * ch.depth * k) / n);
-      ty = Math.round(ch.y - (ch.gy * ch.depth * k) / n);
+      tx = Math.round(ch.x - (ch.gx * reach * k) / n);
+      ty = Math.round(ch.y - (ch.gy * reach * k) / n);
       if (this.inBounds(tx, ty)) this.crater(tx, ty, k === 0 ? BLOW_CHARGE : k === n ? BLOW_TOP : BLOW_MID);
     }
     this.angerAround(tx, ty, ch.by, ANGER_BLAST, ANGER_NEAR_R);

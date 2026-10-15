@@ -485,8 +485,10 @@ else; `test/build.test.js` checks the bundle runs.
   (30; it was 10) under the enemy hut's middle (under its floor, the row
   the hut stands in). There `sapArrived` turns it straight up (`s.depth`
   to `SAP_TOP`, 8: its head 2 cells under the ground) and it digs on; at
-  the top it charges, and the charge's `depth` is measured from the C4,
-  so the blast's top crater is at the floor. Its wire also follows the
+  the top it charges, and the charge's `depth` is measured from the C4;
+  `blowCharge`'s craters go on `BLOW_UP` (half `HUT_WALL`) past the
+  floor, the top one in the middle of the hut (at the floor, a long game's
+  first bomb left a 9-tall hut's roof and upper walls standing). Its wire also follows the
   roof (`layWire`'s cells over its head: down the shaft, a wire on the
   wall the run came in from reaches the roof, with no way to the floor
   but through the tunnel), and never goes in `s.own` (the boxes of the
